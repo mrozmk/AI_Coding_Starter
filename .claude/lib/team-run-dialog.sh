@@ -84,9 +84,12 @@ dialog_tick() {
 # dialog_watch <role> <attempt> → 0 while the stage's own session is at a startup dialog. The lead's
 # dialog is reported the same way but holds no stage clock (the stage runs on its own).
 dialog_watch() {
-  local n
-  if team_lead_on; then
-    n="$(team_lead_json launch)"; dialog_tick lead "$(sess_name lead)" "dialog-lead-${n:-1}" || true
-  fi
+  ! team_lead_on || dialog_watch_lead
   dialog_tick "$1" "$(sess_name "$1")" "dialog-$(rp | tr / -)$1-$2"
+}
+
+# dialog_watch_lead — the lead's startup dialog alone; mode_wait calls it while no stage runs yet.
+dialog_watch_lead() {
+  local n
+  n="$(team_lead_json launch)"; dialog_tick lead "$(sess_name lead)" "dialog-lead-${n:-1}" || true
 }

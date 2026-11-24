@@ -8,6 +8,8 @@
 #   --memory-reviewed: the supervisor read a reported memory overlap (or committed a memory-only fix
 #   on top of the wrapup) and accepts it.
 #   cli mode: the accepted cli record replaces qa + wrapup; no memory checks.
+#   quick: the accepted qa record replaces qa + wrapup; no memory checks (a quick run provisioned
+#   before quick lost its wrapup keeps it — the final record is the mode's last role).
 #
 # Run from the main checkout; works in the team clone (teams.clone_name).
 # Never merges — github: team-integrate.sh, ADO: /pr-merge.
@@ -49,10 +51,13 @@ digest0=""
 [ "$TEAM_PR_PROVIDER" != github ] || digest0="$(team_records_digest "$TD" "$RUN")"
 
 [ ! -f "$TD/session.json" ] || die 3 "a role is still live ($(jq -r .role "$TD/session.json")) — wait for it to finish"
-if [ "$MODE" = cli ]; then
-  cl="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" cli)"
-  [ -n "$cl" ] || die 3 "no accepted cli record in run '${RUN:-none}' — run team-run.sh first"
-  [ "$(jq -r .verdict "$cl")" = done ] || die 3 "accepted cli record is not done"
+# The final record is the mode's last role: cli in cli, qa in quick, wrapup otherwise.
+LAST="$(team_mode_roles "$MODE" "$CLONE" | awk '{print $NF}')"
+[ -n "$LAST" ] || die 3 "mode $MODE: the TeamLead has not chosen the run's mode yet — run team-run.sh first"
+if [ "$LAST" != wrapup ]; then
+  cl="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" "$LAST")"
+  [ -n "$cl" ] || die 3 "no accepted $LAST record in run '${RUN:-none}' — run team-run.sh first"
+  [ "$(jq -r .verdict "$cl")" = done ] || die 3 "accepted $LAST record is not done"
   want="$(jq -r .output_rev "$cl")"; pr="$(jq -r .pr_id "$cl")"
 else
   # The final rework round's records (team-lead.md §9); merge-check.json stays at the run root.
@@ -85,7 +90,7 @@ export TEAM_GATE_LOCK_TOKEN="$GATE_LOCK_TOKEN"
 # docs/coding-standards.md passes after QA only when this run's TeamLead accepted a standards item
 # (team-lead.md §10) — so --memory-reviewed cannot bring in a standard the lead never accepted.
 STD_OK=0
-if [ "$MODE" != cli ] && [ -n "$RUN" ] && team_lead_accepts "$TD/runs/$RUN" \
+if [ "$LAST" = wrapup ] && [ -n "$RUN" ] && team_lead_accepts "$TD/runs/$RUN" \
     | jq -e 'any(.[]; .target == "docs/coding-standards.md")' >/dev/null 2>&1; then
   STD_OK=1
 fi
@@ -110,8 +115,8 @@ tips() {
 tips
 [ -n "$SRC" ] || die 3 "source branch $BRANCH absent on origin"
 git fetch --quiet origin "refs/heads/$BRANCH" "refs/heads/$LINE" || die 3 "cannot fetch $BRANCH / $LINE"
-if [ "$MODE" = cli ]; then
-  [ "$SRC" = "$want" ] || die 3 "source tip ${SRC:-absent} is not the cli revision $want — someone pushed after the cli role"
+if [ "$LAST" != wrapup ]; then
+  [ "$SRC" = "$want" ] || die 3 "source tip ${SRC:-absent} is not the $LAST revision $want — someone pushed after the $LAST role"
 elif [ "$SRC" != "$want" ]; then
   # After a reviewed conflict the supervisor may add a memory-only fix on top of the wrapup.
   [ "$REVIEWED" = 1 ] && git merge-base --is-ancestor "$want" "$SRC" 2>/dev/null \
@@ -120,7 +125,7 @@ elif [ "$SRC" != "$want" ]; then
   echo "supervisor memory fix after wrapup: $(echo $fix)"
 fi
 delta=""
-[ "$MODE" = cli ] || delta="$(memory_only "$qa_rev" "$SRC")"
+[ "$LAST" != wrapup ] || delta="$(memory_only "$qa_rev" "$SRC")"
 if [ -n "$delta" ]; then
   tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$(team_run_ref "$TD" "$RUN")/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
   [ -n "$tr_rev" ] || die 3 "wrapup summary has no target_rev"

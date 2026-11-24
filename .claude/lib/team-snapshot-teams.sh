@@ -20,8 +20,10 @@ pane_prompt_kind() {
 # its window; a run without a lead keeps the stage's window and /start-team.
 team_actions() {
   local lead=""
+  # A chosen cli ended its judge: the stage's window and /start-team, as in a fixed cli run.
   [ -z "${5:-}" ] || [ "$(jq -r '.run // empty' "$5/teamlead.json" 2>/dev/null)" != "$(cat "$5/run" 2>/dev/null)" ] \
-    || [ -z "$(cat "$5/run" 2>/dev/null)" ] || lead=1
+    || [ -z "$(cat "$5/run" 2>/dev/null)" ] || [ "$(jq -r '.mode // empty' "$5/team.json" 2>/dev/null)" = cli ] \
+    || lead=1
   jq -cn --arg t "$1" --arg r "$2" --arg lead "$lead" '
     if $lead == "1" then ["bash .claude/lib/team-lead.sh pending \($t)",
       "bash .claude/lib/session-host.sh hint \($t)-lead"]
@@ -247,7 +249,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   run="$(cat "$td/run" 2>/dev/null || true)"
   # A run with its own per-run TeamLead (teamlead.json of THIS run); a stale file is no lead.
   [ -z "$run" ] || [ "$(jq -r '.run // empty' "$td/teamlead.json" 2>/dev/null)" != "$run" ] \
-    || lead=true
+    || [ "$mode" = cli ] || lead=true
   # The lock owner is authoritative: the runner may run via run_in_background, without tmux.
   if [ -d "$td/lock" ]; then
     pid="$(cat "$td/lock/pid" 2>/dev/null || true)"
@@ -273,7 +275,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
     err "$team: invalid $ov"; ov=""
   fi
   : > "$W/roles"
-  for role in $(team_mode_roles "$mode"); do
+  for role in $(team_mode_roles "$mode" "${td%/.agents/team}"); do
     team_role "$td" "$team" "$run" "$role" "$cur" "$runner" "$ov" "$base" >> "$W/roles" \
       || err "$team/$role: failed"
   done
@@ -282,9 +284,10 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
     || pr=""
   # Only a finished team asks ADO; `stale` is a leftover lock that still blocks team-next. Finished
   # = the mode's last role is done, not the last line: a failed team_role writes no line.
-  last="$(team_mode_roles "$mode" | awk '{print $NF}')"
+  last="$(team_mode_roles "$mode" "${td%/.agents/team}" | awk '{print $NF}')"
   fin="$(jq -rs --arg r "$last" 'map(select(.role == $r)) | last | .status == "done"' "$W/roles")" \
     || fin=false
+  [ -n "$last" ] || fin=false  # mode lead: no stage yet
   if [ "$runner" = down ] && [[ "$pr" =~ ^[0-9]+$ ]] && [ "$fin" = true ]; then
     prs="$(pr_state "${td%/.agents/team}" "$team" "$pr")"
   fi

@@ -3,7 +3,7 @@
 #
 # Usage: bash .claude/lib/team-new.sh <team> <TT-key> <new-branch> <base-ref> [mode] [--ticket-file <f>]
 #        [--follow-up-of <key>]
-#   mode: brainstorm (default) | quick | cli — fixed for the ticket
+#   mode: lead (default — the TeamLead chooses) | brainstorm | quick | cli (fixed by the Operator)
 #   e.g. bash .claude/lib/team-new.sh alfa AB-790 feature/AB-790-slug origin/<trunk>
 #
 # Result: ../<repo>-<team>/ on <new-branch>, per-developer files copied, .agents/team/team.json.
@@ -32,7 +32,7 @@ if [ $# -ne 4 ] && [ $# -ne 5 ]; then
   exit 2
 fi
 
-team="$1"; key="$2"; branch="$3"; base="$4"; mode="${5:-brainstorm}"
+team="$1"; key="$2"; branch="$3"; base="$4"; mode="${5:-lead}"
 
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-modes.sh"

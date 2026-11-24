@@ -83,7 +83,7 @@ cmd_audit() {
   clone_paths
   [ -s "$TD/run" ] || { echo "audit: no run"; exit 0; }
   RUN="$(cat "$TD/run")"
-  ROLES="$(team_mode_roles "$(team_mode "$TD/team.json")")"
+  ROLES="$(team_mode_roles "$(team_mode "$TD/team.json")" "$CLONE")"
   mkdir -p "$OUT"
   transcript_args
   first="$(auditor)"

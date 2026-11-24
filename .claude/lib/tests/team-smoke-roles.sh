@@ -349,19 +349,25 @@ mkteam kappa kappa-20261115-030000 cli
 mkteam lam lam-20261115-035000; rec "$CL/runs/lam-20261115-035000" wrapup 1 blocked
   f="$(ls "$CL/runs/lam-20261115-035000"/wrapup-1-*.json)"
   jq '.proposals = "x/wrapup_proposals-1_1.json"' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+# Mode lead (#296): no stage yet — the TeamLead was choosing; a verdict the runner has not applied
+# yet changes nothing.
+mkteam lamb lamb-20261115-110000 lead
+mkteam mu mu-20261115-120000 lead; echo '{"gate": "mode", "verdict": "quick"}' > "$CL/runs/mu-20261115-120000/teamlead-mode-1.json"
 clr; run "$MAIN" $RS runs; expect 0 "" "(10) runs"
 for l in "interrupted run alfa (alfa-20261115-100000, stage planner) — resume: /start-team alfa" \
   "interrupted run epsi (epsi-20261115-060000, stage coder, blocked) — resume: /start-team epsi" \
   "interrupted run iota (iota-20261115-040000, stage coder, failed) — resume: /start-team iota" \
   "interrupted run kappa (kappa-20261115-030000, stage cli) — resume: /start-team kappa" \
   "interrupted run lam (lam-20261115-035000, stage wrapup, proposals) — resume: /start-team lam" \
+  "interrupted run lamb (lamb-20261115-110000, stage mode choice) — resume: /start-team lamb" \
+  "interrupted run mu (mu-20261115-120000, stage mode choice) — resume: /start-team mu" \
   "zeta: clone missing ($WORK/cl-zeta-gone)"; do line "$l" "$WORK/out" "(10) runs"; done
 for t in beta gamma delta eta theta; do noline "run $t " "$WORK/out" "(10) $t listed"; done
 [ "$(grep '^interrupted run' "$WORK/out" | head -n 1 | cut -d' ' -f3)" = kappa ] || fail "(10) not oldest first"
 [ ! -s "$STUB_LOG" ] || fail "(10) runs called the host: $(cat "$STUB_LOG")"
 [ -d "$WORK/cl-epsi/.agents/team/lock" ] || fail "(10) runs removed a stale lock"
 run "$MAIN" $RS runs --json; expect 0 "" "(10) --json"
-jq -e 'length == 5 and (map(.team) == ["kappa", "lam", "iota", "epsi", "alfa"])
+jq -e 'length == 7 and (map(.team) == ["kappa", "lam", "iota", "epsi", "alfa", "lamb", "mu"])
   and (.[1].state == "proposals") and (.[3] | .state == "blocked" and .stage == "coder" and .resume == "/start-team epsi" and (.clone | length) > 0 and .run == "epsi-20261115-060000")' \
   "$WORK/out" >/dev/null || fail "(10) --json shape: $(cat "$WORK/out")"
 rm -f "$MP"/.agents/team/anchors/*.json

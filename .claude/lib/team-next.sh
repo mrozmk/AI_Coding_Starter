@@ -3,7 +3,7 @@
 #
 # Usage: bash .claude/lib/team-next.sh [--abandoned] <team> <key> <new-branch> <base-ref> [mode] [--ticket-file <f>]
 #        [--follow-up-of <key>]
-#   mode: brainstorm (default) | quick | cli — fixed for the ticket
+#   mode: lead (default — the TeamLead chooses) | brainstorm | quick | cli (fixed by the Operator)
 #   --abandoned: move on although the previous PR is abandoned; its local branch is kept
 #   e.g. bash .claude/lib/team-next.sh alfa AB-778 chore/AB-778-rollout origin/<trunk>
 #
@@ -33,7 +33,7 @@ if [ ${#args[@]} -ne 4 ] && [ ${#args[@]} -ne 5 ]; then
 fi
 
 team="${args[0]}"; key="${args[1]}"; branch="${args[2]}"; base="${args[3]}"
-mode="${args[4]:-brainstorm}"
+mode="${args[4]:-lead}"
 
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-modes.sh"

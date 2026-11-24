@@ -3,6 +3,39 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
+
+**Before:** `/start-team` without `--mode` started `brainstorm`; the cli role was a separate
+session on `opus[1m]` / `medium` (`teams.roles.cli`, `--roles cli=…` could change it); a quick run
+ended with a wrapup. Fable-pinned agents named an older Fable; the correctness finder ran at `xhigh`; the
+Step 1.5 Codex review ran on the CLI's default model.
+
+**Now:**
+- `/start-team` without `--mode` writes mode `lead`: the run's TeamLead reads the ticket and chooses
+  `brainstorm`, `quick` or `cli` before any stage (`team-lead.md` → Mode choice); `status` shows
+  `mode: <m> (TeamLead: <reason>)`. `--mode` stays the Operator's override.
+- **cli is the TeamLead.** A cli the TeamLead chose resumes its own conversation as the worker
+  (`claude --resume`, same Claude config dir); a fixed `--mode cli` starts a fresh session. Both
+  run on `teams.sessions.TeamLead` (model/effort) and run `/codex-review` before the PR.
+  `teams.roles.cli` and `cli=` set only the permission: a `cli=` model/effort is refused, a
+  leftover one in a file is ignored with `warn: cli model/effort override ignored …`.
+- **quick has no wrapup:** planner → coder → qa. No memory writes, no follow-up ticket, no tracker
+  writes at the end — the ticket moves on merge; the qa copies `## Follow-ups` into the PR. The
+  lead's acceptance refuses a `→ follow-up` disposition in quick. A quick run on a clone provisioned
+  before this change keeps its wrapup.
+- Models: the Fable-pinned agents and skills run Fable 5.2 (`claude-fable-5-2`); the correctness
+  finder runs at `high`; `/plan-feature` runs at `effort: medium` (frontmatter); the Step 1.5
+  Codex review of `/check-implementation` runs on `gpt-6.2-sol` (`CODEX_MODEL` in `codex-bg.sh`).
+- A new ticket needs a base with the new prompts: `team-new` / `team-next` refuse an old base ref
+  for mode `lead`, `quick` or `cli` ("pick a current base ref").
+
+**Action:**
+1. Remove `model`/`effort` from `teams.roles.cli` in `.claude/project-profile.json` and from any
+   `--roles cli=…` habit; set the cli path's model through `teams.sessions.TeamLead`.
+2. Make sure the Codex account can use `gpt-6.2-sol` (Step 1.5 of `/check-implementation` fails
+   otherwise).
+3. Start new tickets from a current line (`origin/<trunk>` after this change has landed).
+
 ## The roles' Herdr tab is named Supervisor
 
 **Before:** `/roles` put the shipped roles (Supervisor, Fable, Astra) into a Herdr tab named `Lead`.

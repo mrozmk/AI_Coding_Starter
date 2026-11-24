@@ -59,6 +59,7 @@ Call the wrapper, never raw `codex exec`. Pass via env vars:
 | `SCHEMA` | no | `--output-schema` path for structured JSON (plan-feature, brainstorm). Omit for prose (codex-review). |
 | `SANDBOX` | no (def `read-only`) | only applied when `SCHEMA` is **unset** (see below). `workspace-write` is reserved for the executor / fixer modes below. |
 | `CODEX_EFFORT` | **yes** | reasoning level (low/medium/high/xhigh). Pinned per caller — see the effort matrix below. The wrapper refuses to spawn without it. |
+| `CODEX_MODEL` | no | model id passed as `-m`; unset = the CLI default of `$CODEX_HOME/config.toml`. Set only where the matrix below names a model. A value outside `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` → exit 2, OUT empty. LOG's second line names it (`codex-bg.sh: model=<id>` or `model=CLI default`). |
 | `IMAGES` | no | newline-separated image paths, each attached with `-i` (visual reviews — `/design-ui` Phase 4). `-i` is variadic in codex-cli, so the wrapper closes the list with `--`; a raw `codex exec -i a.png "<prompt>"` swallows the prompt as an image and exits "No prompt provided". |
 
 The wrapper bakes in, non-negotiably: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`,
@@ -93,24 +94,28 @@ Every caller quotes its level in its own spawn snippet; this table is where a ch
 finished plan (a plan is already the thinking — the executor needs speed and obedience, and Claude
 re-validates everything).
 
-| Caller | `CODEX_EFFORT` | `SANDBOX` |
-|--------|----------------|-----------|
-| `/brainstorm` Step 8 | `high` | (unset — `SCHEMA` run) |
-| `/plan-feature` Phase 7 | `high` | (unset — `SCHEMA` run) |
-| `/codex-review` | `high` | `read-only` (default) |
-| `/check-implementation` Step 1.5 | `high` | (unset — `SCHEMA` run) |
-| `/quick-change` Phase 2 | `high` | `read-only` (default) |
-| `/architecture-review --codex` | `high` | `read-only` (default) |
-| `/architecture-review` Phase 0b (auditor) and Phase A (refutation) | `high` | `read-only` (default) |
-| `/execute codex` (executor) | `medium` | `workspace-write` |
-| `/check-implementation codex` (fixer) | `high` | `workspace-write` |
-| `/design-ui` Phase 4 (cross-model design review, `IMAGES` set) | `high` | (unset — `SCHEMA` run) |
-| `/discover` Phase 7 (cross-model PRD review) | `high` | (unset — `SCHEMA` run) |
-| `/architect` Phase 6 (cross-model architecture review) | `high` | (unset — `SCHEMA` run) |
-| `/check-backlog` step 8 (cross-model backlog review) | `high` | (unset — `SCHEMA` run) |
-| `/setup:delivery-plan` step 2 (cross-model review of the Epic files) | `high` | (unset — `SCHEMA` run) |
+| Caller | `CODEX_EFFORT` | `SANDBOX` | Model |
+|--------|----------------|-----------|-------|
+| `/brainstorm` Step 8 | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/plan-feature` Phase 7 | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/codex-review` | `high` | `read-only` (default) | CLI default |
+| `/check-implementation` Step 1.5 | `high` | (unset — `SCHEMA` run) | `gpt-6.2-sol` |
+| `/quick-change` Phase 2 | `high` | `read-only` (default) | CLI default |
+| `/architecture-review --codex` | `high` | `read-only` (default) | CLI default |
+| `/architecture-review` Phase 0b (auditor) and Phase A (refutation) | `high` | `read-only` (default) | CLI default |
+| `/execute codex` (executor) | `medium` | `workspace-write` | CLI default |
+| `/check-implementation codex` (fixer) | `high` | `workspace-write` | CLI default |
+| `/design-ui` Phase 4 (cross-model design review, `IMAGES` set) | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/discover` Phase 7 (cross-model PRD review) | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/architect` Phase 6 (cross-model architecture review) | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/check-backlog` step 8 (cross-model backlog review) | `high` | (unset — `SCHEMA` run) | CLI default |
+| `/setup:delivery-plan` step 2 (cross-model review of the Epic files) | `high` | (unset — `SCHEMA` run) | CLI default |
 
 Never lower a level to make a run finish sooner — retune the caller's `HARD_KILL` instead.
+
+Model id confirmed against the Codex CLI's model list (`~/.codex/models_cache.json`, codex-cli 0.169.0).
+A `Model` other than `CLI default` is passed as `CODEX_MODEL`; an account without that model fails the
+spawn with an empty OUT — the caller's DONE-FAILED path.
 
 ### Invocation (always `run_in_background: true`, never a trailing `&`)
 

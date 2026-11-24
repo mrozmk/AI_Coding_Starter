@@ -2,7 +2,7 @@
 name: design-critic
 description: Independent, read-only judge of a /design-ui mockup — looks at the rendered screenshots first, then the HTML/CSS, and sweeps the UI/UX principles + the self-check rows against the screen brief. Returns schema-shaped JSON findings; never edits. Spawned by /design-ui Phase 2.
 tools: Read, Glob, Grep
-model: claude-fable-5-1
+model: claude-fable-5-2
 effort: high
 permissionMode: default
 ---

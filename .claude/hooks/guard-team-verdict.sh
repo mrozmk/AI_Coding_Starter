@@ -17,7 +17,7 @@
 #
 # Problem rule 2 solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
-# approve the spec it is gated on. The hook payload's session_id is chosen by Claude Code, not by
+# approve the spec it is gated on, or pick the run's mode (the mode gate). The hook payload's session_id is chosen by Claude Code, not by
 # the command, and this hook runs with the session's real environment, so team_lead_caller with
 # that id is an identity the stage cannot forge. Any invocation (bash, sh, an absolute path, an env
 # prefix: the script name followed by a gate) is checked; every other command passes untouched.
@@ -57,7 +57,7 @@ fi
 
 # Only an invocation — the script name followed by a gate — is checked, so git add, bash -n, cat or
 # grep on the file pass (a team working on the starter itself touches it).
-INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup|run)([^a-z]|$)'
+INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup|run|mode)([^a-z]|$)'
 # A sender call on an authority or an ask: the script name, later the option or the ask id.
 ANSWER='team-answer\.sh.*(--authority|[[:space:]]a-[0-9])'
 DECIDE='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?(open|answer|withdraw)'

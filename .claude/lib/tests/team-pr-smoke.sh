@@ -379,23 +379,23 @@ jq -n '{key: "L1", title: "local work", url: "", labels: []}' > "$WORK/tkt/ticke
 printf '# L1\nlocal work\n' > "$WORK/tkt/ticket.md"
 TKT="--ticket-file $WORK/tkt/ticket.json"
 
-run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-nopr $TKT
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-nopr brainstorm $TKT
 expect 1 "cannot run pr_provider=github" "a base without team-pr.sh is refused"
 no_clone beta "base without the PR layer"
-run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-prado $TKT
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-prado brainstorm $TKT
 expect 1 "cannot run pr_provider=github" "a base whose profile says azure-devops is refused"
 no_clone beta "base profile pr_provider=azure-devops"
-run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-proth $TKT
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-proth brainstorm $TKT
 expect 1 "cannot run pr_provider=github" "a base pointing at another repo is refused"
 no_clone beta "base github repo differs"
 
 export STUB_GH_AUTH=1
-run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-pr $TKT
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-pr brainstorm $TKT
 unset STUB_GH_AUTH
 expect 1 "gh is not logged in" "a logged-out gh is refused before any clone"
 no_clone beta "gh not logged in"
 
-run "$MAIN" $NEW alfa L1 feature/L1-pr origin/base-pr $TKT
+run "$MAIN" $NEW alfa L1 feature/L1-pr origin/base-pr brainstorm $TKT
 expect 0 "branch:" "a base carrying the PR layer and the matching profile starts"
 CLONE="$WORK/main-alfa"; TD="$CLONE/.agents/team"
 [ -f "$CLONE/.claude/lib/team-pr.sh" ] || fail "the clone has no PR adapter"
@@ -476,7 +476,7 @@ jq -n --arg run "$RUN_ID" --arg rev "$REV" \
     notes: "", message: "", written_at: "2026-10-18T00:00:00Z"}' > "$RD/cli-1-1.json"
 touch "$RD/cli-1-1.json.accepted"
 NEXT="bash .claude/lib/team-next.sh"
-run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr $TKT
+run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr brainstorm $TKT
 expect 1 "previous PR #70 of L1 is active" "an open github PR blocks the next ticket"
 
 # Merged: the head is an ancestor of the base, which is exactly what the fixture reports.
@@ -484,7 +484,7 @@ smoke_gh_land "$BR" "$LINE0"
 mkdir -p "$WORK/tkt2"
 jq -n '{key: "L2", title: "next work", url: "", labels: []}' > "$WORK/tkt2/ticket.json"
 printf '# L2\nnext work\n' > "$WORK/tkt2/ticket.md"
-run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr --ticket-file "$WORK/tkt2/ticket.json"
+run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr brainstorm --ticket-file "$WORK/tkt2/ticket.json"
 expect 0 "branch:" "a merged github PR releases the next-ticket guard"
 
 # ================================================================================================

@@ -18,6 +18,16 @@ decisions that are theirs. You never do the team's work yourself.
    rendered with the main checkout's path — the copy the runner and the stage hook run. Call it
    exactly as written; the clone's `.claude/lib/` copy is denied to you.
 
+## Mode choice (mode `lead` only)
+
+When `{{MODE}}` is `lead`, your first pending item is `mode`. Read the order brief and the files the
+ticket names; choose by `.agents/reference/team-lead.md` → Mode choice; write
+`bash .claude/lib/team-verdict.sh mode <brainstorm|quick|cli> --message "<the criterion that decided it>"`,
+then add `- mode: <m> — <reason>` first under `## Order ambiguities` in `teamlead-notes.md`.
+Choosing `cli` ends this session: the runner resumes this conversation as the cli worker — do
+nothing more here. After `quick`/`brainstorm` the run's mode is that one (`team.json` `.mode`), not
+`{{MODE}}`.
+
 ## Every turn
 
 1. Start with `bash .claude/lib/team-lead.sh pending {{TEAM}}`. It lists your open items, oldest
@@ -240,7 +250,8 @@ round's blind check or brief.
    `keep — over the run's ticket cap: <failure sentence>`. Ordered work that was cut and deserves a
    ticket is written under `## Ordered vs delivered` as
    `- <order line> → follow-up — cut: <why>` and is that one line. No `→ follow-up` line → the
-   wrapup drafts no ticket.
+   wrapup drafts no ticket. In quick no wrapup creates a follow-up ticket: decide `keep` or `fix`,
+   or escalate — `team-verdict.sh` refuses `follow-up` in quick.
 6. The verdict, one of:
    - `bash .claude/lib/team-verdict.sh acceptance accept --for <record> --message "<line>"`
      (exit 8 names what the brief lacks);
@@ -261,7 +272,8 @@ round: the coder continues on the same branch and the same PR, then qa runs agai
    one item per line, each tied to an order line or a QA defect — the coder fixes exactly these.
    The order also lists every own-and-reached finding the earlier rounds left open (the QA reports'
    warnings), except one routed `→ follow-up` — a rework round
-   leaves no logged finding of this run behind.
+   leaves no logged finding of this run behind. In quick no wrapup creates a follow-up ticket:
+   decide `keep` or `fix`, or escalate — `team-verdict.sh` refuses `follow-up` in quick.
 2. `bash .claude/lib/team-verdict.sh acceptance rework --for <qa record> --ref
    .agents/team/runs/{{RUN}}/rework-<n>.md --message "<line>"`. In quick mode the first rework adds
    `--quick-call continue`; the alternative is `abandon-recommended` — a remode once code exists is
@@ -297,7 +309,7 @@ run is merged or closed the notes go to the main checkout's shared log by themse
 
 ## Wrapup
 
-You decide the wrapup's proposals alone; the wrapup writes. It asks nothing in its window: it stops
+(brainstorm only) You decide the wrapup's proposals alone; the wrapup writes. It asks nothing in its window: it stops
 with `stop wrapup <a>: … — wrapup proposals: <file>`. Nothing on this path goes to the Operator.
 
 1. Read the proposals file (`create-<n>` tickets, `memory-<n>` entries with group A or B and their

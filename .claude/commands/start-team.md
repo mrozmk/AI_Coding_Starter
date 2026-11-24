@@ -1,6 +1,6 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a tab per team, its TeamLead and the working stage; tmux: an attach hint line)
-argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>] [--takeover]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
+argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>] [--takeover]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-2/high · alfa AB-900 --permission-mode manual)"
 allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(bash .claude/lib/team-claim.sh:*), mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_add_comment, mcp__atlassian__jira_transition_issue, AskUserQuestion, Bash(jq:*), Bash(mv:*), Bash(node .claude/lib/tracker-snapshot.mjs:*)
 ---
 
@@ -30,7 +30,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    Non-zero exit → print its `error:` line verbatim and stop (no clone, no branch, no tmux session).
    `TEAM_TRUNK` is the trunk used in step 4; `TRACKER` (the `tracker:` line, one of `jira`,
    `github`, `none`) decides steps 1, 3, 3b and 4. The ticket's mode decides step 4c and the brief
-   check in step 2: a per-run TeamLead in brainstorm and quick mode, none in mode `cli`.
+   check in step 2: a per-run TeamLead in every mode except a `cli` the Operator fixed with
+   `--mode cli` (a cli the TeamLead chose resumes the lead's own conversation).
 
 1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`). A `TEAM` equal to a roles tab (`lead`, or
    any `teams.sessions` `place.tab`, case-insensitive) → STOP before any side effect: "team name
@@ -48,7 +49,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    (including a trailing `BRANCH`); do not consume all words after `--roles`. Keep invalid role
    names and values in `ROLES` for the existing `team-run.sh … roles` validation in step 4a.
    `--roles` with no entry → stop and ask. For example,
-   `/start-team alfa ABC-791 --roles planner=claude-fable-5-1/high chore/ABC-791-team-next-retry-guard`
+   `/start-team alfa ABC-791 --roles planner=claude-fable-5-2/high chore/ABC-791-team-next-retry-guard`
    keeps `chore/ABC-791-team-next-retry-guard` as `BRANCH`. Map the user's wording to roles:
    brainstorm/spec/plan = `planner`,
    implementation = `coder`, review/QA = `qa`, summary = `wrapup`. Entry forms:
@@ -56,16 +57,16 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `<role>=[<model>][/<effort>]/<auto|manual>` for the permission mode (e.g. `coder=//manual`).
    `--permission-mode manual` is taken out before the positional parse too (like `--mode`) and
    expands to `coder=//manual qa=//manual` for modes `brainstorm`/`quick` (`cli=//manual` for mode
-   `cli`), merged into `ROLES` after the explicit entries; planner and wrapup stay auto (they write
+   `cli`; `coder=//manual qa=//manual cli=//manual` in mode `lead`, whose choice is not known yet), merged into `ROLES` after the explicit entries; planner and wrapup stay auto (they write
    only spec/plan and memory), a ticket whose planner must edit settings uses `--roles
    planner=//manual`. Any other value, or no value →
    stop and say "only `manual` (auto is the default)". Roles launch in auto mode by default
    (`roles.json`); **`--permission-mode manual` is mandatory for tickets editing
    `.claude/settings*.json`** — the auto-mode classifier refuses that as self-modification.
-   `MODE` = the word after `--mode`, also taken out before the positional parse; default
-   `brainstorm`. A value outside `brainstorm|quick|cli`, or `--mode` with no value → stop and say
-   the allowed values. Which mode: the criteria in `.agents/reference/team-pipeline.md` → Which
-   mode. Without `--mode` this command starts `brainstorm` and never classifies.
+   `MODE` = the word after `--mode`, also taken out before the positional parse; default `lead`
+   (the TeamLead chooses — never classify here). A value outside `brainstorm|quick|cli`, or
+   `--mode` with no value → stop and say the allowed values. `--mode` is the Operator's override;
+   the TeamLead's criteria are in `.agents/reference/team-lead.md` → Mode choice.
    `--brief "<text>"` / `--brief-file <path>` are taken out the same way, before the positional
    parse — for `TRACKER=none` they *are* the ticket (there is no key to name).
    `FOLLOW` = the key after `--follow-up-of` (the ticket this one follows up; a leading `#`
@@ -82,8 +83,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    - `--follow-up-of` on a RESUME → "the lineage is fixed at the start — the clone's `team.json`
      carries it";
    - `--takeover` on a RESUME → "`--takeover` is for a new start";
-   - `--mode cli` with a `--roles` model/effort entry → "cli always runs opus[1m]/medium; drop
-     --roles" (`cli=//manual` from `--permission-mode manual` is allowed).
+   - a `--roles` `cli=` entry with a model or effort → "the cli path runs on the TeamLead's model
+     (`teams.sessions.TeamLead`); drop it from --roles" (`cli=//manual` from `--permission-mode
+     manual` is allowed).
 
 2. **RESUME** (no `KEY`, and for `none` no `--brief*` either). `CLONE` must exist. Never call
    `team-tracker.sh read` here: a resume allocates nothing, and the ticket it continues is already in
@@ -103,8 +105,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      A live session alone never
      means a live runner: it outlives the runner after a `blocked` record.
 
-   With the ticket's mode not `cli` (`mode` in
-   `<CLONE>/.agents/team/team.json`): `bash .claude/lib/team-brief.sh check <TEAM>` must pass;
+   With the ticket's mode not a fixed `cli` (`mode` in `<CLONE>/.agents/team/team.json`; a cli
+   with `mode_choice` was chosen by a lead and has its brief): `bash .claude/lib/team-brief.sh check <TEAM>` must pass;
    otherwise write the brief first as in step 4c (`write`, never `--replace`).
 
    Record the start, before the runner: `bash .claude/lib/team-lineage.sh record <ticket> <TEAM>`
@@ -282,9 +284,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
    `tracker: <TRACKER>`, the claim result from step 3b (`claimed`/`held` + `status:`, or
-   `tracker none: no shared signal`), branch and `mode: <MODE> — <reason>` (one
-   sentence: the Which-mode criterion that decided it; "set by the Operator (`--mode`)"; "default —
-   no `--mode`"; on a RESUME "fixed per ticket"), "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
+   `tracker none: no shared signal`), branch and the mode line: `mode: the TeamLead chooses
+   (status shows it once chosen)` | `mode: <MODE> — set by the Operator (--mode)` | on a RESUME
+   `mode: <the status line's mode> — fixed per ticket`, "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
    runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the
    team's TeamLead answers what it may, and only a decision that needs the Operator notifies them
    (`notify.sh`, when a channel is on in `~/.agent-comms/notify.json`; otherwise it waits in

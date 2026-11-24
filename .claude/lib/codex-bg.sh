@@ -46,6 +46,9 @@
 #                         reviewers never set it.
 #   CODEX_EFFORT (required) — model_reasoning_effort (low|medium|high|xhigh).
 #                         Pinned per caller; see codex-spawn.md → Effort matrix.
+#   CODEX_MODEL (optional) — model id passed as -m; unset = the CLI default of
+#                         $CODEX_HOME/config.toml. Pinned per caller; see
+#                         codex-spawn.md → Effort matrix (Model column).
 #   IMAGES   (optional) — newline-separated image paths attached with `-i`
 #                         (visual reviews: /design-ui). `-i` is variadic in
 #                         codex-cli, so the wrapper closes the list with `--`;
@@ -81,6 +84,10 @@ case "$CODEX_EFFORT" in
   # A typo would reach the API, fail with an empty OUT and be misread as "codex returned nothing".
   *) echo "codex-bg.sh: CODEX_EFFORT='$CODEX_EFFORT' is not one of low|medium|high|xhigh" >&2; exit 2 ;;
 esac
+# Same reason as the effort check; the value also lands on the command line.
+if [ -n "${CODEX_MODEL:-}" ] && ! printf '%s' "$CODEX_MODEL" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'; then
+  echo "codex-bg.sh: CODEX_MODEL='$CODEX_MODEL' is not a model id" >&2; exit 2
+fi
 
 REPO="${REPO:-$PWD}"
 
@@ -90,6 +97,7 @@ if ! command -v codex >/dev/null 2>&1; then
 fi
 
 args=(exec --skip-git-repo-check -C "$REPO" -c "model_reasoning_effort=${CODEX_EFFORT}")
+[ -z "${CODEX_MODEL:-}" ] || args+=(-m "$CODEX_MODEL")
 
 # Sandbox vs schema are mutually exclusive in practice (see contract note).
 if [ -n "${SCHEMA:-}" ]; then
@@ -152,6 +160,7 @@ fi
 
 # Truncated before either process starts: a reused LOG must not expose an old thread header.
 printf 'codex-bg.sh: CODEX_HOME=%s\n' "$have_real" > "$LOG"
+printf 'codex-bg.sh: model=%s\n' "${CODEX_MODEL:-CLI default}" >> "$LOG"
 : > "$OUT.partial"
 # `< /dev/null` is the load-bearing stdin guard — never remove it.
 codex "${args[@]}" "$PROMPT" < /dev/null > "${OUT}.stdout" 2>> "$LOG" &

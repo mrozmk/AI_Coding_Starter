@@ -19,13 +19,13 @@ Clones are used rather than worktrees because a worktree shares one git database
 
 A worktree would save disk and a few seconds at provisioning, nothing else: the folder trust dialog, the copy of the Operator's `settings.local.json` and the build output are per directory either way. The roles of one ticket run **one after another in the same clone**, and two teams never share a working tree.
 
-A ticket runs in one of three modes, fixed when the team is provisioned (`/start-team <team> <KEY> --mode …`):
+A ticket runs in one of three modes. Without `--mode` the run's TeamLead chooses it before any stage (rules: [`team-lead.md` → Mode choice](../../.agents/reference/team-lead.md)); the Operator fixes one with `/start-team <team> <KEY> --mode …`:
 
 | Mode | Stages | For |
 |---|---|---|
-| `brainstorm` (default) | planner (`/brainstorm` → `/plan-feature`), coder (`/execute`), qa (`/check-implementation` + gates), wrapup | typical tickets |
-| `quick` | planner runs `/quick-change` and commits a short reviewed plan, then the same coder → qa → wrapup | small, clear changes |
-| `cli` | one unattended session that checks eligibility, changes, runs the gates and publishes the PR itself | very simple changes |
+| `brainstorm` | planner (`/brainstorm` → `/plan-feature`), coder (`/execute`), qa (`/check-implementation` + gates), wrapup | typical tickets |
+| `quick` | planner runs `/quick-change` and commits a short reviewed plan, then the same coder → qa (no wrapup; the ticket moves on merge) | small, clear changes |
+| `cli` | the TeamLead itself, in its own conversation (on its model): checks eligibility, changes, runs the gates and `/codex-review`, publishes the PR | very simple changes |
 
 A quick ticket whose planner finds it too big is restarted in `brainstorm` mode by the Supervisor (`team-remode.sh`). The branch, base and notes are kept.
 
@@ -47,7 +47,7 @@ Roles never exit their own session. In a run with a per-run TeamLead every stop 
 
 ## Per-run TeamLead (pilot)
 
-In brainstorm and quick mode (not in mode `cli`) the runner launches a TeamLead before the first stage and waits in place on a stop instead of exiting. It gates the plan against the order (there is no spec gate: the planner approves its own spec), accepts the qa result against the order brief, and may order **rework rounds**. A round n ≥ 2 keeps its records in `runs/<run>/r<n>/` and continues on the same branch and PR. The runner exits 8 when the lead closes a run without merge. The Supervisor reads four inbox events (`accepted`, `closed`, `collision`, `session_dead`) — [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md). Contract: [`team-lead.md`](../../.agents/reference/team-lead.md).
+In every mode except a cli the Operator fixed with `--mode cli` the runner launches a TeamLead before the first stage (a cli the TeamLead chose resumes its conversation as the worker) and waits in place on a stop instead of exiting. It gates the plan against the order (there is no spec gate: the planner approves its own spec), accepts the qa result against the order brief, and may order **rework rounds**. A round n ≥ 2 keeps its records in `runs/<run>/r<n>/` and continues on the same branch and PR. The runner exits 8 when the lead closes a run without merge. The Supervisor reads four inbox events (`accepted`, `closed`, `collision`, `session_dead`) — [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md). Contract: [`team-lead.md`](../../.agents/reference/team-lead.md).
 
 ## Records and notes
 

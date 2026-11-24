@@ -21,7 +21,7 @@ sub-agent resolves them the same way:
 | `.claude/skills/design-ui/self-check.md` | the mechanical rows (tokens / motion / anti-AI / structure) — the author's pre-flight and part of the critic's sweep |
 | `.claude/skills/design-ui/emil-design.md` · `redesign.md` · `dials.md` · `hands.md` | motion craft · anti-AI audit · variant differentiation · greenfield aesthetics |
 | `.claude/lib/design-render.sh` | renders a mockup to 4 screenshots (desktop/mobile × first screen/full page) |
-| `.claude/agents/design-critic.md` | the Claude critic — read-only, `claude-fable-5-1`, effort `high` |
+| `.claude/agents/design-critic.md` | the Claude critic — read-only, `claude-fable-5-2`, effort `high` |
 
 | Stage | Who | Model / effort | Mutates? |
 |---|---|---|---|

@@ -92,7 +92,7 @@ echo "team-smoke-21: (d) check OK"
 # ---- (e) team-next archives the brief -----------------------------------------------------------
 case_mark "(e) team-next archives the brief"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' \
-  bash .claude/lib/team-next.sh alfa AB-1402 feature/AB-1402-z origin/develop
+  bash .claude/lib/team-next.sh alfa AB-1402 feature/AB-1402-z origin/develop brainstorm
 expect 0 "was AB-1400" "(e) team-next"
 [ ! -e "$TD/order-brief.md" ] || fail "(e) the brief stayed with the new ticket"
 ls "$TD"/archive/AB-1400-*/order-brief.md >/dev/null 2>&1 || fail "(e) the brief was not archived"
@@ -183,7 +183,30 @@ TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-v
 expect 0 "" "(o) the lead's own session"
 hook "$CLONE" "$(vp sid-planner-1 "git status")"; expect 0 "" "(o) other commands untouched"
 hook "$MAIN" "$(vp sid-planner-1 "$FORGE")"; expect 0 "" "(o) no-op outside a team clone"
+# The mode gate is the lead's alone, like every other gate.
+MODEC="bash .claude/lib/team-verdict.sh mode quick --message x"
+hook "$CLONE" "$(vp sid-planner-1 "$MODEC")"; expect 2 "not it (refused)" "(o) mode gate from a stage"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp "" "$MODEC")"; expect 2 "" "(o) mode gate, empty session id"
+hook "$CLONE" "$(vp sid-planner-1 "TEAM_SESSION_ROLE=TeamLead $MODEC")"; expect 2 "" "(o) mode gate, forged env"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "$MODEC")"; expect 0 "" "(o) mode gate, the lead's own session"
 echo "team-smoke-21: (o) verdict guard OK"
+
+# ---- (o2) mode gate: once, mode lead only, the lead's session id ---------------------------------
+case_mark "(o2) mode gate"
+mj() { jq --arg m "$1" '.mode = $m' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"; }
+V mode quick --message small; expect 4 "mode fixed by the Operator (brainstorm)" "(o2) mode fixed by the Operator"
+mj lead
+run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
+expect 0 "mode .agents/team/team.json" "(o2) pending lists the mode choice"
+V mode lead --message x; expect 4 "is not a mode" "(o2) verdict lead refused"
+V mode quick --message small; expect 0 "teamlead-mode-1.json" "(o2) the lead's mode verdict"
+jq -e '.gate == "mode" and .verdict == "quick" and .message == "small" and .session_id == "sid-lead"' \
+  "$RD/teamlead-mode-1.json" >/dev/null || fail "(o2) mode verdict fields: $(cat "$RD/teamlead-mode-1.json")"
+V mode cli --message again; expect 4 "mode already chosen" "(o2) a second mode verdict"
+run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
+has "mode .agents/team/team.json" "$WORK/out" && fail "(o2) pending still lists the mode after the verdict"
+rm -f "$RD"/teamlead-mode-*.json; mj brainstorm
+echo "team-smoke-21: (o2) mode gate OK"
 
 # ---- (p) a brainstorm plan approve needs the constraint digest -----------------------------------
 case_mark "(p) a brainstorm plan approve needs the"

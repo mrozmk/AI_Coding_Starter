@@ -167,16 +167,21 @@ team_run_ready() {  # <team> <clone> <run> <mode>
   [ -n "$run" ] || { team_ie_no "no run id for team $team — nothing to integrate"; return 3; }
   rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
 
-  # (1) the work is accepted: cli alone in cli mode, otherwise qa AND wrapup (Amendment 3).
+  # (1) the work is accepted: the accepted done record of the mode's last role — cli in cli, qa in
+  # quick, qa AND wrapup otherwise (Amendment 3; a quick clone on the pre-#296 qa.md keeps its wrapup).
   ie_accepted() {  # ie_accepted <role> → the record path
     local f
     f="$(ls -1 "$rd/$1-"*.json.accepted 2>/dev/null | tail -n 1)" || true
     [ -n "$f" ] || return 1
     printf '%s\n' "${f%.accepted}"
   }
-  if [ "$mode" = cli ]; then
-    rec="$(ie_accepted cli)" || { team_ie_no "no accepted cli record in run '$run'"; return 3; }
-    [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted cli record is not done"; return 3; }
+  # team-starter-land.sh sources this library without team-modes.sh.
+  declare -F team_mode_roles >/dev/null || . "$(dirname "${BASH_SOURCE[0]}")/team-modes.sh"
+  local last; last="$(team_mode_roles "$mode" "$clone" | awk '{print $NF}')"
+  [ -n "$last" ] || { team_ie_no "the TeamLead has not chosen the mode of run '$run'"; return 3; }
+  if [ "$last" != wrapup ]; then
+    rec="$(ie_accepted "$last")" || { team_ie_no "no accepted $last record in run '$run'"; return 3; }
+    [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted $last record is not done"; return 3; }
   else
     rec="$(ie_accepted qa)" || { team_ie_no "no accepted qa record in run '$run'"; return 3; }
     [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted qa record is not done"; return 3; }

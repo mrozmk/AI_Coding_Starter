@@ -18,7 +18,7 @@ Team mode ⇔ `.agents/team/session.json` exists; role: `jq -r .role .agents/tea
 |---|---|
 | `team` | team name (`alfa`, `beta`) |
 | `role` | `planner` \| `coder` \| `qa` \| `wrapup` \| `cli` |
-| `mode` | `brainstorm` \| `quick` \| `cli` — copied from `team.json` at launch |
+| `mode` | `brainstorm` \| `quick` \| `cli` — copied from `team.json` at launch (`team.json` may also hold `lead` while the TeamLead chooses; no stage runs then) |
 | `run` | run id (`<team>-<UTC timestamp>`) |
 | `attempt` | attempt number of this role in this run (1 or 2) |
 | `ticket` | tracker key — `ABC-123` (jira) \| `7` (github) \| `L3` (none) |
@@ -34,7 +34,8 @@ Written only by `team-run.sh` before a launch; removed by it when the role's rec
 `session.json` is authoritative because hook processes are not documented to inherit the session
 environment. `session.json` also carries `round` (1, or n in a rework round — team-lead.md §9).
 
-**Second identity — the per-run TeamLead** (brainstorm and quick mode, never in mode cli): one
+**Second identity — the per-run TeamLead** (modes lead, brainstorm and quick; never in a cli run the
+Operator fixed — in a cli run it chose, its conversation becomes the cli stage): one
 lead session per run, launched by the runner before the first stage. Its identity is
 `.agents/team/teamlead.json` (`run`, `session_id`, `main_root`, …) plus `TEAM_SESSION_ROLE=TeamLead`
 in its session's environment; it never has a `session.json` and never writes a stage record. Contract:
@@ -46,7 +47,7 @@ All under `.agents/team/` (git-ignored, local to the clone):
 
 | Path | Written by | Content |
 |---|---|---|
-| `team.json` | `team-new.sh` (once) | `team, ticket, branch, line, base_ref, base_sha, mode, tracker, cost_key, origin_url, created_at` (no `mode` in an old clone = `brainstorm`; no `tracker`/`cost_key` before 2b = `jira` / `ticket`) |
+| `team.json` | `team-new.sh` (once) | `team, ticket, branch, line, base_ref, base_sha, mode, tracker, cost_key, origin_url, created_at` (no `mode` in an old clone = `brainstorm`; no `tracker`/`cost_key` before 2b = `jira` / `ticket`); the runner adds `mode_choice` (`by: teamlead`, reason, verdict, at, session_id, claude_config_dir) when it applies the TeamLead's mode verdict (team-lead.md §1a) |
 | `ticket.json`, `ticket.md` | `team-new.sh`/`team-next.sh`, from the supervisor's `--ticket-file` | the ticket the tracker read (§2a); `jira` has neither |
 | `session.json` | `team-run.sh` | §1 |
 | `run` | `team-run.sh` | current run id |
@@ -135,7 +136,7 @@ branch's base and equal to the supervisor's, or the start is refused.
 | coder | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
 | qa | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
 | wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10); also `docs/coding-standards.md`, only an accepted standards item, via `team-standards.sh add` | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
-| cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
+| cli (the TeamLead's cli path: its resumed conversation when it chose cli, a fresh session when the Operator fixed it) | never — `--disallowedTools AskUserQuestion`; a stop goes to the Operator | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
 
 'Asked normally (attended)' means, with a per-run TeamLead, that the run's lead answers on an
 authority ([team-lead.md](team-lead.md) §6; the wrapup's proposals §10) and only human-only items reach
@@ -151,24 +152,28 @@ No role exits its session — the runner ends it after accepting the record. Eac
 `--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json` (the shipped
 default), then by the project profile's optional `teams.roles.<role>` (same fields, committed), then
 per ticket by `.agents/team/roles.override.json` (entry `<role>=[<model>][/<effort>][/<permission>]`).
-The cli role has no `roles.json` entry: its default is `TEAM_CLI_MODEL`/`TEAM_CLI_EFFORT`
-(`team-modes.sh`), changed the same two ways; in mode cli the override takes only `cli=…` entries.
+The cli role has no `roles.json` entry: it runs on the TeamLead's model and effort
+(`teams.sessions.TeamLead`, default `fable` / `medium`); `teams.roles.cli` and the override set only
+its permission (`cli=//<auto|manual>` — a `cli=` model or effort is refused, a leftover one in a file
+is ignored with a `warn:`); in mode cli the override takes only `cli=…` entries.
 
 **Permission mode.** `permission` ∈ `auto|manual` only; `roles.json` sets `auto` for every
 role, the cli role defaults to `auto` (`TEAM_CLI_PERMISSION`). `/start-team … --permission-mode manual` writes `coder=//manual qa=//manual` (cli:
-`cli=//manual`) — mandatory for tickets editing `.claude/settings*.json` (the classifier
+`cli=//manual`; mode lead: `coder=//manual qa=//manual cli=//manual`) — mandatory for tickets editing `.claude/settings*.json` (the classifier
 refuses that as self-modification). `auto` is honoured only when the clone has the
 `guard-team-egress` hook (both files, registered under `WebFetch` and `Bash` with `"onFailure":
 "block"` — `/setup:teams` (`team-setup.sh`) registers both; the template's shared settings do not) and `claude --version` ≥ 2.1.295; otherwise the runner launches `manual`, prints `warn:
 <role> launches in manual mode — <why>` and records `permission_mode: "manual"`.
 
-**Modes.** `team.json` `mode`, fixed per ticket by `team-new.sh` / `team-next.sh`
-(`/start-team --mode`), decides the stages: `brainstorm` (default) and `quick` run planner → coder →
-qa → wrapup; `cli` runs one `cli` role alone. A `quick` planner runs `/quick-change` Phases 0–2 and
-commits only a Codex-reviewed plan — no spec (`planner-quick.md`). The `cli` role always runs
-`opus[1m]` / `medium` (`team-modes.sh`), ignoring `roles.json` and the override; it guards
-eligibility, changes, gates, commits, pushes and publishes its own PR. The runner refuses a record
-from a role the mode does not run.
+**Modes.** `team.json` `mode`, written per ticket by `team-new.sh` / `team-next.sh`, decides the
+stages. The default is `lead`: the run's TeamLead chooses the mode before any stage (team-lead.md
+§1a); the Operator fixes one with `/start-team --mode`. `brainstorm` runs planner → coder → qa →
+wrapup; `quick` runs planner → coder → qa (a quick clone whose `qa.md` predates #296 keeps its
+wrapup); `cli` runs one `cli` role alone. A `quick` planner runs `/quick-change` Phases 0–2 and
+commits only a Codex-reviewed plan — no spec (`planner-quick.md`). The `cli` role runs on the
+TeamLead's model and effort, ignoring `roles.json` and any model/effort override; it guards
+eligibility, changes, gates, runs `/codex-review`, commits, pushes and publishes its own PR. The
+runner refuses a record from a role the mode does not run.
 
 Base role keys follow the main checkout's schema; override keys follow the clone's runnable roles.
 Both configurations allow only known role keys and `model`/`effort` string fields. Effort must be

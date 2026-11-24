@@ -409,7 +409,7 @@ INC="$MAIN/.agents/team/incoming/alfa"
 run "$MAIN" $TRK read 7 --out "$INC"
 expect 0 "key=7 type=bugfix" "read into the incoming dir"
 
-run "$MAIN" $NEW alfa 7 bugfix/7-fix-x origin/base-github --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW alfa 7 bugfix/7-fix-x origin/base-github brainstorm --ticket-file "$INC/ticket.json"
 expect 0 "branch:" "team-new takes a github ticket file"
 has "bugfix/7-fix-x" "$WORK/out" || fail "team-new did not print the branch"
 CLONE="$WORK/main-alfa"; TD="$CLONE/.agents/team"
@@ -419,38 +419,38 @@ jq -e '.branch == "bugfix/7-fix-x" and .tracker == "github" and .cost_key == "ow
 jq -e '.key == "7"' "$TD/ticket.json" >/dev/null || fail "the copied ticket.json is not #7"
 
 setprofile '.'
-run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "jira reads the ticket through MCP" "jira refuses a ticket file"
 no_clone beta "jira + ticket file"
 
 github_profile
-run "$MAIN" $NEW beta 11 bugfix/11-other origin/base-github --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 11 bugfix/11-other origin/base-github brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "is not ticket 11" "a ticket file for another key is refused"
 no_clone beta "key mismatch"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github brainstorm
 expect 1 "--ticket-file required for tracker=github" "github needs a ticket file"
 no_clone beta "missing ticket file"
 mkdir -p "$WORK/lonely" && cp "$INC/ticket.json" "$WORK/lonely/ticket.json"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github --ticket-file "$WORK/lonely/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github brainstorm --ticket-file "$WORK/lonely/ticket.json"
 expect 1 "no ticket.md next to" "a ticket.json without its ticket.md is refused"
 no_clone beta "no ticket.md"
-run "$MAIN" $NEW beta abc bugfix/abc-x origin/base-github --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta abc bugfix/abc-x origin/base-github brainstorm --ticket-file "$INC/ticket.json"
 expect 1 '^[0-9]+$' "a bad key is refused with the profile regex"
 no_clone beta "bad key"
 
 # The base must carry the adapter, the wrapup block and the SAME tracker/github block.
 : > "$GH_LOG"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-notracker --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-notracker brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base without the adapter is refused"
 no_clone beta "base without the adapter"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/develop --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/develop brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base whose profile says jira is refused"
 no_clone beta "base profile tracker=jira"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghother --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghother brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base pointing at another project is refused"
 no_clone beta "base github block differs"
 setprofile ".teams.tracker = \"github\" | $TOP_BLOCK"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghtopother --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghtopother brainstorm --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base whose top-level github block differs is refused"
 no_clone beta "base top-level github block differs"
 github_profile
@@ -461,7 +461,7 @@ setprofile '.teams.tracker = "none"'
 run "$MAIN" $TRK read --brief '# Local work
 details' --out "$MAIN/.agents/team/incoming/gamma"
 expect 0 "key=L1" "the local ticket is allocated"
-run "$MAIN" $NEW gamma L1 feature/L1-local origin/base-none \
+run "$MAIN" $NEW gamma L1 feature/L1-local origin/base-none brainstorm \
   --ticket-file "$MAIN/.agents/team/incoming/gamma/ticket.json"
 expect 0 "branch:" "team-new takes a local ticket file"
 jq -e --arg ck "$(basename "$MAIN"):L1" '.tracker == "none" and .cost_key == $ck' \
@@ -756,20 +756,20 @@ done
 mkdir -p "$WORK/badjson"
 printf '{"key": "7"}\nnot json at all\n' > "$WORK/badjson/ticket.json"
 cp "$INC/ticket.md" "$WORK/badjson/ticket.md"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github --ticket-file "$WORK/badjson/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github brainstorm --ticket-file "$WORK/badjson/ticket.json"
 expect 1 "is not readable JSON with a .key" "trailing garbage in the ticket file is refused"
 no_clone beta "garbage ticket file"
 
 # A ticket file inside the clone's own .agents/team/ would be archived by team-next before it is
 # copied — the preflight refuses it, and the clone stays on its old ticket untouched.
 rm -rf "$WORK/main-delta"
-run "$MAIN" $NEW delta 7 bugfix/7-next-a origin/base-github --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW delta 7 bugfix/7-next-a origin/base-github brainstorm --ticket-file "$INC/ticket.json"
 expect 0 "branch:" "a clone for the team-next case"
 DTD="$WORK/main-delta/.agents/team"
 run "$MAIN" $TRK read 11 --out "$DTD/incoming-bad"
 expect 0 "key=11" "a ticket read into the clone's team dir"
 cp "$DTD/team.json" "$WORK/delta-team.json"
-run "$MAIN" bash .claude/lib/team-next.sh delta 11 bugfix/11-next-b origin/base-github \
+run "$MAIN" bash .claude/lib/team-next.sh delta 11 bugfix/11-next-b origin/base-github brainstorm \
   --ticket-file "$DTD/incoming-bad/ticket.json"
 expect 1 "keep it outside the team dir" "a ticket file inside the team dir is refused"
 [ "$(git -C "$WORK/main-delta" rev-parse --abbrev-ref HEAD)" = bugfix/7-next-a ] \
@@ -790,7 +790,7 @@ has "url: https://github.com/owner/repo/issues/7" "$WORK/out" || fail "the summa
 
 setprofile '.'
 rm -rf "$WORK/main-beta"
-run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop brainstorm
 expect 0 "branch:" "a jira clone for the summary case"
 run "$MAIN" $TR beta summary
 expect 0 "tracker: jira" "a jira clone reports tracker: jira"

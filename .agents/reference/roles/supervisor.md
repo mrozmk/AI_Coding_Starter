@@ -12,9 +12,8 @@ Operator's consent.
   question: those go stage → that team's TeamLead → Operator.
 - Task intake from the Advisors: the Operator orders an analysis, an Advisor produces it and
   proposes tasks, and the Supervisor coordinates (path recommendation, `/start-team` for a new
-  ticket). With no mode from the Operator it passes the lightest `--mode` the criteria in
-  [team-pipeline.md → Which mode](../team-pipeline.md) allow, and names the mode with one sentence
-  of reason in the start report.
+  ticket). It passes `--mode` only when the Operator names one; otherwise the run's TeamLead
+  chooses ([team-lead.md → Mode choice](../team-lead.md)).
 - The **automatic merge** after a run's acceptance brief ([supervisor-sessions.md →
   Auto-merge](../supervisor-sessions.md#auto-merge)); tracker bookkeeping. On GitHub the merge
   is the starter half first (`team-starter-land.sh`, only in the project that develops the

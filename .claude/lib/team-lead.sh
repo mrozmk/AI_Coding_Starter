@@ -8,7 +8,8 @@
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then ask (runs/<run>/asks/, not
+#   pending lists the lead's open items — pending decisions first, then mode (team.json mode `lead`
+#   with no mode verdict yet), then ask (runs/<run>/asks/, not
 #   class-tier, not bound to a pending decision), stop (no ask, no .answered), rejected, gate,
 #   attention (not idle_prompt, not a permission prompt an ask covers), inbox (this run's or
 #   run-less messages), oldest first:
@@ -103,6 +104,11 @@ pending() {
         [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
         echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
       done
+      # Mode lead: the choice comes before every stage (team-lead.md §1a); the runner applies it.
+      if [ "$(jq -r '.mode // ""' "$TD/team.json")" = lead ] \
+        && ! ls "$TD/runs/$RUN"/teamlead-mode-*.json >/dev/null 2>&1; then
+        echo "00000000000001 mode .agents/team/team.json — choose the run's mode (team-lead.md → Mode choice): team-verdict.sh mode brainstorm|quick|cli --message \"<reason>\""
+      fi
       # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a
       # class ask is answered by the hook itself within the same call.
       ask_init "$TD" 2>/dev/null || true

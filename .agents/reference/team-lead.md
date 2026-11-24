@@ -11,6 +11,10 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 
 ## 1. Lifecycle
 
+- **One TeamLead per run** — except a cli run the Operator fixed with `--mode cli`, which has none.
+  In mode `lead` (no `--mode`) the lead first chooses the run's mode (§1a). Choosing `cli` ends the
+  judge: the runner resumes its conversation as the cli worker (stage identity, stage permissions,
+  the session `<team>-cli`), and no judge runs afterwards.
 - **Launch.** `team-run.sh` launches the lead once per run, before the first stage, as the session
   `<team>-lead` in the clone, through the session host (tmux or Herdr, [session-host.md](session-host.md)). Preconditions, each a refusal (exit 4) when missing:
   - the clone base has the lead's files (`team_lead_base_ok` in `team-run-lead.sh`; an older base
@@ -68,6 +72,54 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   - at close: `close_run` (§4) runs `team-lead.sh end <team>`.
 
   A missing session is not an error.
+
+## 1a. Mode choice
+
+A ticket started without `--mode` is provisioned in mode `lead` (`team-new`/`team-next`); the run's
+TeamLead chooses its mode before any stage runs. Its first pending item is
+`mode .agents/team/team.json — choose the run's mode`. Each mode has a **When**, read from the
+ticket and the files it names, not from an impression of its size:
+
+- `brainstorm` — typical tickets: spec + plan, then coder → QA → wrapup. **When** any holds: an
+  open design question (two or more approaches with a real trade-off the ticket does not settle);
+  or any `/quick-change` Phase 0 hit (`.claude/commands/quick-change.md` → Phase 0).
+- `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then coder → QA
+  (no wrapup). **When** all hold: the ticket states the wanted behaviour and its limits (what
+  changes, what stays); no open design question — one sane approach, or the ticket picks it; no
+  Phase 0 hit (the quick planner re-runs Phase 0 and stops with "too big for quick" otherwise).
+- `cli` — very simple changes: the TeamLead makes the change itself in its own conversation,
+  guards eligibility, runs the gates and `/codex-review`, and publishes the PR — no QA, no wrapup.
+  **When** everything `quick` requires holds (the cli prompt re-runs Phase 0 as its eligibility
+  guard), and: the change is text or configuration that no script reads as behaviour (docs,
+  comments, wording, a value the ticket names); no test to add or change; nothing in the pipeline's
+  own scripts, prompts, hooks or guards (`.claude/lib/**`, `.claude/hooks/**`, `.claude/team/**`,
+  `.claude/commands/**` and the `.agents/reference/` contracts they cite). A change the TeamLead
+  cannot finish in about an hour of its own work is not cli.
+
+Pick the lightest mode whose **When** holds; unsure between two → the heavier.
+
+- **Verdict.** `team-verdict.sh mode brainstorm|quick|cli --message "<the criterion that decided
+  it>"` — no `--for`, once per run, into `runs/<run>/teamlead-mode-1.json` (with the lead's
+  `session_id`). The lead adds `- mode: <m> — <reason>` first under `## Order ambiguities`.
+- **Runner.** While `team.json` says `lead` the runner launches the lead and waits (`mode_wait`,
+  `team-run-mode.sh`): no stage, no `ready:`. On the verdict `mode_apply` writes `team.json`
+  `.mode` and `.mode_choice` (`by: teamlead`, reason, verdict path, at, the verdict's session id,
+  the lead's `claude_config_dir`) and prints `mode: <m> — TeamLead: <reason>`; a verdict already on
+  disk is applied before a judge launches. `quick`/`brainstorm`: the same lead goes on judging.
+  `cli`: `cli_handover` ends the judge (`team-lead.sh end`), and the cli stage starts with
+  `claude --resume <that session id>` on the same Claude config dir (a different one → exit 4),
+  on the TeamLead's model and effort, without the lead's settings. `status` prints
+  `mode: lead (TeamLead choosing)`, `mode: <m> (TeamLead: <reason>)` or `mode: <m> (Operator)`.
+- **Refusals** (exit 4): a verdict outside the three modes (`… is not a mode`); a run whose mode is
+  not `lead` (`mode fixed by the Operator (<m>) — no choice to make`); a second verdict (`mode
+  already chosen`). The caller guard (§4) covers the `mode` gate like every other.
+- **Older bases** are never stranded: (a) `mode: lead` is written only by `team-new`/`team-next`,
+  whose preflight refuses a base ref without the current `planner-quick.md`, `qa.md` and `cli.md`
+  contracts before any clone or branch exists ("pick a current base ref"); (b) the lead runs the
+  main checkout's `team-verdict.sh` and `team-lead.sh`, so the gate exists for every lead, and an
+  older-base clone never carries `mode: lead`; (c) a quick run whose clone `qa.md` predates the
+  change keeps its wrapup, and a fixed cli run whose clone `cli.md` predates it runs that prompt
+  with a `warn:`.
 
 ## 2. Files
 
@@ -167,6 +219,7 @@ for, verdict, ref, notify, message, written_at, session_id`).
 | Gate | Input (`--for`) | Verdicts | Runner |
 |---|---|---|---|
 | `plan` | the planner's `done` record, before validation | `approve` · `revise` · `escalate` · `remode` (quick) | approve → validate + accept, the next stage launches; revise → `[team-run] TeamLead: amend the plan …`; remode → `close_run remode`; escalate → keeps waiting |
+| `mode` | none (mode `lead` only, once per run) | `brainstorm` · `quick` · `cli` | `mode_apply` → `team.json` `.mode`/`.mode_choice`; cli → `cli_handover` (§1a) |
 | `run` | the acked record of the current stage, or a live ask `asks/a-<n>.json` of it (role, attempt, round) | `close --reason delivered-elsewhere\|team-part-ended` | fence, quiesce, check, push, receipt: `closing`, open asks withdrawn, the stage ended, `team_close_safe` re-run on `HEAD` with the main checkout's anchor (`base_sha`, branch; a clone, run or branch that differs refuses), a plain push of the branch verified by `ls-remote`, `closed: {run, branch, sha, reason, at}` in the anchor, then `close_run lead-close:<reason>` |
 
 There is no spec gate: the planner approves its own spec (`Approved (auto — team mode)`) and the
@@ -618,7 +671,10 @@ stage clock is paused while the gate waits (`lead_waiting`).
     with `authority: teamlead` and a `why` starting `verification-only:` (the structured fields,
     never a substring of the log line), a line starting `- <id> ` or `- <id>:` under it;
     otherwise exit 8 naming the missing piece. An older lead keeps the six-heading check. The runner accepts the qa record and launches the
-    wrapup. Routing (prompt rule; the script checks only the line's shape): an item is a comma-free
+    wrapup (brainstorm; a quick run is ready after the accept). In quick `follow-up` is no
+    disposition: no wrapup could draft the ticket, so a `→ follow-up` line is refused (exit 8,
+    `quick has no wrapup: '<w>' needs keep or fix, not follow-up`; a quick clone whose `qa.md`
+    predates the change keeps its wrapup and all three). Routing (prompt rule; the script checks only the line's shape): an item is a comma-free
     label; `→ follow-up` needs the failure sentence and
     `not fixable here: <path outside the delta | decision needed>` in `<why>`, else the lead routes
     it `keep` or `fix`; at most one `→ follow-up` line per run (a cut order line under
@@ -723,8 +779,8 @@ runs again.
     fails the merge or the close; a run closed and resumed, or integrated twice, appends nothing
     the second time.
   - The log is the record of a run with a lead: `team-lead.sh owns <team>` exits 0 for such a run.
-- **Wrapup:** with a lead, the lead decides the wrapup's proposals alone; no item reaches the
-  Operator, and nothing depends on reading a terminal menu (#104).
+- **Wrapup** (brainstorm only — a quick run ends at QA): with a lead, the lead decides the wrapup's
+  proposals alone; no item reaches the Operator, and nothing depends on reading a terminal menu (#104).
   - The wrapup asks nothing in its window. With at least one item it writes
     `<round dir>/wrapup_proposals-<a>_<k>.json` (`team_wrapup.py`: `create-<n>` tickets with title
     and body, `create-<n>` being the draft key; `memory-<n>` entries with group A|B, an
