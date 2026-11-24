@@ -126,6 +126,45 @@ hookr 0f0f0f0f-1111 TEAM_SESSION_ROLE=Fable > /dev/null
   = "0f0f0f0f-1111 Fable -" ] || fail "(1) the hook did not bind session.json to the session id"
 echo "team-smoke-sessions: (1) SessionStart contract line OK"
 
+# ---- (1b) preflight judges the channel only when it is declared ----------------------------------
+# Before part (2) on purpose: it needs no materialised profile, and it runs before the BSD-only
+# file-mode check of part (2).
+cp "$MAIN/.claude/project-profile.json" "$WORK/profile.keep"
+prof 'del(.teams.channel)'
+run "$MAIN" $SS preflight; expect 0 "ok team channel: not configured (no teams.channel)" "(1b) no channel"
+has "ok operator kit: not in use (no teams.channel)" "$WORK/out" || fail "(1b) no channel: kit row"
+grep -q '^FAIL' "$WORK/out" && fail "(1b) no channel printed a FAIL"
+[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 6 ] || fail "(1b) no channel must print 6 rows"
+! grep -q 'not started' "$WORK/out" || fail "(1b) a row reads a session as not started"
+prof '.teams.channel = null'
+run "$MAIN" $SS preflight; expect 0 "ok team channel: not configured (no teams.channel)" "(1b) null channel"
+has "ok operator kit: not in use (no teams.channel)" "$WORK/out" || fail "(1b) null channel: kit row"
+# Any other value is a malformed profile: a FAIL row, never a green "not configured".
+prof '.teams.channel = false'
+run "$MAIN" $SS preflight; expect 1 "FAIL team channel loads — teams.channel is not an object" "(1b) channel false"
+[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 6 ] || fail "(1b) channel false must print 6 rows"
+has "FAIL operator kit installed — not verified — teams.channel is not an object" "$WORK/out" || fail "(1b) channel false: kit row"
+# A string fails the names check: preflight still prints its rows; materialize keeps refusing.
+prof '.teams.channel = "x"'
+run "$MAIN" $SS preflight; expect 1 "FAIL team channel loads — teams.channel is not an object" "(1b) channel string"
+[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 6 ] || fail "(1b) channel string must print 6 rows"
+run "$MAIN" $SS materialize Supervisor; expect 3 "needs a valid teams.channel block" "(1b) materialize refuses a string channel"
+cp "$WORK/profile.keep" "$MAIN/.claude/project-profile.json"
+prof '.teams = false'
+run "$MAIN" $SS preflight; expect 1 "FAIL team channel loads — teams.channel is not an object" "(1b) teams false"
+cp "$WORK/profile.keep" "$MAIN/.claude/project-profile.json"
+# A declared channel whose machine half is gone is a real fault.
+mv "$MAIN/.agents/team/channel.local.json" "$WORK/channel.keep"
+run "$MAIN" $SS preflight
+expect 1 "FAIL team channel loads — error: team channel: not configured — no .agents/team/channel.local.json" "(1b) declared channel, local half missing"
+has "FAIL operator kit installed" "$WORK/out" || fail "(1b) local half missing: kit row"
+mv "$WORK/channel.keep" "$MAIN/.agents/team/channel.local.json"
+# No exit code here: the fixture installs the operator kit only in part (3), so the kit row FAILs.
+run "$MAIN" $SS preflight
+has "ok team channel loads" "$WORK/out" || fail "(1b) channel restored"
+! grep -q 'not started' "$WORK/out" || fail "(1b) a row reads a session as not started with a channel"
+echo "team-smoke-sessions: (1b) preflight channel rows OK"
+
 # ---- (2) roles.sh launches the roles; the old launcher verbs are gone; materialise per role ------
 for v in start stop status up here; do
   run "$MAIN" $SS $v Supervisor; expect 2 "Starting, stopping and listing roles is roles.sh" "(2) $v is gone"
@@ -262,6 +301,7 @@ for row in "ok team channel loads" "ok operator kit installed" \
   "ok Claude Code 2.1.301 — unverified: check the doorbell (session-host.sh send) by hand"; do
   has "$row" "$WORK/out" || fail "(5) row: $row"
 done
+! grep -q 'not started' "$WORK/out" || fail "(5) a row reads a session as not started"
 run "$MAIN" env STUB_CLAUDE_VERSION=2.1.318 $SS preflight
 expect 0 "ok Claude Code 2.1.318 — socket wire format verified on 2.1.318" "(5) verified CLI"
 # A sender that cannot report its state is a FAIL row, not a silent ok.
@@ -315,9 +355,8 @@ run "$MAIN" $SS reviewer; expect 0 "Reviewer: none (advisor solo)" "(6) solo"
 prof '.teams.channel.advisor = "pair"'
 echo "team-smoke-sessions: (6) reviewer OK"
 
-# ---- (7) the SQL guard lets every launcher verb through ------------------------------------------
-for c in status preflight check reviewer "start all" "stop Supervisor" "materialize Supervisor" \
-  "freeze on 1.4.0" "freeze off" "answer Advisor --fp 0123456789ab pick 2" rollback "here Supervisor" up; do
+# ---- (7) the SQL guard lets every supervisor-sessions.sh verb through ----------------------------
+for c in preflight check reviewer "materialize Supervisor" "freeze on 1.4.0" "freeze status" "freeze off" rollback; do
   jq -n --arg c "bash .claude/lib/supervisor-sessions.sh $c" --arg w "$SRC" \
     '{tool_name: "Bash", cwd: $w, tool_input: {command: $c}}' > "$WORK/payload"
   run "$SRC" env CLAUDE_PROJECT_DIR="$SRC" bash .claude/hooks/guard-destructive-sql.sh < "$WORK/payload"

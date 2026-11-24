@@ -54,7 +54,7 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 
 **The committed ask entries, `Bash(cat .env*)` and `Read(**/.env*)`.** Both profiles carry these two ask rules; the second keeps the Read tool from opening a `.env` the Bash rule never sees. They give the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
 
-**Materialisation.** On `start` and `here`, the launcher writes `.agents/team/watch/profiles/<role>.settings.json` (mode 600 in a 700 directory). That file contains:
+**Materialisation.** On `roles.sh up` and `roles.sh here`, the launcher writes `.agents/team/watch/profiles/<role>.settings.json` (mode 600 in a 700 directory). That file contains:
 
 - the profile, plus the union of the project's and the local `deny` and `ask` rules, so the deny floor survives however `--settings` merges;
 - `{{CLONES}}` expanded from `teams.clone_parent` and `teams.clone_name`;
@@ -67,9 +67,9 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 - `secrets` must be ask or deny;
 - `writes` may be anything but allow.
 
-A `secrets` or `writes` sample that becomes allow only through `settings.local.json` is a `<role> LEAK: <cmd> allowed by local <rule>` line, exit 3. **Then `start` and `here` launch nothing**, and the preflight shows `FAIL role profiles — local allow leak`.
+A `secrets` or `writes` sample that becomes allow only through `settings.local.json` is a `<role> LEAK: <cmd> allowed by local <rule>` line, exit 3. **Then `roles.sh up` and `roles.sh here` launch nothing**, and the preflight shows `FAIL role profiles — local allow leak`.
 
-A materialised profile that has lost a project or local deny rule is also a FAIL (`materialised profile lost N deny rules`); `stop` and `start` the role.
+A materialised profile that has lost a project or local deny rule is also a FAIL (`materialised profile lost N deny rules`); `roles.sh stop <Role>` and `roles.sh up <Role>`.
 
 The check approximates Claude Code's matcher. The live `/permissions` check in each window is a migration step.
 
@@ -118,8 +118,8 @@ Other verbs:
 
 | # | Row | WARN / FAIL |
 |---|---|---|
-| 1 | team channel loads | FAIL with the loader's last error line |
-| 2 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
+| 1 | team channel loads | judged only with a `teams.channel` object: FAIL with the loader's last error line; absent or `null` is the ok row `team channel: not configured (no teams.channel)`; any other value is a FAIL |
+| 2 | operator kit installed | with a channel: FAIL on any `install.sh --verify` drift (fix: the Operator's `install.sh --apply`, [08](08-operator-kit.md)); without one the ok row `operator kit: not in use (no teams.channel)` |
 | 3 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
 | 4 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
 | 5 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |

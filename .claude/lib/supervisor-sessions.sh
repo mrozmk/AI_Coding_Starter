@@ -17,10 +17,11 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-channel.sh"
 . "$LIB/roles-lib.sh"
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
-team_channel_names "$root" \
-  || { echo "error: supervisor-sessions.sh needs a valid teams.channel block" >&2; exit 3; }
 PROFILES="$root/.agents/team/watch/profiles"
 cmd="$1"; shift
+# preflight judges the channel in its own row; every other verb needs valid channel names.
+[ "$cmd" = preflight ] || team_channel_names "$root" \
+  || { echo "error: supervisor-sessions.sh needs a valid teams.channel block" >&2; exit 3; }
 [ ! -f "$root/.agents/team/team.json" ] \
   || { echo "error: team clone — run supervisor-sessions.sh from the main checkout" >&2; exit 1; }
 cd "$root"
@@ -33,7 +34,7 @@ refuse() { echo "refused: $*" >&2; exit 1; }
 ss_put() { cat > "$1.tmp.$$" && mv "$1.tmp.$$" "$1"; }
 
 # The machine half of the channel (kit dir, codex home, mail key) loads once, on demand; a
-# checkout without a configured channel still launches, without the kit's hooks.
+# checkout without a configured channel materialises profiles without the kit's hooks.
 CHAN=""
 chan() {
   [ -z "$CHAN" ] || { [ "$CHAN" = ok ]; return; }
@@ -43,6 +44,23 @@ kit_hooks_file() {  # → the installed kit's role-hooks.settings.json, or nothi
   chan || return 0
   [ ! -f "$TEAM_CHANNEL_KIT/hooks/role-hooks.settings.json" ] \
     || echo "$TEAM_CHANNEL_KIT/hooks/role-hooks.settings.json"
+}
+# chan_kind → none | object | malformed: whether teams.channel is declared. Only the type of the
+# block and its parents, never a value — those are team-channel.sh's to read and validate.
+# none: no profile, no or null teams, no or null teams.channel. malformed: a root or teams that
+# is not an object, a channel that is neither an object nor null (false too: team_channel_names
+# reads `.teams.channel // {}`, which lets false through), or a profile that does not parse
+# as exactly one JSON value (empty, truncated or concatenated — hence -s and length == 1).
+chan_kind() {
+  local p="$root/.claude/project-profile.json"
+  [ -f "$p" ] || { echo none; return 0; }
+  jq -rs 'if length != 1 then "malformed" else .[0] |
+    if type != "object" then "malformed"
+    elif .teams == null then "none"
+    elif (.teams | type) != "object" then "malformed"
+    elif .teams.channel == null then "none"
+    elif (.teams.channel | type) == "object" then "object"
+    else "malformed" end end' "$p" 2>/dev/null || echo malformed
 }
 
 # Union of the role profile and the project + local deny/ask rules: whether `--settings` overrides
@@ -130,6 +148,7 @@ EOF
 }
 
 # ---- preflight: one verdict line per row, `ok|WARN|FAIL <row>[ — <detail>]`; exit 1 on any FAIL ----
+CK=""   # chan_kind, once per preflight run
 PF_RC=0
 pf() {  # pf <row> <ok|warn|fail> [detail]
   case "$2" in
@@ -141,12 +160,20 @@ pf() {  # pf <row> <ok|warn|fail> [detail]
 
 pf_channel() {
   local e
+  case "$CK" in
+    none) echo "ok team channel: not configured (no teams.channel)"; return 0 ;;
+    malformed) pf "team channel loads" fail "teams.channel is not an object"; return 0 ;;
+  esac
   if e="$(team_channel_load "$root" 2>&1)"; then pf "team channel loads" ok
   else pf "team channel loads" fail "$(printf '%s' "$e" | tail -n 1)"; fi
 }
 
 pf_kit() {
   local rc=0
+  case "$CK" in
+    none) echo "ok operator kit: not in use (no teams.channel)"; return 0 ;;
+    malformed) pf "operator kit installed" fail "not verified — teams.channel is not an object"; return 0 ;;
+  esac
   if [ ! -f "$KIT_SRC/install.sh" ]; then pf "operator kit installed" fail "not shipped"; return 0; fi
   bash "$KIT_SRC/install.sh" --verify >/dev/null 2>&1 || rc=$?
   case "$rc" in
@@ -176,7 +203,7 @@ pf_notify() {  # notify.sh --check on one row; both channels off is an informed 
 
 pf_health() {  # the installed copy knows the scheduler label (kit.conf); else the template
   local h="$KIT_SRC/sessions-health.sh" l
-  if chan && [ -f "$TEAM_CHANNEL_KIT/sessions-health.sh" ]; then h="$TEAM_CHANNEL_KIT/sessions-health.sh"; fi
+  if [ "$CK" = object ] && chan && [ -f "$TEAM_CHANNEL_KIT/sessions-health.sh" ]; then h="$TEAM_CHANNEL_KIT/sessions-health.sh"; fi
   if [ -f "$h" ] && l="$(bash "$h" --scheduled 2>/dev/null)"; then
     echo "ok health check: scheduled (${l#scheduled: })"
   else
@@ -206,7 +233,7 @@ pf_cli() {  # the messaging socket is an observed interface, verified per CLI ve
 }
 
 preflight() {
-  PF_RC=0
+  PF_RC=0; CK="$(chan_kind)"
   pf_channel
   pf_kit
   pf_profiles

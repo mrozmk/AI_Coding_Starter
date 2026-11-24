@@ -48,7 +48,7 @@ project's box.
 | E21 | prompt binding | attended | script B: fingerprint equal after the re-render; `delivered once`, `confirmed: yes (tool_result)`; second answer → `already answered` | pending |
 | E22 | two projects on one machine | live-a | `tmux ls` shows the live project's sessions untouched (names only); `ps Reviewer` matches only the scratch loop | pending |
 | E23 | reuse never plants a second tool/box | live-b | E02-b plus equal `shasum` of the real registry before and after | pending |
-| E24 | socket wire format on this CLI | live-a | E08 `picked` + preflight row 10 `verified` | pending |
+| E24 | socket wire format on this CLI | live-a | E08 `picked` + the preflight's Claude Code row `verified` | pending |
 | E25 | health check | live-a | `sessions-health.sh` with the test Advisor stopped → one `down:` log line and the state file; again → none | pending |
 
 ## Lines

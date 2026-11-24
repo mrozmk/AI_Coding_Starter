@@ -19,7 +19,7 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
 - Run it after the channel step of `/setup:teams` ([09 → Fresh machine](09-setup.md#fresh-machine-no-agent-mailprojectsjson)):
   the installer reads `kit_dir` and the box from the channel config.
 - **Lifetimes.** A template change reaches the live copy only on your next `--apply`;
-  `--verify` reports the drift until then, and the preflight's `operator kit installed` row FAILs.
+  `--verify` reports the drift until then, and the preflight's `operator kit installed` row FAILs (the row is judged only with a `teams.channel`).
   This drift is intended: the live kit changes only by your hand.
 - **No notifications.** The kit sends nothing to the Operator; the four Operator events go through
   `.claude/lib/notify.sh` ([02](02-decision-model.md), `.claude/team/notify-kit/README.md`).

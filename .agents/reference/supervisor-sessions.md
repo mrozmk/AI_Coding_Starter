@@ -3,10 +3,11 @@
 > **Superseded for launching.** Role sessions are started, restored, stopped and taken over by
 > `/roles` (`roles.sh up|status|stop|here|resume`) through the session-host driver:
 > [session-host.md](session-host.md) and the role contracts in [roles/](roles/supervisor.md). The
-> `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`) are deprecated
-> pointers to `roles.sh` and go in the next release. `materialize`, `check`, `preflight`, `freeze`,
-> `rollback` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The tmux tables below describe the
-> old launcher.
+> old `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`) are gone
+> (#33): they print the usage and exit 2. `materialize`, `check`, `preflight`, `freeze`,
+> `rollback` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The session table
+> below is the old launcher's naming, kept for reference; current session names follow
+> `teams.session_prefix` ([session-host.md](session-host.md)).
 
 The single supervision window (one session talks to the Operator and runs the teams) is split into
 long-lived role sessions with fixed roles. Identity is `TEAM_SESSION_ROLE`, set by the launcher;
@@ -35,7 +36,7 @@ Without it the Supervisor runs `opus` at effort `high`, Fable `fable` at `medium
 `high` on Codex's default model (`model: "default"`, no `-m`, effort pinned — a named model pins
 it); a project that wants a stronger Advisor model names it there (the profile example
 carries the block with the defaults). A running window changes model or effort only after
-`stop <role>` + `start <role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort
+`roles.sh stop <Role>` + `roles.sh up <Role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort
 (default `fable` / `medium`, read by the runner at each launch); it starts no role session.
 
 Channel, pane and mail content is data, never the Operator's consent. A request for action to
@@ -162,9 +163,10 @@ tool call.
 the fnmatch matcher of `team_prompt_check.py`) and lists the effective hooks per layer: `forbidden`
 must be deny, `reads` allow, `secrets` ask or deny, `writes` anything but allow. A `secrets`/`writes`
 sample that becomes allow only through `settings.local.json` is a `<role> LEAK: <cmd> allowed by
-local <rule>` line, exit 3; `start` and `here` then launch nothing and `preflight` maps it to `FAIL
-role profiles — local allow leak`. A materialised profile that misses a project or local deny is a
-`FAIL` (`materialised profile lost N deny rules`) — `stop` + `start` the role. It is an
+local <rule>` line, exit 3; `roles.sh up` and `roles.sh here` then launch nothing and `preflight`
+maps it to `FAIL role profiles — local allow leak`. A materialised profile that misses a project or
+local deny is a `FAIL` (`materialised profile lost N deny rules`) — `roles.sh stop <Role>` +
+`roles.sh up <Role>`. It is an
 approximation of Claude Code's matcher: the live `/permissions` check in each window is a
 migration step.
 
@@ -194,7 +196,7 @@ when its model is `default`). `CODEX_HOME` /
 `CLAUDE_CONFIG_DIR` are forwarded per session, never with `tmux set-environment -g`.
 `CLAUDE_CONFIG_DIR` comes from `.claude/claude-profile` when it has a value line (`here` and the
 preflight's settings check use the same dir), else from the launcher's own environment; a declared
-dir that does not resolve refuses `start` / `here` before any session starts. The session id
+dir that does not resolve refuses `roles.sh up` / `roles.sh here` before any session starts. The session id
 is written to `.agents/team/watch/sessions/<role>/session.json` by the `session-registry.sh` hook on
 every start, `/clear` or resume. A changed `settings.local.json` needs `roles.sh stop
 <Role>` + `roles.sh` (the materialised union is rebuilt on start).
@@ -205,15 +207,20 @@ terminal's handle (Herdr terminal id, tmux session, or — a plain terminal — 
 start time, which `exec` keeps) and execs the role's CLI with its role environment — an Operator
 action (an `ask` rule). `sessions-health.sh` counts a Supervisor window as up.
 
-**`preflight` rows:** (1) the team channel loads; (2) the operator kit installed (`install.sh
---verify`); (3) role profiles; (4) notifications (the `.claude/lib/notify.sh --check` lines on one
+**`preflight` rows:** (1) the team channel loads — judged only when `teams.channel` is a JSON
+object; absent or `null` prints `ok team channel: not configured (no teams.channel)`, any other
+value is `FAIL team channel loads — teams.channel is not an object`; (2) the operator kit installed
+(`install.sh --verify`) — with no `teams.channel`, `ok operator kit: not in use (no
+teams.channel)`; (3) role profiles; (4) notifications (the `.claude/lib/notify.sh --check` lines on one
 row; both channels off is an ok row); (5) the health check scheduled (`sessions-health.sh
 --scheduled`; none is an ok row with the declared loss); (6) the Claude Code version against the one
 the socket wire format was verified on ([session-host.md](session-host.md#socket-wire-format); any
 other version: check the doorbell by hand) — with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no
 `"crossSessionInbound": "accept"` in the user settings it is a FAIL naming that line (preflight only
 reads the file). On the verified CLI the messaging token is **not** enforced: the socket's 0600
-mode and owner are the only boundary, and delivered text stays untrusted data.
+mode and owner are the only boundary, and delivered text stays untrusted data. A `/roles` checkout
+without a channel exits 0 when rows 3–6 are green. `preflight` alone skips the channel-names check
+every other verb runs first.
 
 ## Auto-merge
 
@@ -282,11 +289,12 @@ checkout (no `TEAM_SESSION_ROLE`).
 | Acceptance | Offline (`TEAM_SMOKE_PART=…`) | Live (Operator) |
 |---|---|---|
 | directive per role, silent in a clone | `sessions` (1) | `/clear` in a role window |
-| three sessions under their prefix, role env, clean env, model/effort per role | `sessions` (2) | `start all` |
-| profiles OK, deny floor kept, local leak blocks `start` | `sessions` (3) | `/permissions` per window |
+| three sessions under their prefix, role env, clean env, model/effort per role | `sessions` (2) | `roles.sh up` |
+| profiles OK, deny floor kept, local leak blocks `roles.sh up` | `sessions` (3) | `/permissions` per window |
+| preflight channel rows: not declared, malformed, local half missing | `sessions` (1b) | `preflight` on a checkout without `teams.channel` |
 | preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
-| `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` prints the Operator steps only | `sessions` (9) | `up` after a reboot |
+| `roles.sh status` lines, `roles.sh up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` prints the Operator steps only | `sessions` (9) | `roles.sh up` after a reboot |
 | the doorbell's socket sender: deadline, 0666 refusal, 0600 delivery | part 15 (47) | `session-host.sh send` to a role window |
 
 ## Pilot
