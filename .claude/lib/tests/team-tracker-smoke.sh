@@ -1402,4 +1402,15 @@ expect 4 "" "check: a short comment read is recoverable, never no claim"
 unset SMOKE_ORIGIN
 setprofile
 
+# which (/create-task): a teams block wins over the top-level tracker, whole.
+github_profile
+run "$MAIN" $TRK which
+expect 0 "tracker=github" "which: a teams block wins"
+echo "PASS which: a teams block wins"
+setprofile '.teams.tracker = "none" | .tracker = "github"'
+run "$MAIN" $TRK which
+expect 0 "tracker=none" "which: teams tracker none beats a top-level github"
+echo "PASS which: teams tracker none beats a top-level github"
+setprofile
+
 echo "team-tracker-smoke: OK"
