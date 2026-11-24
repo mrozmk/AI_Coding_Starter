@@ -8,6 +8,8 @@
 # Bash 3.2 compatible (macOS /bin/bash).
 # The session-host driver from this (main) checkout: its tmux calls go through sh_tmux.
 [ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
+# team_run_ready's mode roles; team-starter-land.sh sources this library without team-modes.sh.
+declare -F team_mode_last_role >/dev/null || . "$(dirname "${BASH_SOURCE[0]}")/team-modes.sh"
 
 # The roles whose records make up a run. Hardcoded rather than taken from `$TEAM_ROLES`: the digest
 # must mean the same thing in the clone and in the main checkout, whatever either side's team-lib.
@@ -167,17 +169,16 @@ team_run_ready() {  # <team> <clone> <run> <mode>
   [ -n "$run" ] || { team_ie_no "no run id for team $team — nothing to integrate"; return 3; }
   rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
 
-  # (1) the work is accepted: the accepted done record of the mode's last role — cli in cli, qa in
-  # quick, qa AND wrapup otherwise (Amendment 3; a quick clone on the pre-#296 qa.md keeps its wrapup).
+  # (1) the work is accepted: the accepted done record of the mode's last role —
+  # cli in cli, qa in quick, qa AND wrapup otherwise (Amendment 3; a quick clone on the pre-#296
+  # qa.md keeps its wrapup).
   ie_accepted() {  # ie_accepted <role> → the record path
     local f
     f="$(ls -1 "$rd/$1-"*.json.accepted 2>/dev/null | tail -n 1)" || true
     [ -n "$f" ] || return 1
     printf '%s\n' "${f%.accepted}"
   }
-  # team-starter-land.sh sources this library without team-modes.sh.
-  declare -F team_mode_roles >/dev/null || . "$(dirname "${BASH_SOURCE[0]}")/team-modes.sh"
-  local last; last="$(team_mode_roles "$mode" "$clone" | awk '{print $NF}')"
+  local last; last="$(team_mode_last_role "$mode" "$clone")"
   [ -n "$last" ] || { team_ie_no "the TeamLead has not chosen the mode of run '$run'"; return 3; }
   if [ "$last" != wrapup ]; then
     rec="$(ie_accepted "$last")" || { team_ie_no "no accepted $last record in run '$run'"; return 3; }

@@ -17,8 +17,9 @@
 #
 # Problem rule 2 solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
-# approve the spec it is gated on, or pick the run's mode (the mode gate). The hook payload's session_id is chosen by Claude Code, not by
-# the command, and this hook runs with the session's real environment, so team_lead_caller with
+# approve the spec it is gated on, or pick the run's mode (the mode gate). The hook payload's
+# session_id is chosen by Claude Code, not by the command, and this hook runs with the session's
+# real environment, so team_lead_caller with
 # that id is an identity the stage cannot forge. Any invocation (bash, sh, an absolute path, an env
 # prefix: the script name followed by a gate) is checked; every other command passes untouched.
 # Outside a team clone it is a no-op. Contract: .agents/reference/team-lead.md §4

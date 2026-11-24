@@ -127,6 +127,10 @@ run "$MAIN" $TR alfa status; expect 0 "mode: quick (TeamLead: small clear change
 again; run "$MAIN" $TR alfa
 [ "$(jq -r .mode_choice.at "$TD/team.json")" = "$AT" ] && ! has "mode: quick — TeamLead" "$WORK/out" \
   || fail "(31) a third start applied the verdict again"
+# A remode keeps .mode_choice but starts a new run in a mode the Operator set: no TeamLead credit.
+jq '.mode = "brainstorm"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+echo "alfa-20990101-000000" > "$TD/run"
+run "$MAIN" $TR alfa status; expect 0 "mode: brainstorm (Operator)" "(31) status after a remode"
 echo "team-smoke-27: (31) mode apply OK"
 
 # ---- (31d) dead lead while choosing --------------------------------------------------------------
@@ -286,8 +290,8 @@ mkrec planner "$C1"; mkrec coder "$C1"; mkrec qa "$C1"; rm -f "$RD/qa-1-1.json.a
 printf 'run: %s\nattempt: 1\noutput_rev: %s\nVerdict: ready-with-warnings\nWarnings: flaky e2e\nRethink signals: none\n' \
   "$RUN_ID" "$C1" > "$RD/qa-report-1.md"
 echo "- export button → src/quick.txt" > "$RD/blind-check.md"
-brief() {  # brief <warnings line> — the acceptance brief, written after the blind check
-  { echo "## Ordered vs delivered"; echo "- export button → src/quick.txt"
+brief() {  # brief <warnings line> [ordered line] — the acceptance brief, written after the blind check
+  { echo "## Ordered vs delivered"; printf '%s\n' "${2:-- export button → src/quick.txt}"
     echo; echo "## Scope delta"; echo "none"; echo; echo "## Fit risks"; echo "none"
     echo; echo "## Open defects"; echo "none"; echo; echo "## Warnings"; printf '%s\n' "$1"
     echo; echo "## Recommendation"; echo "accept"; } > "$RD/acceptance-brief.md"
@@ -296,6 +300,11 @@ brief "- flaky e2e → follow-up — tracked as a test-infra ticket"
 V acceptance accept --for qa-1-1.json --message ok
 expect 8 "quick has no wrapup: 'flaky e2e' needs keep or fix, not follow-up" "(24f) quick follow-up"
 [ ! -e "$RD/teamlead-acceptance-1.json" ] || fail "(24f) a refused accept wrote a verdict"
+# Cut ordered work routed to a ticket is refused the same way: no wrapup would create it.
+brief "- flaky e2e → keep — known flake, retried green" "- export button → follow-up — cut: past the appetite"
+V acceptance accept --for qa-1-1.json --message ok
+expect 8 "quick has no wrapup: '- export button → follow-up — cut: past the appetite' needs keep or fix" "(24f) quick cut follow-up"
+[ ! -e "$RD/teamlead-acceptance-1.json" ] || fail "(24f) a refused cut accept wrote a verdict"
 brief "- flaky e2e → keep — known flake, retried green"
 V acceptance accept --for qa-1-1.json --message ok; expect 0 "teamlead-acceptance-1.json" "(24f) quick keep"
 rm -f "$RD/teamlead-acceptance-1.json"; setmode brainstorm

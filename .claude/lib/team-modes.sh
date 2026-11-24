@@ -47,6 +47,20 @@ team_mode_roles() {  # team_mode_roles <mode> [clone dir] → the stage roles in
   esac
 }
 
+team_mode_last_role() {  # team_mode_last_role <mode> [clone dir] → the run's final role (none in lead)
+  local r
+  r="$(team_mode_roles "$@")"
+  echo "${r##* }"
+}
+
+# team_mode_verdict <team dir> <run> → the run's mode verdict file (team-verdict.sh writes one at
+# most); nothing while the TeamLead has not chosen.
+team_mode_verdict() {
+  local f
+  f="$(ls "$1/runs/$2" 2>/dev/null | grep -E '^teamlead-mode-[0-9]+\.json$' | head -n 1 || true)"
+  [ -z "$f" ] || echo "$1/runs/$2/$f"
+}
+
 team_prompt_name() {  # team_prompt_name <mode> <role> → file under .claude/team/prompts/
   if [ "$1/$2" = quick/planner ]; then echo planner-quick.md; else echo "$2.md"; fi
 }
@@ -54,30 +68,24 @@ team_prompt_name() {  # team_prompt_name <mode> <role> → file under .claude/te
 # Preflight for team-new/team-next; appends to TEAM_PROBLEMS (team-lib.sh pattern), never exits.
 # Runs before any clone or branch exists, so its recovery is another <base-ref> argument.
 team_mode_checks() {  # team_mode_checks <root> <base-ref> <mode>
-  local need=""
+  local need="" f mk
   case "$3" in
-    lead) need="planner-quick cli qa" ;;  # a lead run may become any mode
+    lead) need="planner-quick qa cli" ;;  # a lead run may become any mode
     quick) need="planner-quick qa" ;;
     cli) need="cli" ;;
     brainstorm) return 0 ;;
     *) TEAM_PROBLEMS+=("mode '$3' must be one of: $TEAM_MODES (or none — the TeamLead chooses)"); return 0 ;;
   esac
-  case " $need " in *" planner-quick "*)
-    git -C "$1" cat-file -e "$2:.claude/team/prompts/planner-quick.md" 2>/dev/null \
-      || TEAM_PROBLEMS+=("base $2 has no planner-quick.md contract for mode $3 — pick a current base ref") ;;
-  esac
-  case " $need " in *" qa "*)
-    team_mode_base_has "$1" "$2" qa.md "$TEAM_QUICK_QA_MARKER" \
-      || TEAM_PROBLEMS+=("base $2 has no qa.md contract for mode $3 — pick a current base ref") ;;
-  esac
-  case " $need " in *" cli "*)
-    team_mode_base_has "$1" "$2" cli.md "$TEAM_CLI_PROMPT_MARKER" \
-      || TEAM_PROBLEMS+=("base $2 has no cli.md contract for mode $3 — pick a current base ref") ;;
-  esac
+  for f in $need; do
+    case "$f" in qa) mk="$TEAM_QUICK_QA_MARKER" ;; cli) mk="$TEAM_CLI_PROMPT_MARKER" ;; *) mk="" ;; esac
+    team_mode_base_has "$1" "$2" "$f.md" "$mk" \
+      || TEAM_PROBLEMS+=("base $2 has no $f.md contract for mode $3 — pick a current base ref")
+  done
   return 0
 }
 
 # A captured read, not `git show | grep -q`: grep's early exit would fail the pipe under pipefail.
+# An empty marker checks only that the file exists on the base.
 team_mode_base_has() {  # team_mode_base_has <root> <base-ref> <prompt file> <marker>
   local t
   t="$(git -C "$1" show "$2:.claude/team/prompts/$3" 2>/dev/null)" || return 1

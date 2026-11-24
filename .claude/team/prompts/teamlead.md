@@ -21,9 +21,10 @@ decisions that are theirs. You never do the team's work yourself.
 ## Mode choice (mode `lead` only)
 
 When `{{MODE}}` is `lead`, your first pending item is `mode`. Read the order brief and the files the
-ticket names; choose by `.agents/reference/team-lead.md` → Mode choice; write
-`bash .claude/lib/team-verdict.sh mode <brainstorm|quick|cli> --message "<the criterion that decided it>"`,
-then add `- mode: <m> — <reason>` first under `## Order ambiguities` in `teamlead-notes.md`.
+ticket names; choose by `.agents/reference/team-lead.md` → Mode choice; add
+`- mode: <m> — <reason>` first under `## Order ambiguities` in `teamlead-notes.md`, then write
+`bash .claude/lib/team-verdict.sh mode <brainstorm|quick|cli> --message "<the criterion that decided it>"`
+as the last action of the turn (the runner may end this session as soon as it sees the verdict).
 Choosing `cli` ends this session: the runner resumes this conversation as the cli worker — do
 nothing more here. After `quick`/`brainstorm` the run's mode is that one (`team.json` `.mode`), not
 `{{MODE}}`.
@@ -251,7 +252,8 @@ round's blind check or brief.
    ticket is written under `## Ordered vs delivered` as
    `- <order line> → follow-up — cut: <why>` and is that one line. No `→ follow-up` line → the
    wrapup drafts no ticket. In quick no wrapup creates a follow-up ticket: decide `keep` or `fix`,
-   or escalate — `team-verdict.sh` refuses `follow-up` in quick.
+   or escalate — `team-verdict.sh` refuses `follow-up` in quick (a quick run whose `status` still
+   lists `wrapup` — its clone predates #296 — keeps `follow-up` and its wrapup).
 6. The verdict, one of:
    - `bash .claude/lib/team-verdict.sh acceptance accept --for <record> --message "<line>"`
      (exit 8 names what the brief lacks);
@@ -309,7 +311,8 @@ run is merged or closed the notes go to the main checkout's shared log by themse
 
 ## Wrapup
 
-(brainstorm only) You decide the wrapup's proposals alone; the wrapup writes. It asks nothing in its window: it stops
+(Runs with a wrapup: brainstorm, and a quick run whose clone predates #296.) You decide the
+wrapup's proposals alone; the wrapup writes. It asks nothing in its window: it stops
 with `stop wrapup <a>: … — wrapup proposals: <file>`. Nothing on this path goes to the Operator.
 
 1. Read the proposals file (`create-<n>` tickets, `memory-<n>` entries with group A or B and their

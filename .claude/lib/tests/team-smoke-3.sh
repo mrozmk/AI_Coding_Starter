@@ -109,7 +109,7 @@ has "-n alfa-cli --model 'claude-fable-5-2' --effort 'high' --permission-mode 'a
   || fail "cli launch did not take the TeamLead's model from teams.sessions.TeamLead"
 has "warn: cli model/effort override ignored" "$WORK/out" || fail "a teams.roles.cli model was not warned about"
 rm -f "$TD/session.json"
-run "$MAIN" $TR alfa roles cli=sonnet/medium
+run "$MAIN" $TR alfa roles cli=sonnet/high
 expect 1 "the cli path is the TeamLead's session" "cli refuses a model/effort override"
 jq '.teams.roles = {cli: {model: "x y"}}' "$WORK/prof-cli" > "$PROF"
 rm -f "$TD/session.json" "$TD/roles.override.json"

@@ -21,7 +21,7 @@
 #   4 recalculating (github merge ref pending)
 set -euo pipefail
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; esac
 TEAM="$1"
@@ -52,7 +52,7 @@ digest0=""
 
 [ ! -f "$TD/session.json" ] || die 3 "a role is still live ($(jq -r .role "$TD/session.json")) — wait for it to finish"
 # The final record is the mode's last role: cli in cli, qa in quick, wrapup otherwise.
-LAST="$(team_mode_roles "$MODE" "$CLONE" | awk '{print $NF}')"
+LAST="$(team_mode_last_role "$MODE" "$CLONE")"
 [ -n "$LAST" ] || die 3 "mode $MODE: the TeamLead has not chosen the run's mode yet — run team-run.sh first"
 if [ "$LAST" != wrapup ]; then
   cl="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" "$LAST")"

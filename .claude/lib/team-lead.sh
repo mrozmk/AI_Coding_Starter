@@ -8,9 +8,9 @@
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then mode (team.json mode `lead`
-#   with no mode verdict yet), then ask (runs/<run>/asks/, not
-#   class-tier, not bound to a pending decision), stop (no ask, no .answered), rejected, gate,
+#   pending lists the lead's open items — pending decisions first, then mode (team.json mode
+#   `lead` with no mode verdict yet), then ask (runs/<run>/asks/, not class-tier, not bound to a
+#   pending decision), stop (no ask, no .answered), rejected, gate,
 #   attention (not idle_prompt, not a permission prompt an ask covers), inbox (this run's or
 #   run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
@@ -29,13 +29,14 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lead-decision.sh"
 . "$LIB/team-ask.sh"
+. "$LIB/team-modes.sh"
 
 # resolve <team> → TD (the clone's team dir) and MAIN (the main checkout), from either side. In the
 # clone the main checkout is the one the runner recorded, never `git rev-parse` of the clone.
@@ -105,8 +106,7 @@ pending() {
         echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
       done
       # Mode lead: the choice comes before every stage (team-lead.md §1a); the runner applies it.
-      if [ "$(jq -r '.mode // ""' "$TD/team.json")" = lead ] \
-        && ! ls "$TD/runs/$RUN"/teamlead-mode-*.json >/dev/null 2>&1; then
+      if [ "$(team_mode "$TD/team.json" 2>/dev/null)" = lead ] && [ -z "$(team_mode_verdict "$TD" "$RUN")" ]; then
         echo "00000000000001 mode .agents/team/team.json — choose the run's mode (team-lead.md → Mode choice): team-verdict.sh mode brainstorm|quick|cli --message \"<reason>\""
       fi
       # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a

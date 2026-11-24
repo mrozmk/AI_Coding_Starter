@@ -20,14 +20,21 @@ pane_prompt_kind() {
 # its window; a run without a lead keeps the stage's window and /start-team.
 team_actions() {
   local lead=""
-  # A chosen cli ended its judge: the stage's window and /start-team, as in a fixed cli run.
-  [ -z "${5:-}" ] || [ "$(jq -r '.run // empty' "$5/teamlead.json" 2>/dev/null)" != "$(cat "$5/run" 2>/dev/null)" ] \
-    || [ -z "$(cat "$5/run" 2>/dev/null)" ] || [ "$(jq -r '.mode // empty' "$5/team.json" 2>/dev/null)" = cli ] \
-    || lead=1
+  [ -z "${5:-}" ] || ! snap_lead_on "$5" || lead=1
   jq -cn --arg t "$1" --arg r "$2" --arg lead "$lead" '
     if $lead == "1" then ["bash .claude/lib/team-lead.sh pending \($t)",
       "bash .claude/lib/session-host.sh hint \($t)-lead"]
     else ["bash .claude/lib/session-host.sh hint \($t)-\($r)", "/start-team \($t)"] end'
+}
+
+# snap_lead_on <clone team dir> — the run has its own judging TeamLead: the teamlead.json of THIS
+# run (a stale file is no lead), and not mode cli (a chosen cli ended its judge; the stage's window
+# and /start-team answer it, as in a fixed cli run).
+snap_lead_on() {
+  local run
+  run="$(cat "$1/run" 2>/dev/null || true)"
+  [ -n "$run" ] && [ "$(jq -r '.run // empty' "$1/teamlead.json" 2>/dev/null)" = "$run" ] \
+    && [ "$(jq -r '.mode // empty' "$1/team.json" 2>/dev/null)" != cli ]
 }
 
 # role_session <session> → alive | absent | unknown. A failed probe alone is not proof of absence
@@ -138,13 +145,18 @@ live_status() {
 }
 
 # role_transcript <td> <team> <role> <run> <attempt> → the live role's transcript path, or nothing.
-# Only when unambiguous: one transcript started after the launch whose first prompt is this role's;
-# a plain session or a resumed conversation in the clone must never be shown as the role.
+# The launch's own session id names its transcript (a lead-chosen cli resumes the lead's, which
+# began before the launch). Otherwise only when unambiguous: one transcript started after the
+# launch whose first prompt is this role's; a plain session in the clone is never shown as the role.
 role_transcript() {
-  local td="$1" team="$2" role="$3" run="$4" attempt="$5" dir at f ts n=0 hit="" first=""
+  local td="$1" team="$2" role="$3" run="$4" attempt="$5" dir at f ts n=0 hit="" first="" sid
   at="$(jq -r '.launched_at // empty' "$td/session.json" 2>/dev/null)" || at=""
   [ -n "$at" ] || return 0
   dir="$(dirname "$PROJ")/$(team_project_slug "${td%/.agents/team}")"
+  sid="$(jq -r '.session_id // empty' "$td/session.json" 2>/dev/null)" || sid=""
+  if [[ "$sid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] && [ -f "$dir/$sid.jsonl" ]; then
+    echo "$dir/$sid.jsonl"; return 0
+  fi
   for f in "$dir"/*.jsonl; do
     [ -f "$f" ] || continue
     ts="$(jl_first_ts "$f" | sed -E 's/\.[0-9]+Z$/Z/')"
@@ -247,9 +259,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   team="$(jq -r .team "$td/team.json")"
   mode="$(team_mode "$td/team.json" 2>/dev/null)" || { err "$team: bad mode in team.json"; mode=brainstorm; }
   run="$(cat "$td/run" 2>/dev/null || true)"
-  # A run with its own per-run TeamLead (teamlead.json of THIS run); a stale file is no lead.
-  [ -z "$run" ] || [ "$(jq -r '.run // empty' "$td/teamlead.json" 2>/dev/null)" != "$run" ] \
-    || [ "$mode" = cli ] || lead=true
+  ! snap_lead_on "$td" || lead=true
   # The lock owner is authoritative: the runner may run via run_in_background, without tmux.
   if [ -d "$td/lock" ]; then
     pid="$(cat "$td/lock/pid" 2>/dev/null || true)"
@@ -284,7 +294,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
     || pr=""
   # Only a finished team asks ADO; `stale` is a leftover lock that still blocks team-next. Finished
   # = the mode's last role is done, not the last line: a failed team_role writes no line.
-  last="$(team_mode_roles "$mode" "${td%/.agents/team}" | awk '{print $NF}')"
+  last="$(team_mode_last_role "$mode" "${td%/.agents/team}")"
   fin="$(jq -rs --arg r "$last" 'map(select(.role == $r)) | last | .status == "done"' "$W/roles")" \
     || fin=false
   [ -n "$last" ] || fin=false  # mode lead: no stage yet

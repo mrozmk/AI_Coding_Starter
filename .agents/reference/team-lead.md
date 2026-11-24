@@ -100,7 +100,9 @@ Pick the lightest mode whose **When** holds; unsure between two → the heavier.
 
 - **Verdict.** `team-verdict.sh mode brainstorm|quick|cli --message "<the criterion that decided
   it>"` — no `--for`, once per run, into `runs/<run>/teamlead-mode-1.json` (with the lead's
-  `session_id`). The lead adds `- mode: <m> — <reason>` first under `## Order ambiguities`.
+  `session_id`). The lead first adds `- mode: <m> — <reason>` at the top of `## Order ambiguities`,
+  then writes the verdict as its turn's last action: the runner may end the session (a chosen
+  `cli`) as soon as it sees the verdict, and the session end does not wait for an idle input.
 - **Runner.** While `team.json` says `lead` the runner launches the lead and waits (`mode_wait`,
   `team-run-mode.sh`): no stage, no `ready:`. On the verdict `mode_apply` writes `team.json`
   `.mode` and `.mode_choice` (`by: teamlead`, reason, verdict path, at, the verdict's session id,
@@ -779,7 +781,8 @@ runs again.
     fails the merge or the close; a run closed and resumed, or integrated twice, appends nothing
     the second time.
   - The log is the record of a run with a lead: `team-lead.sh owns <team>` exits 0 for such a run.
-- **Wrapup** (brainstorm only — a quick run ends at QA): with a lead, the lead decides the wrapup's
+- **Wrapup** (brainstorm, and a quick run whose clone predates #296 — a current quick run ends at
+  QA): with a lead, the lead decides the wrapup's
   proposals alone; no item reaches the Operator, and nothing depends on reading a terminal menu (#104).
   - The wrapup asks nothing in its window. With at least one item it writes
     `<round dir>/wrapup_proposals-<a>_<k>.json` (`team_wrapup.py`: `create-<n>` tickets with title

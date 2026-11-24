@@ -42,20 +42,24 @@ team_roles_config_check() {  # <file> (or - for stdin) [known roles] → first p
 team_roles_override_check() { team_roles_config_check "$1"; }
 
 team_role_cfg() {  # team_role_cfg <roles.json> <override> <role> [profile] → merged JSON
-  local base='{}' ov='{}' pr='{}'
-  [ ! -f "$1" ] || base="$(jq -c --arg r "$3" '.[$r] // {}' "$1")" || return 1
+  local base='{}' ov='{}' pr='{}' tl='{}'
   [ ! -f "$2" ] || ov="$(jq -c --arg r "$3" '.[$r] // {}' "$2")" || return 1
   [ -z "${4:-}" ] || [ ! -f "$4" ] \
     || pr="$(jq -c --arg r "$3" '.teams.roles[$r] // {}' "$4")" || return 1
   if [ "$3" = cli ]; then
-    # The `:-` defaults: snapshot and roles.sh callers source no team-profile.sh.
-    base="$(jq -cn --arg m "${TEAM_LEAD_MODEL:-fable}" --arg e "${TEAM_LEAD_EFFORT:-medium}" \
-      '{model: $m, effort: $e}')"
-    jq -cn --argjson b "$base" --argjson p "$pr" --argjson o "$ov" \
-      '$b + ($p | {permission} | with_entries(select(.value != null)))
-          + ($o | {permission} | with_entries(select(.value != null)))'
+    # The TeamLead's model/effort: team-profile.sh's values once loaded (the runner), else the
+    # profile's teams.sessions.TeamLead (the dashboard loads no profile), else its defaults. Only
+    # the permission comes from teams.roles.cli and the override.
+    [ -z "${4:-}" ] || [ ! -f "$4" ] || tl="$(jq -c '.teams.sessions.TeamLead
+      | if type == "object" then . else {} end' "$4")" || return 1
+    jq -cn --arg m "${TEAM_LEAD_MODEL:-}" --arg e "${TEAM_LEAD_EFFORT:-}" --argjson t "$tl" \
+      --argjson p "$pr" --argjson o "$ov" '
+      {model: (if $m != "" then $m else (($t.model | strings) // "fable") end),
+       effort: (if $e != "" then $e else (($t.effort | strings) // "medium") end)}
+      + (($p + $o) | if .permission then {permission} else {} end)'
     return
   fi
+  [ ! -f "$1" ] || base="$(jq -c --arg r "$3" '.[$r] // {}' "$1")" || return 1
   jq -cn --argjson b "$base" --argjson p "$pr" --argjson o "$ov" '$b + $p + $o'
 }
 
@@ -156,15 +160,13 @@ team_roles_write() {  # <team> <override> <role>=[<model>][/<effort>][/<permissi
 # TEAM_LEAD_* (team-profile.sh) and its die().
 
 role_flags() {
-  local flags f
+  local flags
   flags="$(team_roles_flags "$ROLES" "$ROLES_OVERRIDE" "$1" "$root/.claude/project-profile.json")" \
     || die 1 "$flags"
-  if [ "$1" = cli ]; then
-    for f in "$ROLES_OVERRIDE:.cli" "$root/.claude/project-profile.json:.teams.roles.cli"; do
-      [ -f "${f%:*}" ] || continue
-      ! jq -e "${f##*:} | (.model // .effort) != null" "${f%:*}" >/dev/null 2>&1 \
-        || echo "warn: cli model/effort override ignored — the cli path runs on the TeamLead's model" >&2
-    done
+  if [ "$1" = cli ] && { jq -e '.cli | (.model // .effort) != null' "$ROLES_OVERRIDE" \
+    || jq -e '.teams.roles.cli | (.model // .effort) != null' "$root/.claude/project-profile.json"; } \
+    >/dev/null 2>&1; then
+    echo "warn: cli model/effort override ignored — the cli path runs on the TeamLead's model" >&2
   fi
   printf '%s' "$flags"
 }

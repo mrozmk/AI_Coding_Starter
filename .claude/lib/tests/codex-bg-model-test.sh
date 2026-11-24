@@ -31,16 +31,12 @@ chmod +x "$T/bin/codex"
 
 run_wrapper() {  # <model or -> → rc in $rc
   : > "$STUB_LOG"
+  local m=(-u CODEX_MODEL)
   rc=0
-  if [ "$1" = - ]; then
-    env -u CODEX_MODEL PATH="$T/bin:$PATH" CODEX_HOME="$T/codex-home" CODEX_EFFORT=high \
-      PROMPT="review" OUT="$T/out.md" LOG="$T/run.log" REPO="$T/repo" \
-      bash "$T/repo/.claude/lib/codex-bg.sh" >/dev/null 2>"$T/err" || rc=$?
-  else
-    env PATH="$T/bin:$PATH" CODEX_HOME="$T/codex-home" CODEX_EFFORT=high CODEX_MODEL="$1" \
-      PROMPT="review" OUT="$T/out.md" LOG="$T/run.log" REPO="$T/repo" \
-      bash "$T/repo/.claude/lib/codex-bg.sh" >/dev/null 2>"$T/err" || rc=$?
-  fi
+  [ "$1" = - ] || m=(CODEX_MODEL="$1")
+  env "${m[@]}" PATH="$T/bin:$PATH" CODEX_HOME="$T/codex-home" CODEX_EFFORT=high \
+    PROMPT="review" OUT="$T/out.md" LOG="$T/run.log" REPO="$T/repo" \
+    bash "$T/repo/.claude/lib/codex-bg.sh" >/dev/null 2>"$T/err" || rc=$?
 }
 
 # model set: the pair -m / <id> in argv, the model named in LOG.
@@ -65,4 +61,7 @@ run_wrapper 'x;rm'
 [ ! -s "$STUB_LOG" ] || fail "model refused: codex was called"
 [ ! -s "$T/out.md" ] || fail "model refused: OUT not empty"
 grep -qF "CODEX_MODEL='x;rm' is not a model id" "$T/err" || fail "model refused: no message"
+# A valid id with a second line is refused as a whole, not passed by its first line.
+run_wrapper "$(printf 'gpt-6.2-sol\nx;rm')"
+[ "$rc" = 2 ] && [ ! -s "$STUB_LOG" ] || fail "model refused: a multi-line value reached codex (exit $rc)"
 echo "codex-bg-model-test: model refused OK"

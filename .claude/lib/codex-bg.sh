@@ -85,7 +85,8 @@ case "$CODEX_EFFORT" in
   *) echo "codex-bg.sh: CODEX_EFFORT='$CODEX_EFFORT' is not one of low|medium|high|xhigh" >&2; exit 2 ;;
 esac
 # Same reason as the effort check; the value also lands on the command line.
-if [ -n "${CODEX_MODEL:-}" ] && ! printf '%s' "$CODEX_MODEL" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'; then
+# `[[ =~ ]]` matches the whole value; a line-wise grep would pass one good line of a multi-line value.
+if [ -n "${CODEX_MODEL:-}" ] && ! [[ "$CODEX_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
   echo "codex-bg.sh: CODEX_MODEL='$CODEX_MODEL' is not a model id" >&2; exit 2
 fi
 

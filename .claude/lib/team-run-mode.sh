@@ -5,27 +5,28 @@
 # Sourced by team-run.sh from the MAIN checkout, never executed; uses the runner's globals (TEAM, RUN,
 # MODE, TD, CLONE, root, BRANCH, POLL) and helpers (die, rec, sess_name, cancel_exit, team_json,
 # accepted_record, run_ref, team_lead_on, team_lead_json, team_tmux_alive, team_cancelled,
-# dialog_watch_lead, lead_poll, team_mode_roles, team_cli_prompt_ok, team_quick_qa_ok). Bash 3.2.
+# dialog_watch_lead, lead_poll and team-modes.sh's team_mode_valid, team_mode_last_role,
+# team_mode_verdict, team_cli_prompt_ok, team_quick_qa_ok). Bash 3.2.
 # Contract: .agents/reference/team-mode.md, team-lead.md → Mode choice
 
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 mode_choice() { jq -r --arg k "$1" '.mode_choice[$k] // empty' "$TD/team.json"; }
 
-# mode_verdict → the run's first mode verdict (team-verdict.sh writes one at most). Names only:
-# the full paths hold hyphens, so sort -t- on them would split the wrong field.
-mode_verdict() {
-  local f
-  f="$(ls "$TD/runs/$RUN" 2>/dev/null | grep -E '^teamlead-mode-[0-9]+\.json$' | sort -t- -k3,3n | head -n 1 || true)"
-  [ -z "$f" ] || echo "$TD/runs/$RUN/$f"
-}
+mode_verdict() { team_mode_verdict "$TD" "$RUN"; }  # → this run's mode verdict file, if any
+
+cli_resumes() { [ "$1" = cli ] && [ "$(mode_choice by)" = teamlead ]; }  # <role> — a lead-chosen cli
+
+# session_start_flag <role> → how launch() starts the role's Claude session: a lead-chosen cli
+# resumes the choosing lead's conversation (cli_resume_sid), every other launch is a fresh id.
+session_start_flag() { if cli_resumes "$1"; then echo --resume; else echo --session-id; fi; }
 
 # mode_apply <verdict file> — the chosen mode into team.json, before any stage. The resume identity
 # is the verdict's session id, never a later teamlead.json (a relaunched lead overwrites it).
 mode_apply() {
   local v="$1" m reason sid cc lacks="" tmp
   m="$(rec "$v" verdict)"; reason="$(rec "$v" message)"; sid="$(rec "$v" session_id)"
-  case "$m" in brainstorm|quick|cli) ;; *) die 4 "error: mode verdict $(basename "$v") names '$m', not brainstorm|quick|cli" ;; esac
+  team_mode_valid "$m" || die 4 "error: mode verdict $(basename "$v") names '$m', not brainstorm|quick|cli"
   # Unreachable after the team-new/next preflight for `lead`; kept for a clone provisioned by hand.
   case "$m" in
     quick) [ -f "$CLONE/.claude/team/prompts/planner-quick.md" ] || lacks="planner-quick.md"
@@ -64,7 +65,7 @@ mode_wait() {
 # cli_handover — a lead-chosen cli: the judge's session ends before its conversation is resumed as
 # the worker (one process per transcript). Idempotent: a resume after the handover finds no lead.
 cli_handover() {
-  [ "$MODE" = cli ] && [ "$(mode_choice by)" = teamlead ] || return 0
+  [ "$MODE" = cli ] && cli_resumes cli || return 0
   [ ! -f "$TD/session.json" ] && [ -z "$(accepted_record cli)" ] || return 0
   team_tmux_alive "$(sess_name lead)" || return 0
   (cd "$root" && bash .claude/lib/team-lead.sh end "$TEAM") >/dev/null \
@@ -72,31 +73,31 @@ cli_handover() {
   echo "TeamLead judge ended: the cli worker resumes its conversation"
 }
 
-# cli_session_args <role> <fresh sid> <config dir> → "<sid> <start flag>". A lead-chosen cli resumes
-# the choosing lead's session on the same Claude config dir; every other launch starts fresh.
-cli_session_args() {
+# cli_resume_sid <config dir> → the choosing lead's session id, which a lead-chosen cli resumes on
+# the same Claude config dir; every other launch starts a fresh session.
+cli_resume_sid() {
   local sid want
-  if [ "$1" != cli ] || [ "$(mode_choice by)" != teamlead ]; then
-    [ "$1" != cli ] || team_cli_prompt_ok "$CLONE" \
-      || echo "warn: clone base has the pre-#296 cli prompt — this run keeps the old cli contract (no /codex-review)" >&2
-    echo "$2 --session-id"; return 0
-  fi
   sid="$(mode_choice session_id)"
   [[ "$sid" =~ $UUID_RE ]] || die 4 "error: team.json mode_choice.session_id is no session id — the Operator restarts the ticket on a fresh clone (team-new.sh)"
   want="$(mode_choice claude_config_dir)"
-  [ "$want" = "$3" ] || die 4 "the cli worker would run on another Claude config dir than the choosing TeamLead — set .claude/claude-profile to ${want:-nothing (the default config dir)}, then /start-team $TEAM"
-  echo "$sid --resume"
+  [ "$want" = "$1" ] || die 4 "the cli worker would run on another Claude config dir than the choosing TeamLead — set .claude/claude-profile to ${want:-nothing (the default config dir)}, then /start-team $TEAM"
+  echo "$sid"
 }
 
+# The TeamLead's attribution holds only for the run whose verdict it was: a remode keeps
+# .mode_choice but starts a new run in a mode the Operator set.
 mode_status() {
+  local run v
+  run="$(cat "$TD/run" 2>/dev/null || true)"; v="$(mode_choice verdict)"
   if [ "$MODE" = lead ]; then echo "mode: lead (TeamLead choosing)"
-  elif [ "$(mode_choice by)" = teamlead ]; then echo "mode: $MODE (TeamLead: $(mode_choice reason | head -n 1))"
+  elif [ "$(mode_choice by)" = teamlead ] && [ -n "$run" ] && [ "${v#.agents/team/runs/"$run"/}" != "$v" ]; then
+    echo "mode: $MODE (TeamLead: $(mode_choice reason | head -n 1))"
   else echo "mode: $MODE (Operator)"; fi
 }
 
 # Read-only sources for the post-run summary: clone files are outside the supervisor's dirs.
 cmd_summary() {
-  local r f trk tf title="" url="" last
+  local r f trk tf title="" url=""
   RUN="$(cat "$TD/run" 2>/dev/null || true)"
   trk="$(team_json tracker)"; [ -n "$trk" ] || trk=jira
   # A supervision session never reads clone files, so the ticket title and link travel through here. `jira` has no
@@ -121,8 +122,7 @@ cmd_summary() {
   echo "--- qa"
   if [ -f "$f" ]; then grep -E '^(Verdict|Warnings|Rethink signals):' "$f" || true
   else echo "missing: qa-report-<n>.md"; fi
-  last="$(team_mode_roles "$MODE" "$CLONE")"; last="${last##* }"
-  [ "$last" != wrapup ] || summary_file wrapup "$(accepted_summary_file wrapup wrapup)"
+  [ "$(team_mode_last_role "$MODE" "$CLONE")" != wrapup ] || summary_file wrapup "$(accepted_summary_file wrapup wrapup)"
 }
 
 accepted_summary_file() {  # <role> <filename stem>

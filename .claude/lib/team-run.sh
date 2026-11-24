@@ -182,7 +182,7 @@ render_prompt() {
 }
 
 launch() {
-  local role="$1" attempt="$2" name pf sid sa ch cc ck extra="" perm why costs=()
+  local role="$1" attempt="$2" name pf sid start ch cc ck extra="" perm why costs=()
   team_cancelled && cancel_exit
   name="$(sess_name "$role")"; pf="$TD/runs/$(run_ref)/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
@@ -199,7 +199,11 @@ launch() {
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(new_uuid)" || die 1 "error: new_uuid gave no UUID"
   # A lead-chosen cli resumes the choosing lead's session id (team-run-mode.sh).
-  sa="$(cli_session_args "$role" "$sid" "$cc")" || exit "$?"; sid="${sa% *}"
+  start="$(session_start_flag "$role")"
+  if [ "$start" = --resume ]; then sid="$(cli_resume_sid "$cc")" || exit "$?"
+  elif [ "$role" = cli ] && ! team_cli_prompt_ok "$CLONE"; then
+    echo "warn: clone base has the pre-#296 cli prompt — this run keeps the old cli contract (no /codex-review)" >&2
+  fi
   # A team.json written before 2b has no cost_key; jq's `//` would keep the empty string.
   ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   jq -n --arg team "$TEAM" --arg role "$role" --arg run "$RUN" --argjson attempt "$attempt" \
@@ -235,7 +239,7 @@ launch() {
     --env "TEAM_RUN_ID=$RUN" --env "TEAM_RUN_ATTEMPT=$attempt" --env "CODEX_HOME=$ch" \
     ${cc:+--env "CLAUDE_CONFIG_DIR=$cc"} \
     ${costs[@]+"${costs[@]}"} \
-    -- "claude ${sa#* } $sid -n $name ${extra}-- \"\$(cat '$pf')\"" >/dev/null
+    -- "claude $start $sid -n $name ${extra}-- \"\$(cat '$pf')\"" >/dev/null
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
