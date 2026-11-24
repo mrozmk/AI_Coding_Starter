@@ -16,10 +16,11 @@
 # Exit: 0 VERDICT ok · 1 VERDICT fail or dirty clone
 #   3 refused (identity, stale merge, moved tips, records changed during the check, gate lock,
 #     a local merge that conflicts or overlaps union-merged memory logs)
-#   4 recalculating (github merge ref pending)
+#   4 recalculating (github merge ref pending), or an unreadable standards/patterns blob (repair the
+#     clone's objects, e.g. git fetch, then rerun)
 set -euo pipefail
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; esac
 TEAM="$1"
@@ -124,8 +125,18 @@ delta=""
 if [ -n "$delta" ]; then
   tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$(team_run_ref "$TD" "$RUN")/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
   [ -n "$tr_rev" ] || die 3 "wrapup summary has no target_rev"
-  tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
+  # The standards writer may have rendered on an earlier target_rev than the summary names
+  # (standards-render.json): that base judges docs/coding-standards.md, and patterns.md only when
+  # the item promoted an entry there; every other memory path keeps the summary's base.
+  rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" 2>&1)" || die 3 "$rb"
+  rp="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" promotion 2>&1)" || die 3 "$rp"
+  md="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory ':!.agents/memory/patterns.md')" \
     || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
+  sd="$(git diff --no-renames --name-only "${rb:-$tr_rev}" "$TGT" -- docs/coding-standards.md)" \
+    || die 3 "standards render base ${rb:-$tr_rev} unknown or not comparable with $TGT"
+  pd="$(git diff --no-renames --name-only "${rp:-$tr_rev}" "$TGT" -- .agents/memory/patterns.md)" \
+    || die 3 "standards render base ${rp:-$tr_rev} unknown or not comparable with $TGT"
+  tdelta="$md"$'\n'"$sd"$'\n'"$pd"
   # Union merge would splice both versions silently; a human reads them first.
   ov="$(comm -12 <(printf '%s\n' "$delta" | sort) <(printf '%s\n' "$tdelta" | sort) | grep -v '^$' || true)"
   if [ -n "$ov" ]; then
@@ -186,12 +197,16 @@ fi
 # An accepted standards item must stand once in the merge, and a promotion's pointer must name its
 # final CS id — a reviewed conflict fix may renumber the rule and leave the pointer behind.
 if [ "$STD_OK" = 1 ]; then
-  sw="$(team_blob_tmp "$want" docs/coding-standards.md)"; sm="$(team_blob_tmp "$merge_commit" docs/coding-standards.md)"
-  pm="$(team_blob_tmp "$merge_commit" .agents/memory/patterns.md)"
+  sw="$(team_blob_tmp "$want" docs/coding-standards.md)" \
+    || die 4 "cannot read the standards blob at $want — retry"
+  sm="$(team_blob_tmp "$merge_commit" docs/coding-standards.md)" \
+    || { team_rm_blobs "$sw"; die 4 "cannot read the standards blob at $merge_commit — retry"; }
+  pm="$(team_blob_tmp "$merge_commit" .agents/memory/patterns.md)" \
+    || { team_rm_blobs "$sw" "$sm"; die 4 "cannot read the patterns blob at $merge_commit — retry"; }
   src=0
   sout="$(python3 -I "$root/.claude/lib/team_wrapup.py" standards-merged "$TD/runs/$RUN" "$sw" "$sm" "$pm" 2>&1 >/dev/null)" \
     || src=$?
-  for t in "$sw" "$sm" "$pm"; do [ "$t" = - ] || rm -f "$t"; done
+  team_rm_blobs "$sw" "$sm" "$pm"
   [ "$src" = 0 ] || die 3 "standards item not intact after the merge: ${sout#error: } — fix it in the reviewed merge"
 fi
 

@@ -104,7 +104,9 @@ function evidence(repo, outRoot) {
 function toolRules(scan, ok, dropped) {
   const out = [];
   for (const t of scan.tools.filter((x) => x.enforced)) {
-    const cfgs = (t.configs || []).filter((c) => c.attributed);
+    // A config with no presets whose every extracted rule the scan found not enforced backs no claim.
+    const cfgs = (t.configs || []).filter((c) => c.attributed
+      && !(c.presets.length === 0 && c.rules.length > 0 && c.rules.every((r) => (c.notEnforced || []).includes(r.rule))));
     const title = t.class === 'compiler' ? `Code builds under ${t.display} with the project settings`
       : `Code passes ${t.display}${cfgs.length || t.selected ? ' with the project config' : ''}`;
     let by;

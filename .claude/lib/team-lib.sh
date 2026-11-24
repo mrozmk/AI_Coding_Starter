@@ -10,6 +10,7 @@
 # The session-host driver: every tmux call goes through it (the wrappers below keep their names).
 [ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
 . "$(dirname "${BASH_SOURCE[0]}")/team-seed-lib.sh"   # team_seed_files, team_seed_checks
+. "$(dirname "${BASH_SOURCE[0]}")/team-standards-lib.sh"  # team_blob_tmp, team_standards_render_rev
 
 TEAM_ROLES="planner coder qa wrapup"
 
@@ -254,14 +255,6 @@ team_non_memory_files() {
   local d
   d="$(git diff --no-renames --name-only "$1" "$2")" || return 1
   printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^docs/coding-standards\.md$' -e '^$' || true
-}
-
-# team_blob_tmp <rev> <path> → a temp file holding the blob, or "-" when the path is absent there
-# (the caller removes the file).
-team_blob_tmp() {
-  local t
-  t="$(mktemp)" || return 1
-  if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi
 }
 
 # team_lead_accepts <run dir> → JSON array of every accepted item in the run's teamlead-wrapup

@@ -172,6 +172,27 @@ commit_file .agents/memory/patterns.md "$(pat 3)"
 F6="$(git -C "$CLONE" rev-parse HEAD)"; point "$F6"; merge_at "$F6" "$TGT2"
 run "$MAIN" $MC alfa --memory-reviewed
 expect 0 "VERDICT: ok" "merge-check renumbered rule with its pointer"
+# The wrapup rendered on TGT2 (standards-render.json); the line then changed both standards paths
+# (TGS2) and a resumed attempt's summary says TGS2: the overlap is judged from the recorded base.
+printf '\n- line edit\n' >> "$MAIN/docs/coding-standards.md"; printf 'line patterns\n' > "$MAIN/.agents/memory/patterns.md"
+git -C "$MAIN" add docs/coding-standards.md .agents/memory/patterns.md
+git -C "$MAIN" commit --quiet -m "line standards again"; git -C "$MAIN" push --quiet origin HEAD:develop
+TGS2="$(git -C "$MAIN" rev-parse HEAD)"
+rrec() { jq -n --arg r "$RUN_ID" --arg q "$Q" --arg t "$TGT2" --argjson p "$1" \
+  '{run: $r, qa_rev: $q, item: "memory-1", target_rev: $t, promotes: $p}' > "$RD/standards-render.json"; }
+point "$W5"; mkrec wrapup "$W5"; summary "$TGS2"; merge_at "$W5" "$TGS2"
+run "$MAIN" $MC alfa
+expect 0 "VERDICT: ok" "merge-check without standards-render.json judges on the summary's target_rev"
+rrec true
+run "$MAIN" $MC alfa
+expect 3 "memory overlap: .agents/memory/patterns.md docs/coding-standards.md changed" \
+  "merge-check standards overlap from standards-render.json (promotion)"
+rrec false
+run "$MAIN" $MC alfa
+expect 3 "memory overlap: docs/coding-standards.md changed" "merge-check standards overlap from standards-render.json (no promotion)"
+rm -f "$RD/standards-render.json"; summary "$TGT0"
+git -C "$MAIN" push --quiet --force origin "$TGT2:refs/heads/develop"
+git -C "$MAIN" switch --quiet -C "$(git -C "$MAIN" branch --show-current)" "$TGT2"
 rm -f "$RD/teamlead-wrapup-1.json"
 unset MERGE_SHA; rm -f "$RD"/wrapup-1-1.json*; point "$Q"
 

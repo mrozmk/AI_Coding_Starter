@@ -287,6 +287,85 @@ q safe '.safety_flags == ["s/big.py", "s/br.py"]' || fail "M15 safety flags: $(j
 q safe '.files[] | select(.path == "s/setup.sh") | .test_referenced == true' || fail "M15 test_referenced"
 ok "M15 safety flags: 400 lines or 40 branches without test evidence"
 
+run measure --root "$B" --focus nosuch --out "$WORK/m16.json"
+[ "$RC" = 2 ] && case "$OUT" in *"--focus nosuch matches no file"*) true ;; *) false ;; esac || fail "M16 focus nosuch: $RC $OUT"
+run measure --root "$B" --focus docs --out "$WORK/m16.json"
+[ "$RC" = 2 ] && case "$OUT" in *"matches no measurable file"*) true ;; *) false ;; esac || fail "M16 focus docs: $RC $OUT"
+ok "M16 a focus that matches no file or no measurable file exits 2"
+
+repo sib; SB="$WORK/sib"
+for f in tests/test_utils.py app/utils.py lib/utils.py; do put "$SB/$f" "x = 1"; done
+put "$SB/web/utils.ts" "export const x = 1;"
+for f in src/main/java/x/Foo.java src/main/java/y/Foo.java src/test/java/x/FooTest.java; do put "$SB/$f" "class Foo {}"; done
+put "$SB/pkg/Bar.kt" "class Bar"
+put "$SB/pkg/BarTest.kt" "class BarTest"
+put "$SB/dao/UserDAO.java" "class UserDAO {}"
+put "$SB/dao/UserDAOTest.java" "class UserDAOTest {}"
+put "$SB/lib/foo.rb" "x = 1"
+put "$SB/spec/foo_spec.rb" "x = 1"
+commit "$SB"
+measure sib
+q sib '[.files[] | select(.path == "app/utils.py" or .path == "lib/utils.py" or .path == "web/utils.ts") | .sibling_test] == [false, false, false]' || fail "M17 utils credited: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
+q sib '(.files[] | select(.path == "src/main/java/x/Foo.java") | .sibling_test == true) and (.files[] | select(.path == "src/main/java/y/Foo.java") | .sibling_test == false)' || fail "M17 java mirrored path: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
+q sib '(.files[] | select(.path == "pkg/Bar.kt") | .sibling_test == true) and (.files[] | select(.path == "pkg/BarTest.kt") | .test == true)' || fail "M17 FooTest name: $(jq -c '[.files[]|{path,sibling_test,test}]' "$WORK/sib.json")"
+q sib '.files[] | select(.path == "dao/UserDAO.java") | .sibling_test == true' || fail "M17 an acronym before Test: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
+q sib '.files[] | select(.path == "lib/foo.rb") | .sibling_test == true' || fail "M17 _spec name: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
+ok "M17 sibling tests: one language, a mirrored sub-path, an ambiguous stem credits none, FooTest and _spec names"
+
+repo sib2; S2="$WORK/sib2"
+put "$S2/src/foo/__tests__/index.test.ts" "import { x } from '../index';"
+for f in src/foo/index.ts src/foo/bar/index.ts; do put "$S2/$f" "export const x = 1;"; done
+put "$S2/ui/Foo.vue" "<template><p/></template>"
+put "$S2/ui/Foo.spec.ts" "test('foo', () => {});"
+put "$S2/ui/Bar.svelte" "<p/>"
+put "$S2/ui/Bar.spec.ts" "test('bar', () => {});"
+put "$S2/bin/run.bash" "echo run"
+put "$S2/bin/run-test.sh" "bash run.bash"
+put "$S2/py/utils.ts" "export const u = 1;"
+put "$S2/py/test_utils.py" "x = 1"
+commit "$S2"
+measure sib2
+q sib2 '(.files[] | select(.path == "src/foo/index.ts") | .sibling_test == true) and (.files[] | select(.path == "src/foo/bar/index.ts") | .sibling_test == false)' || fail "M17b closest placement: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+q sib2 '[.files[] | select(.path == "ui/Foo.vue" or .path == "ui/Bar.svelte" or .path == "bin/run.bash") | .sibling_test] == [true, true, true]' || fail "M17b language family: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+q sib2 '.files[] | select(.path == "py/utils.ts") | .sibling_test == false' || fail "M17b python test credits a ts file: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+ok "M17b sibling tests: the closest placement wins, a .vue/.svelte/.bash source is credited by its family's test, never across languages"
+
+repo pyroot; PR="$WORK/pyroot"
+put "$PR/app/__init__.py" ""
+put "$PR/app/utils/__init__.py" ""
+put "$PR/app/utils/json.py" "x = 1"
+put "$PR/app/main.py" "import json
+import app.utils.json"
+commit "$PR"
+measure pyroot
+q pyroot '(.files[] | select(.path == "app/utils/json.py") | .fan_in == 1) and .coverage_limits.unresolved_specifiers.py == 1' || fail "M18 import roots: $(jq -c '[.files[]|{path,fan_in}], .coverage_limits' "$WORK/pyroot.json")"
+put "$PR/app/utils/b.py" "import utils.json"
+commit "$PR"
+measure pyroot --focus app/utils
+q pyroot '.files[] | select(.path == "app/utils/json.py") | .fan_in == 0' || fail "M18 focus keeps the full package tree: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyroot.json")"
+ok "M18 a Python absolute import resolves only from an import root"
+
+repo pyscript; PS="$WORK/pyscript"
+put "$PS/tools/helper.py" "x = 1"
+put "$PS/tools/conf.py" "y = 1"
+put "$PS/shared.py" "z = 1"
+put "$PS/tools/shared.py" "z = 1"
+put "$PS/tools/run.py" "import helper
+import shared
+from conf import y"
+put "$PS/pkg/__init__.py" ""
+put "$PS/pkg/helper.py" "x = 1"
+put "$PS/pkg/main.py" "import helper"
+commit "$PS"
+measure pyscript
+q pyscript '(.files[] | select(.path == "tools/helper.py") | .fan_in == 1) and (.files[] | select(.path == "tools/conf.py") | .fan_in == 1)' \
+  || fail "M19 a script's own folder: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyscript.json")"
+q pyscript '(.files[] | select(.path == "tools/shared.py") | .fan_in == 1) and (.files[] | select(.path == "shared.py") | .fan_in == 0)' \
+  || fail "M19 the script's folder before the root: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyscript.json")"
+q pyscript '(.files[] | select(.path == "pkg/helper.py") | .fan_in == 0) and .coverage_limits.unresolved_specifiers.py == 1' \
+  || fail "M19 a package module stays on import roots: $(jq -c '[.files[]|{path,fan_in}], .coverage_limits' "$WORK/pyscript.json")"
+ok "M19 a script outside a package imports a sibling from its own folder"
+
 # ---- check ------------------------------------------------------------------------------------
 FIND='{"invariant":"i","entry_point":"e","trigger":"t","user_impact":"u","anchors":[{"path":"a.py","line":1}],"evidence_kind":"static","command":null,"observed":"o","uncertainty":"u","recommended_action":"r"}'
 AUD="{\"revision\":\"abc\",\"scope\":\".\",\"findings\":[$FIND],\"coverage_limits\":[]}"
@@ -384,6 +463,15 @@ run check records "$WORK/dup.json"; [ "$RC" = 1 ] || fail "C8 check records dupl
 run check refutation "$WORK/f4.md" --submitted "$WORK/dup.json"; [ "$RC" = 1 ] || fail "C8 submitted duplicate: $RC"
 sc "$WORK/dup.json"; [ "$RC" = 1 ] || fail "C8 score duplicate: $RC"
 ok "C8 duplicate record ids rejected in check records, check refutation and score"
+rec W1 A 1 now | jq -c '.verified_by = "sweep-only"' | records > "$WORK/sw.json"
+run check records "$WORK/sw.json"
+[ "$RC" = 1 ] && case "$OUT" in *W1*) true ;; *) false ;; esac || fail "C9 check records sweep-only now: $RC $OUT"
+rec W1 A 1 now | jq -c '.verified_by = "sweep-only" | .status = "dropped"' | records > "$WORK/swd.json"
+run check records "$WORK/swd.json"
+[ "$RC" = 1 ] && case "$OUT" in *W1*) true ;; *) false ;; esac || fail "C9 check records sweep-only now dropped: $RC $OUT"
+sc "$WORK/sw.json"
+[ "$RC" = 1 ] && case "$OUT" in *W1*) true ;; *) false ;; esac || fail "C9 score sweep-only now: $RC $OUT"
+ok "C9 a now record verified sweep-only is rejected by check records and score, any status"
 
 # ---- score ------------------------------------------------------------------------------------
 { rec N1 A 1 next; rec N2 A 10 now; rec N3 A 9 now; rec N4 A 9 now; } | records > "$WORK/s1.json"
@@ -488,5 +576,15 @@ done
 ok "T6 the command wires Phase 0b, Phase A, Publish, the scorer and the template override"
 ! grep -qF 'run the review exactly as it ran before' "$CMD" && ! grep -qF 'go straight into Phase 1' "$CMD" && grep -qF 'continue with Phase 0b' "$CMD" || fail "T7 a Phase 0 path skips the new phases"
 ok "T7 no Phase 0 path skips Phase 0b"
+PM=$(awk '/^## Phase M/{f=1;next} f&&/^## /{exit} f' "$CMD")
+for s in 'A non-zero exit of `measure` stops the run' 'TaskStop' 'ScheduleWakeup stop: true'; do
+  grep -qF "$s" <<<"$PM" || fail "T8 Phase M misses: $s"
+done
+[ "$(grep -c 'arch-assess.mjs check records' "$CMD")" = 1 ] || fail "T8 check records is called more than once (or never)"
+CR=$(grep -n 'arch-assess.mjs check records' "$CMD" | cut -d: -f1)
+VL=$(grep -n '^2\. \*\*Verify\*\*' "$CMD" | cut -d: -f1)
+RL=$(grep -n '^3\. \*\*Refute\*\*' "$CMD" | cut -d: -f1)
+[ -n "$VL" ] && [ -n "$RL" ] && [ "$CR" = "$VL" ] && [ "$CR" -lt "$RL" ] || fail "T8 check records line $CR, Verify line $VL, Refute line $RL"
+ok "T8 Phase M stops on a measure error; Phase A checks records after verification"
 
 echo "arch-assess-test: OK ($N checks)"

@@ -94,6 +94,111 @@ test('scanner: a strict run enforces warning-level rules', async () => {
   assert.ok(!cfg(tool(s, 'eslint'), 'eslint.config.mjs').notEnforced.includes('no-empty'));
 });
 
+// A tiny repository: { path: text } written under a fresh temp dir; returns the dir.
+function miniRepo(files) {
+  const dir = tmp();
+  for (const [p, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true });
+    fs.writeFileSync(path.join(dir, p), text);
+  }
+  return dir;
+}
+const miniScan = (files) => { const repo = miniRepo(files); return fixtureScan(repo, listFiles(repo)); };
+
+test('scanner: clippy enforces only with -D warnings', async () => {
+  const clippy = async (line) => tool(await miniScan({ Makefile: `lint:\n\t${line}\n`, 'src/main.rs': 'fn main() {}\n' }), 'clippy');
+  const bare = await clippy('cargo clippy --all-targets');
+  assert.ok(!bare || bare.enforced === false);
+  const strict = await clippy('cargo clippy --all-targets -- -D warnings');
+  assert.equal(strict.enforced, true);
+  assert.deepEqual(strict.runs[0].targets, []);
+  assert.equal((await clippy('RUSTFLAGS="-D warnings" cargo clippy')).enforced, true);
+  assert.equal((await clippy('RUSTFLAGS="--deny warnings" cargo clippy')).enforced, true);
+  const group = await clippy('cargo clippy -- -D clippy::all');
+  assert.ok(!group || group.enforced === false);
+  // `-p <crate>` names a package, not a path: the scope is unknown, never every .rs file.
+  const pkg = await clippy('cargo clippy -p corelib -- -D warnings');
+  assert.equal(pkg.runs[0].scopeUnknown, true);
+  assert.deepEqual(pkg.runs[0].targets, []);
+  assert.ok(!pkg.enforced);
+  const fmt = tool(await miniScan({ Makefile: 'fmt:\n\tcargo fmt -p corelib -- --check\n', 'src/main.rs': 'fn main() {}\n' }), 'rustfmt');
+  assert.equal(fmt.runs[0].scopeUnknown, true);
+  assert.ok(!fmt.enforced);
+});
+
+test('scanner: a bare cargo clippy makes no Clippy claim, whatever Cargo.toml denies', async () => {
+  // Warn-level lints still pass a bare run, so a deny entry in Cargo.toml never makes it a checking run.
+  const rust = (lint) => miniRepo({ 'Cargo.toml': '[package]\nname = "x"\n\n[lints.clippy]\nunwrap_used = "deny"\n', 'clippy.toml': 'msrv = "1.70"\n', Makefile: `lint:\n\t${lint}\n`, 'src/main.rs': 'fn main() {}\n' });
+  const bare = rust('cargo clippy');
+  const t = tool(await fixtureScan(bare, listFiles(bare)), 'clippy');
+  assert.ok(!t || (t.enforced === false && t.runs.length === 0));
+  assert.doesNotMatch((await renderIn(bare, { draft: null, toolsOnly: true })).text, /Clippy/);
+  // Control: the same repo with a run that denies warnings renders the claim.
+  const strict = rust('cargo clippy -- -D warnings');
+  assert.match((await renderIn(strict, { draft: null, toolsOnly: true })).text, /Code passes Clippy/);
+});
+
+const BIOME_MIXED = '{"linter":{"rules":{"style":{"noVar":"warn"},"suspicious":{"noDebugger":"error"}}}}\n';
+const BIOME_WARN = '{"linter":{"rules":{"style":{"noVar":"warn"}}}}\n';
+const biomeRepo = (config, lint, extra = {}) => miniRepo({ 'biome.json': config, 'package.json': JSON.stringify({ scripts: { lint } }) + '\n', 'src/a.ts': 'export const a = 1;\n', ...extra });
+
+test('scanner: biome warn rules need --error-on-warnings', async () => {
+  const bare = biomeRepo(BIOME_MIXED, 'biome check src');
+  const c = cfg(tool(await fixtureScan(bare, listFiles(bare)), 'biome'), 'biome.json');
+  assert.ok(c.notEnforced.includes('noVar'));
+  assert.ok(!c.notEnforced.includes('noDebugger'));
+  const strict = biomeRepo(BIOME_MIXED, 'biome check --error-on-warnings src');
+  assert.deepEqual(cfg(tool(await fixtureScan(strict, listFiles(strict)), 'biome'), 'biome.json').notEnforced, []);
+  // An `info` rule never fails a run and an `off` rule is disabled, even with --error-on-warnings.
+  const levels = biomeRepo('{"linter":{"rules":{"style":{"noVar":"info","noParameterAssign":"off"},"suspicious":{"noDebugger":"error"}}}}\n', 'biome check --error-on-warnings src');
+  assert.deepEqual(cfg(tool(await fixtureScan(levels, listFiles(levels)), 'biome'), 'biome.json').notEnforced.sort(), ['noParameterAssign', 'noVar']);
+  // The object form is one rule at its `level`; its options are no rules.
+  const objForm = biomeRepo('{"linter":{"rules":{"style":{"noVar":{"level":"warn","options":{"strictCase":true}}},"suspicious":{"noDebugger":{"level":"error"}}}}}\n', 'biome check src');
+  const oc = cfg(tool(await fixtureScan(objForm, listFiles(objForm)), 'biome'), 'biome.json');
+  assert.deepEqual(oc.rules.map((r) => `${r.rule}=${r.setting}`).sort(), ['noDebugger=error', 'noVar=warn']);
+  assert.deepEqual(oc.notEnforced, ['noVar']);
+  assert.match((await renderIn(objForm, { draft: null, toolsOnly: true })).text, /noDebugger/);
+});
+
+test('scanner: a flag value is not a target', async () => {
+  const golangci = async (flag) => tool(await miniScan({ '.golangci.yml': 'linters:\n  enable:\n    - govet\n', Makefile: `lint:\n\tgolangci-lint run ${flag} ./...\n`, 'src/x.go': 'package x\n' }), 'golangci');
+  const g = await golangci('--timeout 5m');
+  assert.deepEqual(g.runs[0].targets, []);
+  assert.ok(!g.appliesTo.some((a) => a.includes('5m')));
+  assert.deepEqual((await golangci('--timeout 1.5s')).runs[0].targets, []);
+  const ruff = tool(await miniScan({ 'ruff.toml': 'line-length = 100\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\truff check --output-format github src\n' }), 'ruff');
+  assert.deepEqual(ruff.runs[0].targets, ['src']);
+  const eslint = tool(await miniScan({ 'eslint.config.mjs': "export default [{ rules: { eqeqeq: 'error' } }];\n", 'src/a.js': 'export const a = 1;\n', 'package.json': '{ "scripts": { "lint": "eslint --cache src" } }\n' }), 'eslint');
+  assert.deepEqual(eslint.runs[0].targets, ['src']);
+  // A file-like value of an unknown flag is no target: an output file is neither scanned nor a source.
+  const flake8 = tool(await miniScan({ '.flake8': '[flake8]\nmax-line-length = 100\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\tflake8 --output-file flake8.txt .\n' }), 'flake8');
+  assert.deepEqual(flake8.runs[0].targets, []);
+  assert.ok(!flake8.appliesTo.some((a) => a.includes('flake8.txt')));
+  const mypy = tool(await miniScan({ 'mypy.ini': '[mypy]\nstrict = True\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\tmypy --junit-xml reports/mypy.xml src\n' }), 'mypy');
+  assert.deepEqual(mypy.runs[0].targets, ['src']);
+  assert.ok(!mypy.appliesTo.some((a) => a.includes('reports')));
+  // `-p` / `--module=` name a package or module, not a path: the scope is unknown, never the whole repo.
+  for (const run of ['mypy -p mypkg', 'mypy --module=mypkg.cli']) {
+    const m = tool(await miniScan({ 'mypy.ini': '[mypy]\nstrict = True\n', 'src/mypkg/__init__.py': '', 'scripts/tool.py': 'x = 1\n', Makefile: `lint:\n\t${run}\n` }), 'mypy');
+    assert.equal(m.runs[0].scopeUnknown, true, run);
+    assert.deepEqual(m.runs[0].targets, [], run);
+    assert.ok(!m.enforced, run);
+  }
+});
+
+test('scanner: a quoted eslint -c attributes that config', async () => {
+  const s = await miniScan({
+    '.eslintrc.json': '{ "rules": { "eqeqeq": "error" } }\n',
+    'package.json': '{ "scripts": { "lint": "eslint -c \\".eslintrc.json\\" src" } }\n',
+    'src/a.js': 'export const a = 1;\n',
+  });
+  const eslint = tool(s, 'eslint');
+  const c = cfg(eslint, '.eslintrc.json');
+  assert.equal(c.attributed, true);
+  assert.ok(!c.notEnforced.includes('eqeqeq'));
+  assert.ok(!s.notLoaded.includes('.eslintrc.json'));
+});
+
 test('scanner: extracted items carry their lines', async () => {
   const s = await fixtureScan();
   const eslint = tool(s, 'eslint');
@@ -159,6 +264,7 @@ test('scanner: option parsing per tool', async () => {
   const e = parseRun('eslint', 'eslint -c custom.config.mjs src');
   assert.equal(e.selected, 'custom.config.mjs');
   assert.deepEqual(e.targets, ['src']);
+  assert.equal(parseRun('eslint', 'eslint -c ".eslintrc.json" src').selected, '.eslintrc.json');
   const ph = parseRun('phpcs', 'phpcs --standard=PSR12 --ignore=src/legacy/* src tests');
   assert.deepEqual(ph.targets, ['src', 'tests']);
   assert.deepEqual(ph.excludes, ['src/legacy/*']);
@@ -417,6 +523,25 @@ test('renderer: tools-only writes the tool rules alone', async () => {
   assert.deepEqual(summary.open, []);
   for (const l of text.split('\n').filter((x) => x.startsWith('|'))) assert.ok(/^\| (Need|Problem) |^\|---/.test(l), l);
   assert.ok(!/^- .*a person picks one/m.test(text));
+});
+
+test('renderer: a config whose every rule is not enforced makes no tool claim', async () => {
+  const toolsOnly = async (repo) => (await renderIn(repo, { draft: null, toolsOnly: true })).text;
+  assert.doesNotMatch(await toolsOnly(biomeRepo(BIOME_WARN, 'biome check src')), /Biome/);
+  assert.match(await toolsOnly(biomeRepo(BIOME_MIXED, 'biome check src')), /noDebugger/);
+  const nested = biomeRepo(BIOME_WARN, 'biome check', { 'pkg/biome.json': '{"linter":{"rules":{"suspicious":{"noDebugger":"error"}}}}\n' });
+  assert.match(await toolsOnly(nested), /Enforced by: tool \(pkg\/biome\.json: noDebugger\)/);
+  // A real biome.json: formatter, files and linter.enabled are no rules; `recommended: true` is a preset.
+  const real = '{"$schema":"https://biomejs.dev/schemas/1.9.4/schema.json","formatter":{"enabled":true,"indentStyle":"space"},"files":{"ignore":["dist"]},"linter":{"enabled":true,"rules":{"recommended":false,"style":{"noVar":"warn"}}}}\n';
+  const realRepo = biomeRepo(real, 'biome check src');
+  assert.deepEqual(cfg(tool(await fixtureScan(realRepo, listFiles(realRepo)), 'biome'), 'biome.json').rules.map((r) => `${r.rule}=${r.setting}`), ['noVar=warn']);
+  assert.doesNotMatch(await toolsOnly(realRepo), /Biome/);
+  const rec = biomeRepo('{"linter":{"enabled":true,"rules":{"recommended":true}}}\n', 'biome check src');
+  assert.match(await toolsOnly(rec), /Enforced by: tool \(biome\.json: recommended\)/);
+  // A disabled linter checks no rule, whatever its rules block says.
+  const off = biomeRepo('{"linter":{"enabled":false,"rules":{"suspicious":{"noDebugger":"error"}}}}\n', 'biome check src');
+  assert.deepEqual(cfg(tool(await fixtureScan(off, listFiles(off)), 'biome'), 'biome.json').rules, []);
+  assert.doesNotMatch(await toolsOnly(off), /noDebugger/);
 });
 
 test('renderer: a missing seed is a usage error', async () => {

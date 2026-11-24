@@ -15,7 +15,10 @@ import { parseYaml } from './yaml-subset.mjs';
 
 const T = (tool, display, cls, o = {}) => ({
   tool, display, class: cls, aliases: [], configs: [], runs: null, bin: null, sub: [], selectFlags: [],
-  excludeFlags: [], strictFlags: [], valueFlags: [], observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
+  excludeFlags: [], strictFlags: [], valueFlags: [], scopeFlags: [], strictRe: null, requireStrict: false, stopAt: null,
+  // Rule levels that never fail a run, and whether a `warn` rule fails only a strict run.
+  unenforcedLevels: [], warnNeedsStrict: false,
+  observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
 });
 const PY = '**/*.py';
 const PHP = '**/*.php';
@@ -31,7 +34,7 @@ export const TOOLS = [
     runs: /(^|[\s/])(eslint|ng\s+lint|nx\s+(lint|run-many|affected)\b.*\blint)(\s|$)/, bin: /^(.*\/)?(eslint|ng|nx)$/,
     selectFlags: ['-c', '--config'], excludeFlags: ['--ignore-pattern'], strictFlags: ['--max-warnings'],
     valueFlags: ['--ext', '-f', '--format', '-o', '--output-file', '--rulesdir', '--cache-location', '--parser', '--rule', '--resolve-plugins-relative-to'],
-    appliesTo: '**/*.{js,jsx,ts,tsx}',
+    warnNeedsStrict: true, appliesTo: '**/*.{js,jsx,ts,tsx}',
   }),
   T('prettier', 'Prettier', 'format', {
     configs: [/(^|\/)\.prettierrc(\.(json|ya?ml|json5|js|cjs|mjs|toml))?$/, /(^|\/)prettier\.config\.(js|cjs|mjs)$/],
@@ -41,11 +44,13 @@ export const TOOLS = [
   T('stylelint', 'Stylelint', 'lint', {
     configs: [/(^|\/)\.stylelintrc(\.(json|ya?ml|js|cjs))?$/, /(^|\/)stylelint\.config\.(js|cjs|mjs)$/],
     runs: /\bstylelint\b/, bin: /^(.*\/)?stylelint$/, selectFlags: ['--config'], excludeFlags: ['--ignore-pattern'],
-    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter', '--ignore-path', '--config-basedir', '--custom-syntax'], appliesTo: '**/*.{css,scss}',
+    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter', '--ignore-path', '--config-basedir', '--custom-syntax'], warnNeedsStrict: true, appliesTo: '**/*.{css,scss}',
   }),
   T('biome', 'Biome', 'lint', {
     configs: [/(^|\/)biome\.jsonc?$/], runs: /\bbiome\s+(check|ci|lint)\b/, bin: /^(.*\/)?biome$/,
-    sub: ['check', 'ci', 'lint'], selectFlags: ['--config-path'],
+    sub: ['check', 'ci', 'lint'], selectFlags: ['--config-path'], strictRe: /(^|\s)--error-on-warnings(\s|=|$)/,
+    // An `info` rule never fails a run and an `off` rule is disabled, strict or not.
+    unenforcedLevels: ['off', 'info'], warnNeedsStrict: true,
   }),
   T('typescript', 'TypeScript compiler', 'compiler', {
     aliases: ['tsc'], configs: [/(^|\/)tsconfig(\.[\w-]+)?\.json$/], runs: /(^|[\s/])(tsc|vue-tsc)(\s|$)|\bng\s+build\b/,
@@ -81,7 +86,9 @@ export const TOOLS = [
   }),
   T('mypy', 'mypy', 'analyzer', {
     configs: [/(^|\/)\.?mypy\.ini$/, /(^|\/)pyproject\.toml$/, /(^|\/)setup\.cfg$/], section: 'mypy', runs: /\bmypy\b/,
-    bin: /^(.*\/)?mypy$/, selectFlags: ['--config-file'], excludeFlags: ['--exclude'], appliesTo: PY,
+    // `-p mypkg` / `-m mod` name a package or module, not a path: such a run's file scope is unknown.
+    bin: /^(.*\/)?mypy$/, selectFlags: ['--config-file'], excludeFlags: ['--exclude'],
+    scopeFlags: ['-p', '--package', '-m', '--module'], appliesTo: PY,
   }),
   T('flake8', 'Flake8', 'lint', {
     configs: [/(^|\/)\.flake8$/, /(^|\/)setup\.cfg$/, /(^|\/)tox\.ini$/], section: 'flake8', runs: /\bflake8\b/,
@@ -95,9 +102,15 @@ export const TOOLS = [
   T('govet', 'go vet', 'analyzer', { aliases: ['go vet'], runs: /\bgo\s+vet\b/, bin: /^go$/, sub: ['vet'], observe: /\bgo\s+vet\b/, appliesTo: GO }),
   T('rustfmt', 'rustfmt', 'format', {
     configs: [/(^|\/)\.?rustfmt\.toml$/], runs: /\bcargo\s+fmt\b.*--check|\brustfmt\b.*--check/, bin: /^(.*\/)?(cargo|rustfmt)$/,
-    sub: ['fmt'], observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
+    // `-p <crate>` names a package, not a path: such a run's file scope is unknown.
+    sub: ['fmt'], stopAt: '--', scopeFlags: ['-p', '--package'], observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
   }),
-  T('clippy', 'Clippy', 'lint', { configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], appliesTo: RS }),
+  // Clippy's lint levels are not in clippy.toml: only a run that denies warnings checks. A bare
+  // run never does, whatever Cargo.toml denies — warn-level lints still pass it.
+  T('clippy', 'Clippy', 'lint', {
+    configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], stopAt: '--',
+    scopeFlags: ['-p', '--package'], strictRe: /(^|[\s=])(-D\s*warnings|--deny[=\s]+warnings)(\s|$)/, requireStrict: true, appliesTo: RS,
+  }),
   T('rubocop', 'RuboCop', 'lint', { configs: [/(^|\/)\.rubocop\.ya?ml$/], runs: /\brubocop\b/, bin: /^(.*\/)?rubocop$/, selectFlags: ['-c', '--config'], appliesTo: '**/*.rb' }),
   T('dotnet-format', 'dotnet format', 'format', {
     aliases: ['dotnet format'], runs: /\bdotnet\s+format\b.*--verify-no-changes/, bin: /^(.*\/)?dotnet$/, sub: ['format'],
@@ -166,12 +179,29 @@ function fromObject(t, obj, lines, q) {
       if (/^(strict\w*|noImplicit\w*|noUnused\w*|noFallthroughCasesInSwitch|exactOptionalPropertyTypes|noUncheckedIndexedAccess)$/.test(k) && v !== false) rules.push({ rule: k, setting: String(v), line: at(k) });
     }
     addPresets(obj.extends);
+  } else if (t.tool === 'biome') {
+    // Biome's lint rules live only under linter.rules (and overrides[].linter.rules), as
+    // `<group>.<rule>`: a level string, or the object form `{"level": "warn", "options": {...}}`.
+    // `recommended` / `all` set to true is a preset; the rest of the config (formatter, files,
+    // linter.enabled …) is no rule, and a linter section with `enabled: false` checks nothing.
+    addPresets(obj.extends);
+    const group = (o) => {
+      for (const [k, v] of Object.entries(o || {})) {
+        if (k === 'recommended' || k === 'all') { if (v === true && !presets.some((p) => p.name === k)) presets.push({ name: k, line: at(k) }); }
+        else if (typeof v === 'string') rules.push({ rule: k, setting: v, line: at(k) });
+        else if (v && typeof v === 'object' && typeof v.level === 'string') rules.push({ rule: k, setting: v.level, line: at(k) });
+        else if (v && typeof v === 'object' && !Array.isArray(v)) group(v);
+      }
+    };
+    const lintRules = (l) => (l && l.enabled !== false ? l.rules : null);
+    if (obj.linter?.enabled !== false) for (const r of [lintRules(obj.linter), ...[].concat(obj.overrides ?? []).map((o) => lintRules(o?.linter))]) group(r);
   } else {
     addPresets(t.tool === 'phpstan' || t.tool === 'rubocop' ? obj.includes ?? obj.inherit_from : obj.extends);
     const walk = (o) => {
       for (const [k, v] of Object.entries(o)) {
         if (['extends', 'includes', 'inherit_from', '$schema'].includes(k)) continue;
-        if (Array.isArray(v)) { for (const s of v) if (typeof s !== 'object') rules.push({ rule: String(s), setting: k, line: lineOf(lines, String(s)) }); else if (s) walk(s); } else if (v && typeof v === 'object') walk(v);
+        if (Array.isArray(v)) { for (const s of v) if (typeof s !== 'object') rules.push({ rule: String(s), setting: k, line: lineOf(lines, String(s)) }); else if (s) walk(s); }
+        else if (v && typeof v === 'object') walk(v);
         else rules.push({ rule: k, setting: String(v), line: at(k) });
       }
     };
@@ -237,34 +267,55 @@ function extract(t, file, text) {
   return { rules, presets };
 }
 
+const unquote = (s) => s.replace(/^["']|["']$/g, '');
+const extOfTok = (tok) => /\.(\w+)$/.exec(path.posix.basename(tok))?.[1] ?? '';
+const srcExts = (glob) => { const m = /\*\.(?:\{([^}]+)\}|(\w+))$/.exec(glob); return m ? (m[1] ? m[1].split(',') : [m[2]]) : []; };
 // One checking invocation parsed per tool: positional targets, excludes, an explicit selection and
-// the strict flag. null when the text is not a checking invocation of that tool.
-export function parseRun(toolId, text) {
+// the strict flag. null when the text is not a checking invocation of that tool. `isPath` tells
+// whether a token names a scanned path: a token right after an unknown flag is that flag's value
+// unless it names one, carries a glob, or is a file of the kind the tool checks (`tsc --noEmit
+// src/a.ts`); the default treats every token as a path (a target).
+export function parseRun(toolId, text, { isPath = () => true } = {}) {
   const t = BY_ID.get(toolId);
   if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
+  const bare = text.replace(/["']/g, ' ');
+  if (t.requireStrict && !t.strictRe.test(bare)) return null;
   const toks = text.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
-  let i = toks.findIndex((x) => t.bin.test(x.replace(/^["']|["']$/g, '')));
+  let i = toks.findIndex((x) => t.bin.test(unquote(x)));
   const run = { targets: [], excludes: [], selected: null, strict: false, scopeUnknown: false };
+  if (t.strictRe && t.strictRe.test(bare)) run.strict = true;
+  const exts = srcExts(t.appliesTo);
   // No binary token: a run only when the binary sits in a command substitution (`test -z "$(gofmt -l .)"`).
   if (i < 0) return toks.some((x) => { const m = /\$\(\s*([^\s)]+)/.exec(x); return m && t.bin.test(m[1]); }) ? run : null;
   if (/^(.*\/)?(ng|nx)$/.test(toks[i])) return run;
   i += 1;
   while (i < toks.length && t.sub.includes(toks[i])) i++;
   const flagVal = (tok, eq) => (eq >= 0 ? tok.slice(eq + 1) : toks[++i]);
+  // pending: the previous token was a flag of none of the tool's lists, with no `=` (a bare `--` too).
+  let pending = false;
   for (; i < toks.length; i++) {
     const tok = toks[i];
     if (/^\d*[<>]/.test(tok)) break;
+    // `cargo clippy -- -D warnings`: what follows `--` goes to the linter (lint levels), never a target.
+    if (t.stopAt && tok === t.stopAt) break;
+    const after = pending;
+    pending = false;
     if (tok.startsWith('-')) {
       const eq = tok.indexOf('=');
       const name = eq >= 0 ? tok.slice(0, eq) : tok;
-      if (t.selectFlags.includes(name)) run.selected = flagVal(tok, eq) ?? null;
-      else if (t.excludeFlags.includes(name)) run.excludes.push(String(flagVal(tok, eq) ?? '').replace(/^["']|["']$/g, ''));
+      if (t.selectFlags.includes(name)) { const v = flagVal(tok, eq); run.selected = v == null ? null : unquote(v); }
+      else if (t.excludeFlags.includes(name)) run.excludes.push(unquote(String(flagVal(tok, eq) ?? '')));
       else if (t.strictFlags.includes(name)) run.strict = String(flagVal(tok, eq)) === '0';
-      else if (t.valueFlags.includes(name) && eq < 0) i++;
+      else if (t.valueFlags.includes(name)) { if (eq < 0) i++; }
+      else if (t.scopeFlags.includes(name)) { run.scopeUnknown = true; if (eq < 0) i++; }
+      else pending = eq < 0;
       continue;
     }
     if (/[$`(]/.test(tok)) { run.scopeUnknown = true; continue; }
-    const target = tok.replace(/^["']|["']$/g, '').replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
+    const target = unquote(tok).replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
+    // `--timeout 5m`, `--output-file flake8.txt`, `--junit-xml reports/mypy.xml`: a token after an
+    // unknown flag that names no scanned path, has no glob and is no source file of the tool is its value.
+    if (after && !/[*?[{]/.test(target) && !exts.includes(extOfTok(target)) && !isPath(target)) continue;
     if (target && target !== '.') run.targets.push(target);
   }
   return run;
@@ -305,7 +356,8 @@ function commands(file, text) {
   return out;
 }
 
-function runsOf(cmds) {
+// isPath(dir, token): whether the token, resolved against the run directory, names a scanned path.
+function runsOf(cmds, isPath) {
   const runs = [];
   const seen = new Set();
   for (const c of cmds) {
@@ -320,7 +372,7 @@ function runsOf(cmds) {
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
         if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
-        const r = parseRun(t.tool, seg);
+        const r = parseRun(t.tool, seg, { isPath: (x) => isPath(dir, x) });
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }
     }
@@ -346,7 +398,9 @@ export function scan({ repo, files }) {
     if (wires) wiring.push({ file: f, text: r.text });
   }
   const hasProject = files.some((f) => /\.(csproj|sln)$/.test(f) && !HARNESS.test(f));
-  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)));
+  const fileSet = new Set(files);
+  const isPath = (dir, x) => { const p = posix(dir, x); return p === '' || fileSet.has(p) || files.some((f) => f.startsWith(`${p}/`)); };
+  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)), isPath);
   const rootPkg = wiring.find((w) => w.file === 'package.json');
   let eslintMajor = 0;
   try { const p = JSON.parse(rootPkg.text); eslintMajor = Number(/\d+/.exec((p.devDependencies || {}).eslint || (p.dependencies || {}).eslint || '')?.[0] || 0); } catch { /* no root package.json */ }
@@ -402,7 +456,10 @@ export function scan({ repo, files }) {
       if (!c.attributed) continue;
       cov.forEach((r) => enforcing.add(r));
       if (cov.every((r) => r.selected && !selects(r, c)) && t.tool !== 'typescript') c.notEnforced = c.rules.map((r) => r.rule);
-      else if ((t.tool === 'eslint' || t.tool === 'stylelint') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
+      else {
+        const strict = cov.some((r) => r.strict);
+        c.notEnforced = c.rules.filter((r) => t.unenforcedLevels.includes(r.setting) || (t.warnNeedsStrict && r.setting === 'warn' && !strict)).map((r) => r.rule);
+      }
     }
     if (external) enforcing.add(external);
     if (!cfgs.length) eff.forEach((r) => enforcing.add(r));

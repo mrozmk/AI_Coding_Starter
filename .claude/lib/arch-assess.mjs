@@ -59,6 +59,8 @@ const JS_EXT = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'];
 const SIZES_ONLY = new Set(['sh', 'bash', 'go', 'rs', 'java', 'kt', 'kts', 'rb', 'cs', 'php', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'm', 'scala', 'lua', 'dart', 'vue', 'svelte']);
 const HASH_COMMENT = new Set(['py', 'sh', 'bash', 'rb']);
 const TEST_DIRS = new Set(['test', 'tests', '__tests__', 'spec']);
+// Languages whose test files are named after the class under test (`FooTest.java`).
+const CLASS_TEST_EXT = new Set(['java', 'kt', 'kts', 'cs', 'php']);
 const MARKER = /^(__init__\.py|index\.(js|jsx|ts|tsx|mjs|cjs))$/;
 const CLASS_AXIS = { 1: 'runtime', 2: 'runtime', 3: 'runtime', 4: 'runtime', 5: 'runtime', 6: 'runtime', 7: 'runtime', 8: 'boundaries', 11: 'boundaries', 10: 'change_cost', 12: 'change_cost', candidate: 'change_cost', 9: 'safety_net' };
 
@@ -142,7 +144,8 @@ function isTestPath(rel) {
   const parts = rel.split('/');
   const base = parts.pop();
   if (parts.some((p) => TEST_DIRS.has(p))) return true;
-  return /^test_.+\.py$/.test(base) || /_test\.(py|go)$/.test(base) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /[-_.]test\.sh$/.test(base);
+  return /^test_.+\.py$/.test(base) || /_test\.(py|go)$/.test(base) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /[-_.]test\.sh$/.test(base)
+    || (CLASS_TEST_EXT.has(extOf(base)) && /^[A-Z]\w*Tests?\.\w+$/.test(base)) || /_spec\.rb$/.test(base);
 }
 
 function countLines(text) {
@@ -160,9 +163,68 @@ export function countBranches(text, lang) {
 }
 
 function testStem(base) {
+  const ext = extOf(base);
   let s = base.replace(/\.[^.]+$/, '');
   if (s.startsWith('test_')) s = s.slice(5);
-  return s.replace(/(_test|-test|\.test|\.spec)$/, '');
+  s = s.replace(/(_test|-test|\.test|\.spec)$/, '');
+  if (CLASS_TEST_EXT.has(ext)) s =s.replace(/(?<=.)Tests?$/, '');
+  if (ext === 'rb') s = s.replace(/_spec$/, '');
+  return s;
+}
+
+// Does test directory `testDir` sit where a test of a source in `srcDir` lives? Same directory, or
+// `<a>/<d>` / `<a>/<d>/<sub>` for an ancestor `a` of srcDir (`.` included), a test dir `d`, and
+// `<sub>` a whole-segment suffix of srcDir below `a` (empty allowed). `spec` counts only for Ruby.
+// Returns the placement distance — how many segments of srcDir below `a` the test dir does not
+// mirror (0 = beside it or a full mirror) — or -1 when the test does not sit there.
+function testPlacedFor(testDir, srcDir, lang) {
+  if (testDir === srcDir) return 0;
+  const dirs = lang === 'rb' ? [...TEST_DIRS] : [...TEST_DIRS].filter((d) => d !== 'spec');
+  let best = -1;
+  for (let a = srcDir; ; a = path.posix.dirname(a)) {
+    const below = a === '.' ? srcDir : srcDir === a ? '' : srcDir.slice(a.length + 1);
+    const segs = below && below !== '.' ? below.split('/') : [];
+    for (const d of dirs) {
+      const home = a === '.' ? d : `${a}/${d}`;
+      for (let i = 0; i <= segs.length; i++) {
+        const sub = segs.slice(i).join('/');
+        if (testDir === (sub ? `${home}/${sub}` : home) && (best < 0 || i < best)) best = i;
+      }
+    }
+    if (a === '.') return best;
+  }
+}
+
+// A language family tests as one: a `.vue`/`.svelte` component by a JS/TS spec, a `.bash` script
+// by a `-test.sh`.
+const LANG_FAMILY = { kts: 'kt', vue: 'js', svelte: 'js', bash: 'sh' };
+const normLang = (l) => LANG_FAMILY[l] ?? l;
+
+// The paths of the sources a test credits. A test credits one source: same stem, same language
+// family, placed beside it or in a mirrored test dir; a tie narrows to the closest placement, then
+// the test's own dir, then its extension, and an ambiguous stem credits none.
+function creditedSources(entries) {
+  const sources = new Map(); // "<lang>\0<stem>" → [entry]
+  for (const e of entries) {
+    if (e.test || e.lang === 'def') continue;
+    const k = `${normLang(e.lang)}\0${path.posix.basename(e.path).replace(/\.[^.]+$/, '')}`;
+    if (!sources.has(k)) sources.set(k, []);
+    sources.get(k).push(e);
+  }
+  const credited = new Set();
+  for (const t of entries.filter((x) => x.test)) {
+    const tDir = path.posix.dirname(t.path);
+    const lang = normLang(t.lang);
+    const placed = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
+      .map((s) => ({ s, d: testPlacedFor(tDir, path.posix.dirname(s.path), lang) })).filter((x) => x.d >= 0);
+    const closest = Math.min(...placed.map((x) => x.d));
+    let hits = placed.filter((x) => x.d === closest).map((x) => x.s);
+    const narrow = (keep) => { const n = hits.filter(keep); if (n.length) hits = n; };
+    if (hits.length > 1) narrow((s) => path.posix.dirname(s.path) === tDir);
+    if (hits.length > 1) narrow((s) => extOf(path.posix.basename(s.path)) === extOf(path.posix.basename(t.path)));
+    if (hits.length === 1) credited.add(hits[0].path);
+  }
+  return credited;
 }
 
 // Path-like tokens of a text and their suffixes at `/` boundaries: what `mentions` keys match.
@@ -179,12 +241,23 @@ function mentionTokens(text) {
 
 // ---------------------------------------------------------------- measure: import graph
 
-function pyModuleIndex(pyFiles) {
+// Import roots: the repository root plus the parent of every top-level package (a dir with an
+// __init__.py whose parent has none). `pkgs` holds the directories of the full listing's
+// __init__.py files, so a focus inside a package still sees the package above it. A module is
+// indexed only under the dotted name its path has below an import root — `import json` never hits
+// `app/utils/json.py`.
+function pyModuleIndex(pyFiles, pkgs) {
+  const roots = new Set(['']);
+  for (const d of pkgs) {
+    const parent = path.posix.dirname(d);
+    if (d !== '.' && !pkgs.has(parent)) roots.add(parent === '.' ? '' : parent);
+  }
   const index = new Map();
   for (const f of pyFiles) {
     const parts = f.replace(/\.py$/, '').split('/');
     if (parts[parts.length - 1] === '__init__') parts.pop();
     for (let i = 0; i < parts.length; i++) {
+      if (!roots.has(parts.slice(0, i).join('/'))) continue;
       const name = parts.slice(i).join('.');
       if (!index.has(name)) index.set(name, new Set());
       index.get(name).add(f);
@@ -193,18 +266,24 @@ function pyModuleIndex(pyFiles) {
   return index;
 }
 
-function pyImports(rel, text, index, fileSet) {
+// `pkgDirs`: the directories holding an __init__.py. A file outside a package is a script, and Python
+// puts a script's own directory first on sys.path — so an absolute name is looked up beside it before
+// the import roots (`import helper` in tools/run.py → tools/helper.py, even with a root helper.py).
+function pyImports(rel, text, index, fileSet, pkgDirs) {
   const targets = new Set();
   let unresolved = 0;
   const exact = (name) => { const s = index.get(name); return s && s.size === 1 ? [...s][0] : null; };
-  const absolute = (name) => {
-    const parts = name.split('.');
-    for (let n = parts.length; n > 0; n--) { const hit = exact(parts.slice(0, n).join('.')); if (hit) return hit; }
-    return null;
-  };
   const relFile = (dir, parts) => {
     const p = parts ? path.posix.join(dir, parts.replace(/\./g, '/')) : dir;
     for (const c of [`${p}.py`, `${p}/__init__.py`]) if (fileSet.has(c.replace(/^\.\//, ''))) return c.replace(/^\.\//, '');
+    return null;
+  };
+  const scriptDir = pkgDirs.has(path.posix.dirname(rel)) ? null : path.posix.dirname(rel);
+  const beside = (name) => (scriptDir === null ? null : relFile(scriptDir, name));
+  const absolute = (name) => {
+    const parts = name.split('.');
+    for (let n = parts.length; n > 0; n--) { const hit = beside(parts.slice(0, n).join('.')); if (hit) return hit; }
+    for (let n = parts.length; n > 0; n--) { const hit = exact(parts.slice(0, n).join('.')); if (hit) return hit; }
     return null;
   };
   for (const line of text.split('\n')) {
@@ -224,7 +303,7 @@ function pyImports(rel, text, index, fileSet) {
       } else {
         const base = absolute(mod);
         if (base) hits.push(base);
-        for (const n of names) { const sub = exact(`${mod}.${n}`); if (sub) hits.push(sub); }
+        for (const n of names) { const sub = beside(`${mod}.${n}`) ?? exact(`${mod}.${n}`); if (sub) hits.push(sub); }
       }
       if (hits.length) hits.forEach((h) => targets.add(h)); else unresolved++;
       continue;
@@ -448,9 +527,9 @@ export async function measure(opts) {
   const focus = (opts.focus ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
   const R = focus === '.' ? '' : focus;
   const excludes = [...BUILTIN_EXCLUDES, ...(opts.exclude ?? [])].map(globToRegExp);
-  const candidates = [...new Set(listing.split('\0').filter(Boolean))].sort(cmp)
-    .filter((p) => !R || p === R || p.startsWith(R + '/'))
-    .filter((p) => !excludes.some((re) => re.test(p)));
+  const listed = [...new Set(listing.split('\0').filter(Boolean))].sort(cmp);
+  const inFocus = listed.filter((p) => !R || p === R || p.startsWith(R + '/'));
+  const candidates = inFocus.filter((p) => !excludes.some((re) => re.test(p)));
 
   const entries = [];
   let skipped = 0;
@@ -473,35 +552,24 @@ export async function measure(opts) {
     const lang = langOf(rel);
     entries.push({ path: rel, text, lang, lines: countLines(text), test: lang !== 'def' && isTestPath(rel) });
   }
+  if (R && entries.length === 0) usage(inFocus.length ? `--focus ${focus} matches no measurable file (all excluded, prose or binary)` : `--focus ${focus} matches no file`);
   const fileSet = new Set(entries.map((e) => e.path));
 
   // sizes, branches, sibling tests
-  const testStems = new Map(); // stem → [dir]
-  for (const e of entries.filter((x) => x.test)) {
-    const stem = testStem(path.posix.basename(e.path));
-    if (!testStems.has(stem)) testStems.set(stem, []);
-    testStems.get(stem).push(path.posix.dirname(e.path));
-  }
-  for (const e of entries) {
-    e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
-    const stem = path.posix.basename(e.path).replace(/\.[^.]+$/, '');
-    const dir = path.posix.dirname(e.path);
-    const ancestors = [];
-    for (let d = dir; ; d = path.posix.dirname(d)) { ancestors.push(d); if (d === '.') break; }
-    const homes = new Set([dir]);
-    for (const a of ancestors) for (const t of TEST_DIRS) if (t !== 'spec') homes.add(a === '.' ? t : `${a}/${t}`);
-    e.sibling_test = !e.test && (testStems.get(stem) ?? []).some((d) => homes.has(d));
-  }
+  for (const e of entries) e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
+  const credited = creditedSources(entries);
+  for (const e of entries) e.sibling_test = !e.test && credited.has(e.path);
 
   // import graph
   const fileEdges = new Map();
   const unresolved = {};
   const graphed = new Set();
-  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path));
+  const pyPkgs = new Set(listed.filter((p) => path.posix.basename(p) === '__init__.py').map((p) => path.posix.dirname(p)));
+  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), pyPkgs);
   for (const e of entries) {
     if (e.lang !== 'py' && e.lang !== 'js') continue;
     graphed.add(e.lang);
-    const { targets, unresolved: u } = e.lang === 'py' ? pyImports(e.path, e.text, pyIndex, fileSet) : jsImports(e.path, e.text, fileSet);
+    const { targets, unresolved: u } = e.lang === 'py' ? pyImports(e.path, e.text, pyIndex, fileSet, pyPkgs) : jsImports(e.path, e.text, fileSet);
     unresolved[e.lang] = (unresolved[e.lang] ?? 0) + u;
     fileEdges.set(e.path, targets);
   }
@@ -712,6 +780,11 @@ function uniqueIds(list, label) {
   return seen;
 }
 
+// ASSESSMENT.md §6: a `now` record must have been re-read by the main session or Codex.
+function noSweepOnlyNow(list) {
+  for (const r of list) if (r.tier === 'now' && r.verified_by === 'sweep-only') invalid(`records: ${r.id} is tier now but verified_by sweep-only (ASSESSMENT.md §6)`);
+}
+
 export function check(kind, file, opts = {}) {
   if (!['auditor', 'refutation', 'records'].includes(kind)) usage(`check wants auditor|refutation|records, got ${kind ?? 'nothing'}`);
   if (!file) usage(`check ${kind} needs a file`);
@@ -722,6 +795,7 @@ export function check(kind, file, opts = {}) {
     value = readJson(file);
     validOrFail('records', value, 'records');
     uniqueIds(value.records, 'records');
+    noSweepOnlyNow(value.records);
     line = `valid records records=${value.records.length}`;
   } else {
     value = extractJson(readText(file));
@@ -756,6 +830,7 @@ const roundHalf = (x) => Math.round(x * 2) / 2;
 export function score({ records, measure: m, assessed }) {
   validOrFail('records', records, 'records');
   uniqueIds(records.records, 'records');
+  noSweepOnlyNow(records.records);
   if (!Array.isArray(m?.areas) || !Array.isArray(m?.files) || !Array.isArray(m?.safety_flags)) invalid('measure: expected areas[], files[], safety_flags[]');
   const areaNames = m.areas.map((a) => a.name);
   const known = new Set(areaNames);

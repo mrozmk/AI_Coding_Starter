@@ -462,8 +462,14 @@ def git(root, *args):
 
 
 def blob(root, rev, rel):
+    """The file at rev, None when rev's tree lists no such path; Bad when it cannot be read."""
     rc, out = git(root, "show", "%s:%s" % (rev, rel))
-    return out.decode("utf-8") if rc == 0 else None
+    if rc == 0:
+        return out.decode("utf-8")
+    rc, listed = git(root, "ls-tree", rev, "--", rel)
+    if rc == 0 and not listed.strip():
+        return None
+    raise Bad("cannot read %s:%s" % (rev, rel))
 
 
 def render_base(root, rel, cur, qa_rev, base_sha, target_rev):
@@ -472,8 +478,34 @@ def render_base(root, rel, cur, qa_rev, base_sha, target_rev):
     if cur != blob(root, qa_rev, rel):
         return cur
     rc, _ = git(root, "diff", "--quiet", base_sha, target_rev, "--", rel)
+    if rc not in (0, 1):  # a diff that fails on a missing object must not read as "unchanged"
+        raise Bad("cannot compare %s..%s for %s" % (base_sha, target_rev, rel))
     t = blob(root, target_rev, rel) if rc == 1 else None
     return t if t is not None else cur
+
+
+RENDER_NAME = "standards-render.json"
+GIT_SHA = re.compile(r"[0-9a-f]{40}")
+
+
+def recorded_render_base(run_dir, run, qa_rev):
+    """The target_rev this round's writer already rendered on (runs/<run>/standards-render.json), or
+    None when there is no record or it is another round's (other qa_rev)."""
+    path = os.path.join(run_dir, RENDER_NAME)
+    if not os.path.exists(path):
+        return None
+    try:
+        rec = read_json(path)
+    except Bad as e:
+        raise Bad("standards render base unreadable: %s" % e)
+    if not isinstance(rec, dict) or rec.get("run") != run:
+        raise Bad("standards render base unreadable: %s names another run" % path)
+    for k in ("qa_rev", "target_rev"):
+        if not isinstance(rec.get(k), str) or not GIT_SHA.fullmatch(rec[k]):
+            raise Bad("standards render base unreadable: %s in %s is not a sha" % (k, path))
+    if not isinstance(rec.get("promotes"), bool):
+        raise Bad("standards render base unreadable: promotes in %s is not a boolean" % path)
+    return rec["target_rev"] if rec["qa_rev"] == qa_rev else None
 
 
 def verdict_item(verdict_path, vdoc, item_id):
@@ -486,13 +518,15 @@ def verdict_item(verdict_path, vdoc, item_id):
 
 
 def write_all(changes):
-    """Stage every changed file beside its destination, then replace them in order."""
+    """Stage every changed file beside its destination, then replace them in order (a new
+    destination keeps mkstemp's mode)."""
     temps = []
     try:
         for dest, content in changes:
             fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix="." + os.path.basename(dest) + ".")
             temps.append(tmp)
-            os.fchmod(fd, os.stat(dest).st_mode & 0o7777)
+            if os.path.exists(dest):
+                os.fchmod(fd, os.stat(dest).st_mode & 0o7777)
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
                 f.write(content)
         for (dest, _), tmp in zip(changes, temps):
@@ -525,6 +559,9 @@ def standards_add(root, item_id, verdict, target_rev):
     pat = safe_dest(root, PATTERNS) if "promotes" in item else None
     team = read_json(os.path.join(root, ".agents", "team", "team.json"))
     qa_rev, base_sha = sess.get("input_rev", ""), team.get("base_sha", "")
+    recorded = recorded_render_base(run_dir, sess["run"], qa_rev)
+    if recorded:
+        target_rev = recorded  # every call of this round renders on the base its first write used
     with open(std, encoding="utf-8", newline="") as f:
         std_cur = f.read()
     new_std, what, cs, already = render(render_base(root, STD, std_cur, qa_rev, base_sha, target_rev), item)
@@ -536,6 +573,10 @@ def standards_add(root, item_id, verdict, target_rev):
         new_pat = promote(render_base(root, PATTERNS, pat_cur, qa_rev, base_sha, target_rev), item, cs)
         if new_pat != pat_cur:
             changes.append((pat, new_pat))
+    if changes and not recorded:  # recorded before any destination is replaced
+        record = {"run": sess["run"], "qa_rev": qa_rev, "item": item_id,
+                  "target_rev": target_rev, "promotes": "promotes" in item}
+        write_all([(os.path.join(run_dir, RENDER_NAME), json.dumps(record) + "\n")])
     write_all(changes)
     if already and not changes:
         return "already applied %s" % what

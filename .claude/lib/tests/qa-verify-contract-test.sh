@@ -342,6 +342,31 @@ verified in the run of group <group id>
 F<n> is charged here — verify it in a group run with <keys>
 <KEY>:<ac_id>
 tracker none has no pool
+F<n>@<group id>
+<group id>-F<n>@<origin group id>.mjs
+the numbers of open rows whose origin group is this group are reserved
+One row per origin group and number
+conflicting copies of F<n>@<group id>
+**Each conflicting copy has its own id** `F<n>@<group id>~<KEY>`, `<KEY>` the ticket whose record the copy was read from
+`F1@A+B~A` and `F1@A+B~B`
+<group id>-F<n>@<origin group id>~<KEY>.mjs
+each copy listed by its own id `F<n>@<group id>~<KEY>`
+`F<n>@<group id>~<KEY>` (a conflicting copy)
+each conflicting copy's `F<n>@<group id>~<KEY>` — appears exactly once
+`F<n>@<group id>~<KEY> <change>`
+a conflicting copy: `F<n>@<group id>~<KEY>`) per charged feature-path `FAIL`
+A rechecked open row keeps its identity in the record
+F1@A+B
+a shared route or screen still makes the edge
+npm-shrinkwrap.json
+Package.resolved
+`DEFERRED → <KEY>` is offered only for a criterion row
+a feature-path row is never deferred
+shared-by-design paths
+bun.lockb
+CHANGELOG*
+.agents/memory/**
+.claude/lib/tests/team-suite.sh
 EOF
 )
 pins "$CMD" "pool" <<< "$POOL_PINS"
@@ -532,6 +557,14 @@ nothing later replaces it
 the intended human gate
 <!-- qa-script:begin -->
 <!-- qa-script:end -->
+LC_ALL=C git -C <ancestor> rev-parse --show-toplevel
+not a git repository (or any of the parent directories)
+not a git repository (or any parent up to mount point <dir>)
+cannot tell which repository owns <dir>
+a false assertion at a dispatched width tag
+script asserted <tags>, dispatched <tags>
+redirected to
+one that fails the same mount rule ends the row
 EOF
 BROWSER_PINS=$(cat "$WORK/browser-pins.txt")
 pins "$CMD" "browser" <<< "$BROWSER_PINS"
@@ -564,7 +597,7 @@ awk '/^<!-- qa-script:end -->$/{exit} f; /^<!-- qa-script:begin -->$/{f=1}' "$RO
 [ -s "$WORK/skel.mjs" ]; check $? "skeleton: the extracted block is empty"
 for want in 'newContext(' 'setDefaultTimeout(' 'setDefaultNavigationTimeout(' 'emit(124)' 'process.exit(code)' \
             'ariaSnapshot()' 'resp.status()' 'result.required.push(tag)' '${OUT}/${BASE}-${tag}.png' \
-            'not the mount target' 'searchParams' 'page.screenshot('; do
+            'not the mount target' 'searchParams' 'page.screenshot(' 'after load, not the mount target'; do
   grep -qF -- "$want" "$WORK/skel.mjs"; check $? "skeleton: lacks $want"
 done
 for neg in waitForTimeout launchPersistentContext userDataDir; do
@@ -584,10 +617,12 @@ else
   printf '{"name":"playwright","version":"1.50.0","main":"index.js"}\n' > "$S/node_modules/playwright/package.json"
   cat > "$S/node_modules/playwright/index.js" <<'EOF'
 let calls = 0;
+let waited = false;
 const loc = {
   waitFor() {
     if (process.env.STUB_HANG) return new Promise(() => {});
     calls += 1;
+    waited = true;
     if (process.env.STUB_TIMEOUT_AT && calls === Number(process.env.STUB_TIMEOUT_AT)) {
       const e = new Error('Timeout 10000ms exceeded'); e.name = 'TimeoutError'; return Promise.reject(e);
     }
@@ -599,7 +634,7 @@ const loc = {
 };
 const page = {
   goto: async () => ({ status: () => Number(process.env.STUB_STATUS || 200) }),
-  url: () => process.env.STUB_URL || 'http://localhost:3000/route',
+  url: () => (waited && process.env.STUB_URL_AFTER) || process.env.STUB_URL || 'http://localhost:3000/route',
   screenshot: async () => {},
   locator: () => loc,
 };
@@ -650,6 +685,12 @@ EOF
   check $? "skeleton stub: every value of a repeated key present failed the mount check"
   STUB_URL='http://localhost:3000/#/components/button' $NODE_RUN "$WORK/runH.mjs" > "$WORK/hash.json"
   check $? "skeleton stub: the right hash route failed the mount check"
+  STUB_URL_AFTER='http://localhost:3000/login' $NODE_RUN "$WORK/run.mjs" > "$WORK/late.json"; rc=$?
+  [ "$rc" -eq 1 ] && jq -e '.status == "error" and (.error | test("redirected to http://localhost:3000/login after load"))' "$WORK/late.json" >/dev/null 2>&1
+  check $? "skeleton stub: a redirect after load passed the mount check (rc $rc)"
+  STUB_URL_AFTER='http://localhost:3000/login' STUB_TIMEOUT_AT=1 $NODE_RUN "$WORK/run.mjs" > "$WORK/late-to.json"; rc=$?
+  [ "$rc" -eq 1 ] && jq -e '.status == "error" and (.error | test("redirected to http://localhost:3000/login after load"))' "$WORK/late-to.json" >/dev/null 2>&1
+  check $? "skeleton stub: a redirect during a timed-out wait reads as a timeout (rc $rc)"
 
   STUB_TIMEOUT_AT=2 $NODE_RUN "$WORK/run2.mjs" > "$WORK/widths.json"; rc=$?
   [ "$rc" -eq 0 ] && jq -e '.status == "done" and .required == ["w1024","w1440"]
