@@ -12,7 +12,7 @@ These are templates for the files that live **outside** the checkout, under `<ki
 ```bash
 ! bash .claude/team/sessions/operator-kit/install.sh --dry-run                # what would change
 ! bash .claude/team/sessions/operator-kit/install.sh --apply                  # backups, copy/render
-! bash .claude/team/sessions/operator-kit/install.sh --verify                 # live == templates (the role preflight runs this once P5 adds it)
+! bash .claude/team/sessions/operator-kit/install.sh --verify                 # live == templates (the role preflight runs this when `teams.channel` is declared)
 ! bash .claude/team/sessions/operator-kit/install.sh --rollback               # restore, delete backups
 ! bash .claude/team/sessions/operator-kit/install.sh --print-scheduler launchd   # or: cron — install the printed entry yourself
 ```

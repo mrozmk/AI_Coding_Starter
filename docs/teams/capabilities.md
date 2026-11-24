@@ -16,7 +16,7 @@ live acceptance line.
 
 - Verified host: `to verify` (filled from E01: macOS · Claude Code · Codex CLI · `/bin/bash` · Python · tmux · jq)
 - Linux: **unsupported today** — the BSD `stat -f` sites break the daemon and the runner; ported and verified only under follow-up F12 (also flock, ps formats, SIGALRM, the messaging socket, cron/systemd for the health check). The stdlib-only agent-mail tool passed its unittest on Ubuntu 24.04 ([p9a evidence](evidence/p9a-walkthrough-2026-11-05.md#linux-colima-vm-ubuntu-24044-kernel-68-python-3123))
-- Other Claude Code versions: `to verify` — the messaging socket is an observed interface (preflight row 10)
+- Other Claude Code versions: `to verify` — the messaging socket is an observed interface (the preflight's Claude Code row)
 
 ## Capabilities
 

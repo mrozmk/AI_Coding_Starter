@@ -39,11 +39,18 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    `build_check`, `test_gate`, `gates` and `env_file_required`, plus `github.repo` when the
    tracker or the PR provider is `github`; the rest is optional. Formats that are easy to get wrong: `build_check` is one shell command (a string),
    `test_gate` is a script path or `none`, `env_file_required` is `true|false`, and
-   `required_tools`, `branch_types` and `seed_files` are arrays (the first two non-empty). Add `teams.channel` (`project_code`,
-   `mail_suffix`, optional `tmux_prefix`, `advisor: pair|solo`). Notifications are configured per machine in `~/.agent-comms/notify.json`, not here.
+   `required_tools`, `branch_types` and `seed_files` are arrays (the first two non-empty). Only for the optional agent-mail kit
+   (cross-machine mail): add `teams.channel` (`project_code`, `mail_suffix`, optional `tmux_prefix`,
+   `advisor: pair|solo`). Without mail, leave the example's `channel` block out (or set it to
+   `null`). Notifications are configured per machine in `~/.agent-comms/notify.json`, not here.
 3. **Codex home:** `mkdir -p ~/.codex-<project>` first, then one value line in
    `.claude/codex-profile` (`~/.codex-<project>` is fine). The directory must exist: `/setup:teams`
    (Step 5b) and the runner resolve it and refuse a missing one.
+
+Steps 4–7 are the agent-mail path — only with `teams.channel`, as `/setup:teams` Step 5c offers
+(Skip is its recommendation). Once on it, steps 4–6 are all required: preflight's `operator kit
+installed` row FAILs without a verified kit.
+
 4. **Channel:** `bash .claude/lib/team-mail-setup.sh "$PWD" --dry-run`, then the same without
    `--dry-run` (variants: `--key <KEY>` to reuse an existing box, `--add-roles` to add the role
    names an existing entry lacks). The dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
@@ -61,7 +68,9 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
 8. **Before the first start:** `bash .claude/lib/supervisor-sessions.sh check` prints `<role> OK`
    for the Supervisor and the TeamLead. A `<role> LEAK: …` line (exit 3) means `settings.local.json`
    allows something the role profile must not; remove it, or `/roles` (`up`, `here`) launches nothing.
-   `bash .claude/lib/supervisor-sessions.sh preflight` prints six rows; every row should be `ok`.
+   `bash .claude/lib/supervisor-sessions.sh preflight` prints six rows; every row should be `ok`
+   (without `teams.channel` the first two read `team channel: not configured` and
+   `operator kit: not in use`).
    The Claude Code row prints `unverified: check the doorbell (session-host.sh send) by hand` on
    any version other than the one the socket wire format was verified on.
 9. **First bring-up:** `/roles` (`bash .claude/lib/roles.sh`) starts the role sessions of

@@ -3,6 +3,25 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## Preflight judges the channel only when it is declared (#181)
+
+**Before:** `supervisor-sessions.sh preflight` always ran the team-channel loader and
+`operator-kit/install.sh --verify`, so a `/roles` checkout without `teams.channel` printed
+`FAIL team channel loads` and `FAIL operator kit installed` and exited 1; a channel value that
+failed the names check (a string, an array) made it exit 3 before printing any row.
+
+**Now:** without `teams.channel` (absent or `null`) the two rows read
+`ok team channel: not configured (no teams.channel)` and `ok operator kit: not in use (no teams.channel)`,
+and preflight exits 0 when the other four rows are green. A `teams.channel` object is judged as
+before (the loader, then `install.sh --verify`). A value that is neither an object nor `null`
+is `FAIL team channel loads — teams.channel is not an object`, with all six rows printed. An
+object whose names do not validate (e.g. a bad `tmux_prefix`) used to stop preflight with exit 3
+and no rows; it is now the loader's error in the `team channel loads` row, six rows, exit 1.
+Every other `supervisor-sessions.sh` verb keeps refusing invalid channel names (exit 3).
+
+**Action:** none for a healthy setup. A script that read preflight's exit 3 as "invalid channel
+names" reads exit 1 and the `FAIL team channel loads` row instead.
+
 ## The team-watch daemon is removed (#286)
 
 **Before:** the team-watch daemon (`team-watch.sh` loops and its watchdog in the tmux sessions
