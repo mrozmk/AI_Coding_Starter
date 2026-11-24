@@ -372,8 +372,9 @@ your part of it `team-lead.md` §11.
    - acceptance, changed → name each listed id (and `description`, when it changed) under
      `## Ordered vs delivered` with how it is handled, or `rework`, or a decision;
    - uncertain (an empty Jira MCP list always is) → a decision bound to **the read**, not to a
-     record: `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source .agents/team/runs/{{RUN}}/<the read> --question "Tracker read uncertain (<the line>) — accept it?" --options "approve|close" --recommend <one>`
-     (plan: add `--gate plan`; when an earlier read of this gate listed new or edited ids that this
+     record: `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source .agents/team/runs/{{RUN}}/<the read> --question "Tracker read uncertain at the <plan|acceptance> gate (<the line>) — approve accepts the read and <approves the plan|accepts the delivery>; close ends the run?" --options "approve|close" --recommend <one>`
+     (plan: add `--gate plan`; the dialog describes `approve` as "approve the plan" at both gates,
+     so the question names the gate and what `approve` does; when an earlier read of this gate listed new or edited ids that this
      read no longer shows, name them in the question — the gate judges only the read it compares).
      Do not read again while it is pending: a re-read needs a new decision. Raise and record it as
      in **Human decisions**; the outcome must be `approve` or `close` — the dialog's label via
@@ -385,17 +386,7 @@ your part of it `team-lead.md` §11.
      `close` → `bash .claude/lib/team-verdict.sh decision close --for <the acked record> --decision d-<n> --message "<line>"`
      (`--message` is mandatory). A listed new/edited id or a changed description is handled as a
      change even when the read is uncertain; at the plan gate the revise tells the planner to renew
-     the snapshot only from a complete read. **Older-base clone** (this prompt comes from the main
-     checkout, the gate from the clone's base): before relying on `--decision`, check the clone's
-     gate: `grep -q trk_decision .claude/lib/team-tracker-gate.sh`. No match → the clone predates
-     #297 and its gate refuses every uncertain read, with or without a decision. Recover with what
-     that base has: when the ticket truly has no comments (an unclaimed run), ask the Operator (in
-     the decision) to add a comment to the ticket — the next read then holds ≥1 comment and is
-     complete below the limit, and the comment is handled as a change (plan: revise, the planner
-     marks it informational; acceptance: name it under `## Ordered vs delivered`); in a claimed run
-     the ticket already carries the claim comment, so an empty list is a failed comments read
-     (tracker-comments.md §7) that another comment does not fix — read again once the comments API
-     answers; or, on an answered close, `decision close --for <the acked record> --decision d-<n> --message "<line>"`.
+     the snapshot only from a complete read.
 2. **A coder or qa `blocked` "new tracker input after plan: <ids>"**: read those comments (id,
    created, first sentence) and decide. Informational → answer the stop's ask with `--text`
    carrying `<id>@<sha>` (the `sha` from your fresh snapshot): acceptance reads it from

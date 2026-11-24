@@ -879,10 +879,7 @@ a run tracker other than `none`. With the switch off nothing below runs. The con
     answer with outcome `approve` or `close` (the dialog's label, or `--outcome approve|close` on a
     typed reply), and on `close` writes `team-verdict.sh decision close --for <the acked record>
     --decision d-<n> --message "<line>"` (tracker-comments.md §6). An empty MCP list is always
-    uncertain (tracker-comments.md §7). An older-base clone (no `trk_decision` in its
-    `team-tracker-gate.sh`) refuses every uncertain read; the recovery is a ticket comment from the
-    Operator when the ticket has none (a claimed run's empty list is a failed read: read again once
-    the comments API answers), or a decision close.
+    uncertain (tracker-comments.md §7).
 
   A passing check stores the comparator's line and the baseline (`<artifact>@<rev>`) in the
   verdict's `tracker` field. `revise`, `escalate`, `remode`, `rework` and the decision gate are
