@@ -55,7 +55,7 @@ for r in $(jq -r '.teams.sessions // {} | keys[]' "$root/.claude/project-profile
   [ "$lt" != "$(printf '%s' "$r" | tr '[:upper:]' '[:lower:]')" ] \
     || { TEAM_PROBLEMS+=("team name $team is a declared role"); break; }
 done
-case "$lt" in adhoc-*|team-watch|team-watch-dog|retro) TEAM_PROBLEMS+=("team name $team is reserved (adhoc-*, team-watch, retro)") ;; esac
+case "$lt" in adhoc-*|retro) TEAM_PROBLEMS+=("team name $team is reserved (adhoc-*, retro)") ;; esac
 ! lname="$(sh_name "$root" "$team-wrapup" 2>&1)" && TEAM_PROBLEMS+=("${lname#session-host: }") || true
 [ ! -e "$dir" ] || TEAM_PROBLEMS+=("$dir already exists — to start the next ticket there: team-next.sh")
 team_ticket_checks "$root" "$key" "$branch" "$base"

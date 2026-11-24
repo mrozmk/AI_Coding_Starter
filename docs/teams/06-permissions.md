@@ -77,7 +77,7 @@ Each class trusts the main checkout's `.git`, `CLAUDE.md` and the team's anchor 
 
 **Off until enabled.** A class is active only when the project's profile enables it
 (`teams.policy.classes.<name>.enabled: true`) **and** the Operator has not switched it off
-(`team-watch.sh mode class <name> off`, his words only). The switch can narrow an enabled class and
+(`classes.<name>: "off"` in `.agents/team/watch/state.json`, a hand edit on the Operator's word only). The switch can narrow an enabled class and
 can never widen one the profile does not enable. `team_prompt_classes.py switches <main>` shows
 each class as `on`, `off` or `disabled` (not enabled in the profile). `prod_diagnose` also needs its
 `dir` and `privileged`.
@@ -93,6 +93,6 @@ Project policy for the supervision model, in the committed `.claude/project-prof
 | `tickets` (`auto_label`, `path_labels`, `recommendation_line`, `new_epic_when_none_fits`) | labels and lines on tickets created from recommendations | no labels; the recommendation line is still written |
 | `closure` (`done_after_release_minutes_without_5xx`, `dry_run_max_days`, `on_hold_after_days`) | automatic ticket-closure rules | no automatic closure |
 
-Profile keys are snake_case (`merge_line`). The class names in `team-watch.sh mode class` and in the Operator's words stay hyphenated (`merge-line`).
+Profile keys are snake_case (`merge_line`). The class names in `state.json` and in the Operator's words stay hyphenated (`merge-line`).
 
 **Not policy.** The deny > ask > allow precedence, the human-only check, "a failure is never consent" and the Operator-action block are part of the engine, and no config changes them.

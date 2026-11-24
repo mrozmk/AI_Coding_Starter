@@ -10,9 +10,9 @@ socket is not a socket file of mode 0600 owned by this uid: on the verified CLI 
 enforced, so that file mode is the only boundary and a wider one is refused, never used.
 --check sends nothing: it prints the socket state (`ok 0600` · `missing` · `refused mode <mode>` ·
 `refused owner <uid>` · `refused not-a-socket`) and, for a refusal, the send's refusal line on
-stderr; exit 0 ok, 1 missing, 3 refused. tw_sock_state and the role preflight call it, so the
-status line, the preflight and the send share one predicate.
-Verified per CLI version: .agents/reference/team-watch.md → Wire format.
+stderr; exit 0 ok, 1 missing, 3 refused. The doorbell (session-host-lib.sh sh_send) calls it;
+--check prints the socket predicate the send applies.
+Wire format: .agents/reference/session-host.md → Socket wire format.
 """
 import json
 import math

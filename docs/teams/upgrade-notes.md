@@ -3,6 +3,36 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The team-watch daemon is removed (#286)
+
+**Before:** the team-watch daemon (`team-watch.sh` loops and its watchdog in the tmux sessions
+`<prefix>-team-watch` and `<prefix>-team-watch-dog`), its SessionStart hook `team-watch-session.sh`,
+the pause script `monitoring.sh` with `.claude/team/sessions/monitoring.json`, and the probe template
+`.claude/team/watch.local.json.tmpl` rendered by `team-channel.sh render` into
+`.agents/team/watch.local.json`. `/setup:teams` installed the Operator `ask` rules for
+`team-watch.sh routing|stop|register --takeover|mode answering|mode class` and an allow rule for
+`monitoring.sh`; `supervisor-sessions.sh preflight` printed the rows `receivers live`,
+`team-watch loops beating` and `mail probe and picked ping per role`.
+
+**Now:** role messages are inbox files rung by the session-host doorbell. `team-watch-send.py`
+stays — it is the doorbell's socket sender. `preflight` prints six rows (channel, kit, profiles,
+notifications, health check, Claude Code). The class runtime switch is a hand edit:
+`classes.<name>: "off"` in `.agents/team/watch/state.json`, keyed by the hyphenated class name
+(`{"classes": {"merge-line": "off"}}`, not `merge_line`). `team-channel.sh` has no `render`
+verb, and `supervisor-sessions.sh rollback` only prints the Operator steps.
+
+**Action:**
+1. A running daemon: `bash .claude/lib/team-watch.sh stop` **before** syncing; kill a leftover
+   `<prefix>-team-watch` / `<prefix>-team-watch-dog` session by hand.
+2. Rerun `/setup:teams`: it removes the SessionStart hook, the six rules and every unchanged retired
+   file; a changed one is reported as a `conflict` — delete it by hand.
+3. An installed operator kit: `! bash .claude/team/sessions/operator-kit/install.sh --dry-run`,
+   then `--apply`, then `--verify` (its Stop hook no longer asks the daemon, and its health check
+   no longer expects the daemon's sessions).
+4. Optional: delete `.agents/team/watch.local.json` and the daemon state in `.agents/team/watch/`
+   (`events.jsonl`, `deliveries.jsonl`, `acks.jsonl`, `open.*`, `cursor.*`, `receivers/`, `beat`,
+   `dog.beat`) — keep `profiles/`, `sessions/`, `automerge/` and `state.json`.
+
 ## The roles' Herdr tab is named Supervisor
 
 **Before:** `/roles` put the shipped roles (Supervisor, Fable, Astra) into a Herdr tab named `Lead`.

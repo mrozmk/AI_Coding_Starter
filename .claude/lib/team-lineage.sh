@@ -69,7 +69,7 @@ started_of() {  # started_of <origin> → the follow-ups of that origin already 
 }
 
 # A mkdir lock with our pid; a dead holder's lock is reclaimed under <lock>.reclaim (the
-# tw_claim / roles_lock pattern), a live one is waited on for 10 s.
+# roles_lock pattern), a live one is waited on for 10 s.
 LOCK=""
 lock() {
   local l="$D/lineage.lock" n=0 p

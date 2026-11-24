@@ -73,7 +73,7 @@ one after it, each with its own consent.
     of the ticket ("why is 13 refused?") is not consent. You run the same command with `--text`
     quoting their words verbatim, the phrase included. The script finds that message in your
     session's transcript: a typed user message after the refusal, not a doorbell, runner,
-    team-watch or `<hc from=…>` line. It records `answered_via: supervisor-window <message uuid>`.
+    retired signal-daemon or `<hc from=…>` line. It records `answered_via: supervisor-window <message uuid>`.
     Your own words are never consent, and you never type the consent for them.
   - **Limit:** only those delivery forms are filtered. A message another session delivers in any
     other form that lands as a plain user line would count as typed.
@@ -122,4 +122,4 @@ After a crash or reboot `/roles` restores the standing roles, lists the interrup
 prints the ad-hoc resume lines. It does **not** restore: the conversation context of any role by
 default (`roles.sh resume <Role>` on request); open dialogs and half-delivered answers (the runner and
 the TeamLead re-derive them from the records); tmux scrollback; Codex conversations; sessions of other
-checkouts; Herdr placement of ad-hoc tabs; the retired wake loops, team-watch daemon and dashboard.
+checkouts; Herdr placement of ad-hoc tabs; the retired wake loops, signal daemon and dashboard.

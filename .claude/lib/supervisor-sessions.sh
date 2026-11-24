@@ -13,10 +13,13 @@ set -euo pipefail
 usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
-. "$LIB/team-watch-lib.sh"
+. "$LIB/team-lib.sh"
+. "$LIB/team-channel.sh"
 . "$LIB/roles-lib.sh"
-top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
-tw_init "$top" || exit 3
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
+team_channel_names "$root" \
+  || { echo "error: supervisor-sessions.sh needs a valid teams.channel block" >&2; exit 3; }
+PROFILES="$root/.agents/team/watch/profiles"
 cmd="$1"; shift
 [ ! -f "$root/.agents/team/team.json" ] \
   || { echo "error: team clone — run supervisor-sessions.sh from the main checkout" >&2; exit 1; }
@@ -26,6 +29,8 @@ KIT_SRC="$root/.claude/team/sessions/operator-kit"
 VERIFIED_CLI=2.1.318
 export ROLES_ROOT="$root"
 refuse() { echo "refused: $*" >&2; exit 1; }
+# tmp + mv in the target dir: a reader never sees a half-written file.
+ss_put() { cat > "$1.tmp.$$" && mv "$1.tmp.$$" "$1"; }
 
 # The machine half of the channel (kit dir, codex home, mail key) loads once, on demand; a
 # checkout without a configured channel still launches, without the kit's hooks.
@@ -44,19 +49,19 @@ kit_hooks_file() {  # → the installed kit's role-hooks.settings.json, or nothi
 # or merges those keys is not documented, and the deny floor must survive both. The profile's
 # named-read allow goes along with {{CLONES}} expanded: a `/path` rule in a --settings file anchors
 # at that file's directory, so the clones need an absolute `//` path, from the one clone resolver.
-# One profile per role: the template is teams.sessions.<Role>.settings (a team-watch receiver without one uses its
+# One profile per role: the template is teams.sessions.<Role>.settings (an undeclared Supervisor uses its
 # own name), and env.TEAM_SESSION_ROLE is the role, never the template's value. The kit
 # file gives only `.hooks.Stop`: a PreToolUse or PermissionRequest hook could approve a tool call,
 # and an old kit's Notification entry calls a removed hook, so nothing else is ever taken.
 materialize() {
-  local r="$1" d="$TW_DIR/profiles" loc="$root/.claude/settings.local.json" out kh=null c
+  local r="$1" d="$PROFILES" loc="$root/.claude/settings.local.json" out kh=null c
   local kf t=""
   [[ "$r" =~ ^[A-Z][A-Za-z0-9]{1,23}$ ]] || { echo "error: materialize: '$r' is not a role name" >&2; exit 2; }
   # A teams.sessions.TeamLead declaration would still resolve a template below.
   [ "$r" != TeamLead ] || { echo "error: materialize: the global TeamLead is retired — the per-run" \
     "lead's profile is team-lead.sh materialize" >&2; exit 2; }
   if roles_is_declared "$r"; then t="$(roles_cfg "$r" settings)" || exit 2; fi
-  [ -n "$t" ] || ! tw_role_ok "$r" || t="$r"
+  [ -n "$t" ] || [ "$r" != Supervisor ] || t="$r"
   [ -n "$t" ] || { echo "error: materialize: $r has no settings profile (teams.sessions.$r.settings)" >&2; exit 2; }
   c="$(team_clone_glob "$root")" || { echo "error: materialize $r needs the teams profile" >&2
     exit 2; }
@@ -78,14 +83,9 @@ materialize() {
       + (if .[0].hooks then {hooks: .[0].hooks} else {} end)
       + (if $kh then {hooks: $kh} else {} end)' \
       "$root/.claude/team/sessions/$t.settings.json" "$root/.claude/settings.json" "$loc" \
-      | tw_put "$out" )
+      | ss_put "$out" )
   jq -r --arg r "$r" '"profile \($r): \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
-}
-
-ss_running() { pgrep -f -- "^claude --name $1( |\$)" >/dev/null 2>&1; }
-role_running() {  # tmux session, or the Supervisor's `here` window
-  team_tmux_alive "$(tw_tmux_name "$1")" || ss_running "$1$TEAM_CHANNEL_SUFFIX"
 }
 
 freeze_line() {
@@ -99,7 +99,7 @@ freeze() {
     on) [ -n "${2:-}" ] || usage
       mkdir -p "$(dirname "$FREEZE")"
       jq -n --arg r "$2" --arg by "${TEAM_SESSION_ROLE:-operator}" --arg at "$(team_utc)" \
-        '{on: true, release: $r, by: $by, at: $at}' | tw_put "$FREEZE"
+        '{on: true, release: $r, by: $by, at: $at}' | ss_put "$FREEZE"
       freeze_line ;;
     off) rm -f "$FREEZE"; freeze_line ;;
     status) freeze_line ;;
@@ -122,15 +122,10 @@ reviewer() {
 }
 
 rollback() {
-  bash "$LIB/team-watch.sh" routing single Supervisor
-  bash "$LIB/team-watch.sh" mode answering on
   cat <<'EOF'
-Rollback: routing single Supervisor, answering on. Operator steps, in this order:
+Rollback: Operator steps, in this order:
   1. ! bash .claude/team/sessions/operator-kit/install.sh --rollback
   2. start a plain `claude` in the main checkout (no TEAM_SESSION_ROLE)
-  3. bash .claude/lib/team-watch.sh start   (in that window — it registers the Supervisor receiver and starts the loops; batches are handled per .agents/reference/team-watch.md § Supervisor)
-Ownership is complete only when `team-watch.sh status` shows `receiver Supervisor: … active`;
-until then the backlog waits on the Supervisor's cursor.
 EOF
 }
 
@@ -142,49 +137,6 @@ pf() {  # pf <row> <ok|warn|fail> [detail]
     warn) echo "WARN $1${3:+ — $3}" ;;
     *) echo "FAIL $1${3:+ — $3}"; PF_RC=1 ;;
   esac
-}
-
-# Row 1: every receiver live, its socket judged by team-watch-send.py --check (the send's own
-# predicate and wording). A socket of a role that is not started yet is a WARN, a refused one a FAIL.
-pf_receivers() {
-  local r f sock st why bad="" warn=""
-  for r in $TW_ROLES; do
-    f="$(tw_receiver_file "$r")"
-    sock="$(jq -r 'select(.active == true) | .socket // ""' "$f" 2>/dev/null || true)"
-    if [ -z "$sock" ]; then
-      if role_running "$r"; then bad="$bad; $r not registered"; else warn="$warn; $r not started"; fi
-      continue
-    fi
-    why=""; st=0
-    why="$(python3 -I "$LIB/team-watch-send.py" --check "$sock" 2>&1 >/dev/null)" || st=$?
-    case "$st" in
-      0) tw_live "$r" || bad="$bad; $r not live (pid gone)" ;;
-      1) if role_running "$r"; then bad="$bad; $r socket $sock missing"
-         else warn="$warn; $r not started (socket missing)"; fi ;;
-      *) bad="$bad; ${why#team-watch-send: }" ;;
-    esac
-  done
-  if [ -n "$bad" ]; then pf "receivers live" fail "${bad#; }${warn:+; $warn}"
-  elif [ -n "$warn" ]; then pf "receivers live" warn "${warn#; }"
-  else pf "receivers live" ok; fi
-}
-
-pf_mail() {  # a mail probe per role in watch.local.json, and a picked ping per role
-  local cfg="$root/.agents/team/watch.local.json" r miss="" unpicked="" why=""
-  touch "$TW_DIR/events.jsonl" "$TW_DIR/deliveries.jsonl" "$TW_DIR/acks.jsonl"
-  for r in $TW_ROLES; do
-    [ -n "$(jq -r --arg r "$r" '.mail[$r] // ""' "$cfg" 2>/dev/null)" ] || miss="$miss $r"
-    jq -en --arg r "$r" --slurpfile e "$TW_DIR/events.jsonl" \
-      --slurpfile d "$TW_DIR/deliveries.jsonl" --slurpfile a "$TW_DIR/acks.jsonl" '
-      [$e[] | select(.to == $r and (.text | startswith("PING \($r) "))) | .seq] as $p
-      | [$d[] | select(.to == $r and any(.seqs[]; . as $s | $p | index($s))) | .batch] as $b
-      | any($a[]; .to == $r and .state == "picked" and (.batch as $x | $b | index($x)))' \
-      >/dev/null 2>&1 || unpicked="$unpicked $r"
-  done
-  [ -z "$miss" ] || why="missing .mail in watch.local.json for$miss"
-  [ -z "$unpicked" ] || why="${why:+$why; }run team-watch.sh ping <role> and ack it in:$unpicked"
-  if [ -z "$why" ]; then pf "mail probe and picked ping per role" ok
-  else pf "mail probe and picked ping per role" fail "$why"; fi
 }
 
 pf_channel() {
@@ -241,12 +193,12 @@ pf_cli() {  # the messaging socket is an observed interface, verified per CLI ve
   if [ "$v" = "$VERIFIED_CLI" ]; then
     row="Claude Code $v — socket wire format verified on $VERIFIED_CLI"
   else
-    row="Claude Code ${v:-unknown} — unverified: run team-watch.sh ping <role>"
+    row="Claude Code ${v:-unknown} — unverified: check the doorbell (session-host.sh send) by hand"
   fi
   case " ${TEAM_SESSIONS_CLAUDE_FLAGS:-} " in
     *bypassPermissions*)
       if ! jq -e '.crossSessionInbound == "accept"' "$cfg" >/dev/null 2>&1; then
-        pf "$row" fail "bypassPermissions sessions drop team-watch messages; Operator action: add \"crossSessionInbound\": \"accept\" to $cfg"
+        pf "$row" fail "bypassPermissions sessions drop doorbell messages; Operator action: add \"crossSessionInbound\": \"accept\" to $cfg"
         return 0
       fi ;;
   esac
@@ -255,10 +207,6 @@ pf_cli() {  # the messaging socket is an observed interface, verified per CLI ve
 
 preflight() {
   PF_RC=0
-  pf_receivers
-  if tw_loops_ok; then pf "team-watch loops beating" ok
-  else pf "team-watch loops beating" fail "beat or dog.beat stale — bash .claude/lib/team-watch.sh start"; fi
-  pf_mail
   pf_channel
   pf_kit
   pf_profiles

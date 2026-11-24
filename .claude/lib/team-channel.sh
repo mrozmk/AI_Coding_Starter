@@ -11,7 +11,7 @@
 #   channel is not configured or does not validate (under `set -e` the caller exits 3). Values are
 #   read with `jq -r` only; neither file is ever `eval`ed.
 #   team_channel_names [root] reads only the committed half (CODE may be empty, the rest as below)
-#   and never needs a channel: team-watch takes its tmux names from it. The channel notifies
+#   and never needs a channel. The channel notifies
 #   nobody (the Operator is reached only through notify.sh); a leftover `notifier` key is ignored.
 # Executed: bash .claude/lib/team-channel.sh <sub> [args]   (from inside the checkout)
 #   show                    every exported variable, one NAME=value per line
@@ -22,7 +22,6 @@
 #                           through team-mail.sh; args go to `send` (--body/--body-file, --thread…);
 #                           `--kind info` makes it an info mail instead: no --awaiting, wakes nobody;
 #                           any other --kind exits 2
-#   render [--dry-run]      .agents/team/watch.local.json from .claude/team/watch.local.json.tmpl
 # Exports (team_channel_load):
 #   TEAM_CHANNEL_ROOT        the checkout the config was read from
 #   TEAM_CHANNEL_CODE        teams.channel.project_code (required)
@@ -197,55 +196,9 @@ team_tool_hash() {  # team_tool_hash <dir> → <12 hex>
     | shasum -a 256 | cut -c1-12
 }
 
-# ---- render: the generated local configs ---------------------------------------------------------
-# A path spliced into a shell command inside JSON must survive both: a conservative character set, minus the quote.
+# A path spliced into a generated hook command (the operator kit's install.sh) must survive JSON
+# and the shell: a conservative character set, minus the quote.
 TEAM_CHANNEL_SAFE='^/[A-Za-z0-9_./~@%+=:, -]*$'
-TEAM_CHANNEL_MARK="by team-channel.sh render"
-
-team_channel_render_one() {  # <template> <dest rel> <dry> [jq filter applied after the fill]
-  local tmpl="$1" rel="$2" dry="$3" post="${4:-.}" dest out cur tmp
-  dest="$TEAM_CHANNEL_ROOT/$rel"
-  out="$(jq --arg lib "$TEAM_CHANNEL_LIB" --arg key "$TEAM_CHANNEL_KEY" --arg kit "$TEAM_CHANNEL_KIT" \
-    --arg sup "$TEAM_CHANNEL_SUPERVISOR" --arg tl "$TEAM_CHANNEL_TEAMLEAD" \
-    --arg adv "$TEAM_CHANNEL_ADVISOR_NAME" --arg rev "$TEAM_CHANNEL_REVIEWER" '
-    walk(if type == "string" then
-      gsub("\\{\\{LIB\\}\\}"; $lib) | gsub("\\{\\{KEY\\}\\}"; $key) | gsub("\\{\\{KIT_DIR\\}\\}"; $kit)
-      | gsub("\\{\\{SUPERVISOR\\}\\}"; $sup) | gsub("\\{\\{TEAMLEAD\\}\\}"; $tl)
-      | gsub("\\{\\{ADVISOR\\}\\}"; $adv) | gsub("\\{\\{REVIEWER\\}\\}"; $rev)
-    else . end) | '"$post" "$tmpl")" || { echo "error: team channel: cannot render $tmpl" >&2; return 3; }
-  if printf '%s' "$out" | grep -q '{{'; then
-    echo "error: team channel: $tmpl has an unknown placeholder" >&2; return 3
-  fi
-  if [ -f "$dest" ]; then
-    cur="$(jq -S . "$dest" 2>/dev/null || true)"
-    if [ "$cur" = "$(printf '%s' "$out" | jq -S .)" ]; then
-      printf 'keep\t%s\t%s\n' "$rel" "identical to the template"; return 0
-    fi
-    # Only a file this renderer wrote is replaced; a hand-written one stays for the Operator.
-    case "$(jq -r '._generated // empty | strings' "$dest" 2>/dev/null || true)" in
-      "$TEAM_CHANNEL_MARK"*) ;;
-      *) printf 'keep\t%s\t%s\n' "$rel" "hand-written — move it away to render it from the template"
-         return 0 ;;
-    esac
-    printf 'rewrite\t%s\t%s\n' "$rel" "from $(basename "$tmpl")"
-  else
-    printf 'write\t%s\t%s\n' "$rel" "from $(basename "$tmpl")"
-  fi
-  [ -z "$dry" ] || return 0
-  mkdir -p "$(dirname "$dest")"
-  tmp="$(mktemp "$(dirname "$dest")/.team-channel.XXXXXX")"
-  printf '%s\n' "$out" > "$tmp" && mv "$tmp" "$dest"
-}
-
-team_channel_render() {  # team_channel_render [--dry-run] — after team_channel_load
-  local dry="" t="$TEAM_CHANNEL_LIB/../team" v
-  [ "${1:-}" != --dry-run ] || dry=1
-  for v in "$TEAM_CHANNEL_LIB" "$TEAM_CHANNEL_KIT"; do
-    [[ "$v" =~ $TEAM_CHANNEL_SAFE ]] || {
-      echo "error: team channel: '$v' has characters a generated command cannot carry" >&2; return 3; }
-  done
-  team_channel_render_one "$t/watch.local.json.tmpl" .agents/team/watch.local.json "$dry" || return
-}
 
 TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -253,10 +206,10 @@ TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
-  usage() { sed -n '9,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+  usage() { sed -n '9,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
   [ $# -ge 1 ] || usage
   sub="$1"; shift
-  case "$sub" in show|get|name|turn|render) ;; *) usage ;; esac
+  case "$sub" in show|get|name|turn) ;; *) usage ;; esac
   team_channel_load || exit 3
   case "$sub" in
     show)
@@ -294,6 +247,5 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       done
       exec bash "$TEAM_CHANNEL_LIB/team-mail.sh" "$TEAM_CHANNEL_KEY" send --from "$from" --to "$to" \
         "${kind[@]}" ${rest[@]+"${rest[@]}"} ;;
-    render) [ $# -le 1 ] || usage; team_channel_render "$@" ;;
   esac
 fi

@@ -759,8 +759,8 @@ run "$MAIN" bash -c "$SL; sh_prefix '$F'"; expect 2 "teams.session_prefix=Pa mus
 echo "team-smoke-host: (38) cut and refusal OK"
 
 # ---- (39) names: role, team, helper, a helper that already carries the prefix --------------------------------
-run "$MAIN" bash -c "$SL; for a in Supervisor alfa-coder helper:retro-r1 helper:pa-team-watch; do sh_name '$A' \$a; done"
-[ "$(tr '\n' ' ' < "$WORK/out")" = "pa-supervisor pa-alfa-coder pa-retro-r1 pa-team-watch " ] || fail "(39) names"
+run "$MAIN" bash -c "$SL; for a in Supervisor alfa-coder helper:retro-r1 helper:pa-x; do sh_name '$A' \$a; done"
+[ "$(tr '\n' ' ' < "$WORK/out")" = "pa-supervisor pa-alfa-coder pa-retro-r1 pa-x " ] || fail "(39) names"
 echo "team-smoke-host: (39) names OK"
 
 # ---- (40) a name over 32 characters is refused with the computed name ----------------------------------------
@@ -808,12 +808,12 @@ expect 1 "pa-alfa-qa belongs to another checkout (/elsewhere); this one is $CL" 
 echo "team-smoke-host: (42) two fixture projects OK"
 
 # ---- (43) team-new.sh: a team named like a role, ad-hoc or too long is refused before any clone ---------------
-for t in supervisor fable adhoc-x team-watch abcdefghijklmnopqrstuvwxy; do
+for t in supervisor fable adhoc-x abcdefghijklmnopqrstuvwxy; do
   run "$MAIN" bash .claude/lib/team-new.sh "$t" AB-1 feature/AB-1-x origin/develop
   [ "$RC" != 0 ] || fail "(43) team $t accepted"
 done
 run "$MAIN" bash .claude/lib/team-new.sh supervisor AB-1 feature/AB-1-x origin/develop; has "team name supervisor is a declared role" "$WORK/out" || fail "(43) role message"
-run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/develop; has "is reserved (adhoc-*, team-watch, retro)" "$WORK/out" || fail "(43) reserved message"
+run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/develop; has "is reserved (adhoc-*, retro)" "$WORK/out" || fail "(43) reserved message"
 run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/AB-1-x origin/develop
 has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
 [ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"

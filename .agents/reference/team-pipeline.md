@@ -433,9 +433,8 @@ unfinished work — manually (`rm-in-project.sh` does not reach outside the repo
 
 `bash .claude/lib/team-snapshot.sh --out <file>` writes one read-only JSON picture of the whole
 harness (`schema: 1`): the supervisor session, every team's roles, this session's sub-agents, live
-Codex runs, an event log, and `attention[]` — what waits for a human. It never acts. Its readers
-today are the team-watch daemon (`team-watch-lib.sh`, which turns changes into signals) and
-`supervisor-sessions.sh` (interrupted runs after a restart). The snapshot lives where its caller
+Codex runs, an event log, and `attention[]` — what waits for a human. It never acts. Its reader
+today is `supervisor-sessions.sh` (interrupted runs after a restart). The snapshot lives where its caller
 puts it; nothing is written inside the repo.
 
 **Env knobs:**
@@ -540,9 +539,8 @@ project profile does a flagged or sampled final run get one detached, report-onl
 session `helper:retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
 project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
-**Team supervision layer.** The durable signal daemon is [team-watch.md](team-watch.md): with its loops
-running, it pushes `[team-watch #<n>]` batches into the registered role sessions, and
-[team-watch.md § Supervisor](team-watch.md#supervisor) is the handling contract of those messages. The role
+**Team supervision layer.** A message reaches a role session as an inbox file rung by the
+session-host doorbell ([session-host.md](session-host.md) §12). The role
 sessions — launcher, profiles, preflight — are [supervisor-sessions.md](supervisor-sessions.md);
 the operator kit is a separate layer.
 

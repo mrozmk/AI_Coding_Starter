@@ -116,7 +116,6 @@ own .claude/lib/team-snapshot.sh
 own .claude/lib/team-tracker-render.sh
 own .claude/lib/team-validate.sh
 own .claude/lib/team-warn.sh
-own .claude/lib/team-watch.sh
 own .claude/lib/team_prompt_check.py
 own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
@@ -127,7 +126,6 @@ own .claude/team/sessions/operator-kit/sessions-health.sh
 own .claude/team/sessions/operator-kit/kit.conf.tmpl
 own .claude/team/sessions/operator-kit/hooks/mail-guard.sh
 own .claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl
-own .claude/team/watch.local.json.tmpl
 own .claude/team/manifest.txt
 own .claude/team/pr/azure-devops-body-get.md
 own .claude/team/pr/azure-devops-body-set.md
@@ -202,22 +200,9 @@ own .claude/lib/team-mail-setup.sh
 own .claude/lib/team-channel.sh
 own .agents/reference/agent-mail.md
 
-# --- team-watch daemon, routing, pause (re-sync at the source pin) -----------------------------------
-own .claude/lib/team-watch-lib.sh
-own .claude/lib/team-watch-route.sh
-own .claude/lib/team-watch-deliver.sh
-own .claude/lib/team-watch-inputs.sh
-own .claude/lib/team-watch-send.py
-own .claude/lib/team-watch-signals.jq
-own .claude/lib/team-watch-poll.sh
-own .claude/lib/monitoring.sh
-own .claude/hooks/team-watch-session.sh
-own .claude/team/sessions/monitoring.json
-own .agents/reference/team-watch.md
-# the source's alert-intake outbox is not ported (decision): no file may ship under its name
-!.claude/lib/team-watch-outbox.sh
-
 # --- role sessions: profiles, their check and the support script ------------------------------------
+# the doorbell's socket sender (session-host-lib.sh sh_send)
+own .claude/lib/team-watch-send.py
 own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
 own .claude/lib/team-lead.sh
@@ -299,3 +284,17 @@ retired .claude/team/sessions/TeamLead-run.settings.json 07aa0eb3cff00d17638f765
 
 # --- retired: the Herdr screen sender (the ask channel replaces the screen sender); all shipped blob ids ---
 retired .claude/lib/team-answer-herdr.sh 0af98d414aee3049099e3038b46273866ace092b fb132120617bf085bddfb74d7730078351106c24
+
+# --- retired: the team-watch daemon, its pause and probe template (#286); all shipped blob ids ---
+retired .claude/lib/team-watch.sh cd3a3604692fafa6654a42e631a1edd5d9c8bcb6 2e2dc544ade4384d7435018335f10dfcb3d780e3 60d18af71c25620c19fabaccb7eb5ba68d82e834 580027878f6797eaa9318a3efc2e1972714f5465 0049b3b921c5621af7ad04eaad1485c303bcf252 64a6c9720fe8629cc42d34780e0ac46544badec2 47dff8d3e94a2dc11afe74160c294dda340ec6cf 21df7923249a791ba952c2df601f3ee4225391e5 74dda61f874e7351426913285aae449c8c4318b9 d69e273a8136eac00328b0f7346a4b7f2ed26cd4 fabbd6a3d5eb616ee8f1afea941bf68dd8aa9ec1
+retired .claude/lib/team-watch-lib.sh bdc68dba804430e0c906b461f5799e2728ef803d 8f4ece30ed57aa6e2e3b90c14650de3daf9ef604 996b79f0850da9a90a5e36eaedd1e96c6a208a8c 1cdc7ca638bcb91d5cff223f7fdf8043a7ba4ff7 5ad158b5488e66ee6bc6389b5049870ec3025e7a 26414e51e30b3a9ad7eb57458d969d21af4f6a34 f0098731ad6909cab9beddde2b7a4b82573ee864 e4c4d98c8a6802fc04cc00875ba2c05633a8ae34 b8b90df5a95372961781f4548d59be3594b4b61f
+retired .claude/lib/team-watch-route.sh de3b50582bc755cc9505a86cd08e325e99ebd055 b5f3a26f3131b32212438b4e6b6b25288fa785d0 1d1bb8e85f7406ef2653f56e65cfc93202fdb888 b90910f2356775b3317a5b108a0a5488c5a6bd27 0c31a16197771cf3bdacac7a7801f8e9c6f1b752 3a21c4d28f9c14098bf501a10c24907c3f2c5d76 b66daa597374f42d5cadc6d853a09711ac45afbd bc69073b3000fa8ed07f7aa241bb59c0482b18b3 842313d7201ddddcc43512226a2b5ae0d47b4a2d
+retired .claude/lib/team-watch-deliver.sh 64842d9605341ba44ddaacc66e3ee75c178a182e c397d1797b720883f50c3143f7f33a737409b4bd abcd0b1fd01a3c076aedcbdf118922c150e7f541 8f08a8cc5519e0c484811805fe054e9f4b23b03e 2c33976003921e79db92fb44dbc8639e6042de6f dbb0c1a46d1b631c819b8c2ea6a773cc5b63c32f
+retired .claude/lib/team-watch-inputs.sh 3d7f54d56417367190676f1047a5bd31689c8aa4 ee88798d62f4c1a2432772c6578b72ba707eedbe
+retired .claude/lib/team-watch-signals.jq d3c93327be3c61bd36502bdc88406f52774f655e b6ef96502c963473907cc38f7e8e6aac156c5599 ef41d351f9a63c66c65cd1bb3733c1ddd24fe7ab 7681474d68c6f64ae706627398fa9a7739a2734a
+retired .claude/lib/team-watch-poll.sh 60d18af71c25620c19fabaccb7eb5ba68d82e834 a22f41ccb424fee2f2b33f7cbd52c6282f99fb32 a3867f059f643d8a9f9a661cd4aea9d450de371c 7636018531f0ee8cd5742c57322ce2eee3663252 fadd45c85c620535e780b208c1a0ae54d4ec6a56 8bca2d53614180af94682747497fd04ef99daef7 87b91bdf02464d6b4701fc23196d93dcf3d58d2e
+retired .claude/lib/monitoring.sh daf33dcfb07e45569ee7a49f2429795b91e9ab95 b14014fb89ff07dcdb32caa6cfa3daefc3da07a1 a3b10c734de7ca1aceeae16afbaefb8b7f6ad647 0d9ecd25567e9afb3dd46929be70afd0eb031b4a
+retired .claude/hooks/team-watch-session.sh e76d95518a30776b0139abb47aef03cd37a2405d
+retired .claude/team/sessions/monitoring.json 0cc4f8b3ade9ade55005ecad6b75b67ed07c944e d2f5eda164c2a8f7fac9e88d7ffbe62e13ddf2b2 eff9f64faef36e717f16b3f6ed61b18e97797e34
+retired .claude/team/watch.local.json.tmpl e346937ef4e475eaccad985208cea7b7b3ea865c 4cefa6c281e0a94132a8cf5a3afca1bf5027129d 3b8b397a401fd1702c222c0d406cf5fda288980b 6515f3eca9726530b4d1ec8efae9e918934cd64c
+retired .agents/reference/team-watch.md 08a77820b51c14e198a0e072fab749f6028a24f7 ad937b325401c977e08792d9eafbc997dc34b1f1 7607d696709ce4936beb937198996fd315a2686e 0fa8143a725389140e3f1d252efa729347364bc3 d9894b9e0269bf600273983d29f5407f56229388 19d0c0742eeba3789e91c110e5a6c72cb01c261d 5de5bfb7c5d6274ff51bfd0e1a83666d4f2266b1 25e458d2ef87032921e9d03131c77a2c8a56362d 847460e0364dff2b4a0e4275dd0d540b631d4646 2a3d6755139ed446a93e960e311eafc6dcdb347c

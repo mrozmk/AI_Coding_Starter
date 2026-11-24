@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
 # `own` files, reports `shared` files the project already owns, merges the team hook entries (among
-# them the question and memory guards, the attention hook and the team-watch SessionStart
-# re-registration — + the egress guard under `Bash` and `WebFetch` and
+# them the question and memory guards and the attention hook — + the egress guard under `Bash` and `WebFetch` and
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
 # `permissions.allow` / Operator `ask` rules into `settings.json`, the three trunk writers omitted
 # and removed under the profile's `workflow.team_merge: auto` (role sessions are refused them by
@@ -282,9 +281,6 @@ hook_merge V PreToolUse "$H/guard-team-verdict.sh\"" '["Bash"]' false Bash
 hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
-# team-watch: re-point a role's receiver after /clear or resume (inside the 5 s timeout). It exits at once outside a role session or a main checkout.
-hook_merge W SessionStart "$H/team-watch-session.sh\"" '["startup","resume","clear","compact"]' false '' \
-  '{"timeout":5}'
 
 # The egress and destructive-SQL guards are the team layer's, so they are registered here (one
 # opt-in step) rather than shipped in the template's shared settings. The runner's auto-mode
@@ -374,10 +370,11 @@ hook_retire() {
 # The session registry (roles, stages, ad-hoc sessions, and the per-run TeamLead's identity refresh
 # and socket registration, which teamlead-register.sh did before; the role contract line, which
 # session-role.sh did before) and the prompt-time inbox count; the role wake loop's Stop hook,
-# retired with the loop.
+# retired with the loop; the team-watch daemon's SessionStart re-registration, retired with it.
 hook_retire "$H/teamlead-register.sh\""
 hook_retire "$H/session-role.sh\""
 hook_retire "$H/monitoring-rearm.sh\""
+hook_retire "$H/team-watch-session.sh\""
 hook_merge L SessionStart "$H/session-registry.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
 hook_merge I UserPromptSubmit "$H/inbox-count.sh\"" '[]' false '' '{"timeout":3}'
@@ -401,7 +398,6 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
    "Bash(gh run view*)", "Bash(gh label list*)", "Bash(gh auth status*)",
    "Bash(bash .claude/lib/codex-bg.sh*)",
    "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
-   "Bash(bash .claude/lib/monitoring.sh*)",
    # The role-session support verbs; its Operator actions are on the ask list below.
    "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
    "Bash(bash .claude/lib/supervisor-sessions.sh preflight*)", "Bash(bash .claude/lib/supervisor-sessions.sh materialize*)",
@@ -429,20 +425,19 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
      "Bash(bash .claude/lib/team-mail-setup.sh*)",
      # The operator kit is installed outside the repo by the Operator only.
      "Bash(bash .claude/team/sessions/operator-kit/install.sh*)",
-     # team-watch verbs only the Operator may trigger: routing, stop, a takeover, the
-     # answering and class switches.
-     "Bash(bash .claude/lib/team-watch.sh routing*)", "Bash(bash .claude/lib/team-watch.sh stop*)",
-     "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
-     "Bash(bash .claude/lib/team-watch.sh mode answering*)",
-     "Bash(bash .claude/lib/team-watch.sh mode class*)",
      # the role-session Operator actions: clearing a freeze, the rollback, taking a window (here).
      "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
      "Bash(bash .claude/lib/roles.sh here *)"]) as $ask
-  # Rules this installer added for the launcher verbs step 9a removed, the retired role wake loop and the retired answer verb (exact strings only; a rule worded any other way stays).
+  # Rules this installer added for the launcher verbs step 9a removed, the retired role wake loop, the retired answer verb and the retired team-watch daemon (exact strings only; a rule worded any other way stays).
   | ((["status*", "start *", "stop *", "up*", "here *"]
      | map("Bash(bash .claude/lib/supervisor-sessions.sh " + . + ")"))
-     + ["Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)"]) as $gone
+     + ["Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
+        "Bash(bash .claude/lib/monitoring.sh*)",
+        "Bash(bash .claude/lib/team-watch.sh routing*)", "Bash(bash .claude/lib/team-watch.sh stop*)",
+        "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
+        "Bash(bash .claude/lib/team-watch.sh mode answering*)",
+        "Bash(bash .claude/lib/team-watch.sh mode class*)"]) as $gone
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) - $gone)
   | .permissions.ask = ((.permissions.ask // []) - $gone - (if $tm == "auto" then $merge else [] end))

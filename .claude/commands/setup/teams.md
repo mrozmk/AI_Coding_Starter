@@ -59,7 +59,7 @@ Binds the project to its agent-mail box through the machine registry `~/.agent-m
 1. Plan: `bash .claude/lib/team-mail-setup.sh <repo-root> --dry-run`; print it verbatim. The `mode` line says **reuse** (an entry whose `repo` is this checkout), **extend** (registry without such an entry) or **fresh** (no registry). A refusal (exit 1): show it and skip the step — never edit the registry by hand to get past it.
 2. **extend** while the registry already has entries: `AskUserQuestion` — "New box for this project (recommended)" or one option per existing key ("reuse `<KEY>` — `<repo>`"). A picked key: rerun the dry-run with `--key <KEY>`; it becomes **reuse**.
 3. Consent: `AskUserQuestion` Apply / Skip. **reuse** never creates a tool or a box and never rewrites the entry's `tool` (one tool per box) — say so. **extend** / **fresh** copy the vendored tool to `~/.agent-mail/tools/agent_mail-<hash>` (named by its content, so an uncommitted fresh install works and two projects with the same tool share one copy) (`create tool-copy`; `keep tool-copy` when an identical copy exists) and the entry points at that copy, never at the checkout. When the plan has an `offer roles` line, add the option "Apply and add the role names to the entry" (`--add-roles`).
-4. Apply: the same command without `--dry-run` (plus the chosen `--key` / `--add-roles`); print it verbatim. It registers the missing Claude roles with `--adapter monitor`, never overwrites a recipient, writes the gitignored `.agents/team/channel.local.json`, then renders `.agents/team/watch.local.json` from `.claude/team/watch.local.json.tmpl` (`team-channel.sh render`; a hand-written file is kept). A `warn render` line: show it — the channel is bound, the generated configs are not.
+4. Apply: the same command without `--dry-run` (plus the chosen `--key` / `--add-roles`); print it verbatim. It registers the missing Claude roles with `--adapter monitor`, never overwrites a recipient, writes the gitignored `.agents/team/channel.local.json`.
 5. Verify: `bash .claude/lib/team-mail.sh --here check` must print `OK` and `bash .claude/lib/team-channel.sh show` must exit 0; otherwise show it and STOP. A `tool behind checkout (<old> → <new>)` line is a warning, not a failure: show it with its command and say that the re-sync (`--resync-tool`) is the Operator's decision — never run it from this step.
 6. Hand the `reviewer:` block of the output to the user unchanged: the Reviewer registers itself from its Codex window (it needs its own thread UUID), then the Advisor restarts the `deliver` loop. With `advisor: solo` the block says there is no Reviewer.
 
@@ -85,13 +85,8 @@ For every `conflict (shared — merge by hand)` line give one instruction: which
 
 Status table, conflicts with instructions, the `alfa` clone path, the allow/ask permission note, the agent-mail kit (not installed, or the channel mode reuse/extend/fresh, key, box and the Reviewer step), and the reminder: **the profile must be committed and pushed to the trunk before the first `/start-team`** (clones read `origin/<trunk>`).
 Add one sentence: the Supervisor's local egress rules are listed in `.claude/settings.local.json.example` (read-only `gh` rules; the wider `gh` rules and the inline-Python opt-in as a commented choice); `/setup:teams` never writes `settings.local.json`.
-Then the next step, one of two:
-- **single window:** in the supervising window run `bash .claude/lib/team-watch.sh start` (one
-  daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the
-  receiver); routing stays `single Supervisor` and that window handles the pushed batches;
-- **role sessions:** `bash .claude/lib/supervisor-sessions.sh check`, then `/roles` (starts the
-  standing roles), `bash .claude/lib/supervisor-sessions.sh preflight` and the routing step in
-  `.agents/reference/supervisor-sessions.md` → Migration.
+Then the next step — role sessions: `bash .claude/lib/supervisor-sessions.sh check`, then `/roles`
+(starts the standing roles) and `bash .claude/lib/supervisor-sessions.sh preflight`.
 Optional, Herdr users only: print (never run) the Herdr notification mod's install line,
 `bash .claude/team/herdr-mod/install.sh --dry-run --dock <layout>` then without `--dry-run` (a
 layout of the user's, never Herdr's `main`; without `--dock` no strip is docked), and the switch
@@ -101,8 +96,8 @@ Optional, macOS: print (never run) the iMessage channel's steps — the user add
 (`enabled`, `recipient`, `quiet`) to the same file, then runs `bash .claude/team/notify-kit/install.sh
 --dry-run` and without it from the main checkout (the quiet-end flush job). README:
 `.claude/team/notify-kit/README.md`.
-The installer registered its SessionStart hooks (W `team-watch-session.sh`, L `session-registry.sh`); runbooks:
-`.agents/reference/team-watch.md`, `.agents/reference/supervisor-sessions.md`.
+The installer registered its SessionStart hook (L `session-registry.sh`); runbook:
+`.agents/reference/supervisor-sessions.md`.
 
 ## Re-run
 

@@ -166,9 +166,9 @@ EOF
 # ---- roles.lock: one /roles at a time ----------------------------------------------------------------
 # A mkdir lock holding `started` (the holder's `ps -o lstart=`) and then `pid`. A waiter reclaims it
 # when the holder is dead, when the pid now belongs to another process (start time differs), or
-# when no pid appeared within 2 s; a live holder is waited on. The reclaim is serialised as in
-# team-watch-lib.sh (tw_claim / tw_stale / tw_reclaim): two waiters that judged the same dead holder
-# would otherwise each rm + mkdir, the second removing the first one's fresh lock.
+# when no pid appeared within 2 s; a live holder is waited on. The reclaim is serialised: two
+# waiters that judged the same dead holder would otherwise each rm + mkdir, the second removing
+# the first one's fresh lock.
 roles_mtime() { file_mtime "$1" || echo 0; }
 roles_lstart() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
 

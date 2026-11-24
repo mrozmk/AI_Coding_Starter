@@ -4,8 +4,8 @@ These are templates for the files that live **outside** the checkout, under `<ki
 
 | Template | Live path | What it is |
 |---|---|---|
-| `sessions-health.sh` | `<kit_dir>/sessions-health.sh` | optional: records which role sessions or team-watch loops are down (a state file and one log line per outage), run by a scheduler; notifies nobody and never restarts anything |
-| `hooks/mail-guard.sh` | `<kit_dir>/hooks/mail-guard.sh` | the role Stop hook: no turn ends with unread `turn` mail or unacked team-watch batches |
+| `sessions-health.sh` | `<kit_dir>/sessions-health.sh` | optional: records which role sessions are down (a state file and one log line per outage), run by a scheduler; notifies nobody and never restarts anything |
+| `hooks/mail-guard.sh` | `<kit_dir>/hooks/mail-guard.sh` | the role Stop hook: no turn ends with unread `turn` mail |
 | `hooks/role-hooks.settings.json.tmpl` | `<kit_dir>/hooks/role-hooks.settings.json` | rendered: the `Stop` hook (mail guard) the role sessions take |
 | `kit.conf.tmpl` | `<kit_dir>/kit.conf` | rendered: names the out-of-repo health check needs (it cannot read the checkout) |
 

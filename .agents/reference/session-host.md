@@ -11,8 +11,8 @@ Verified on `hc 0.1.20` and `herdr-app 0.1.15`; Herdr for Windows: core 0.1.22 u
 `hc --skill` and `herdr-app commands` before you change the Herdr backend.
 
 This reference supersedes the launch parts of [supervisor-sessions.md](supervisor-sessions.md) (`up`,
-`here`) and [team-watch.md](team-watch.md) as the delivery mechanism. The rest of those two files
-still describes live code until the release that retires it.
+`here`); the rest of that file still describes live code. The doorbell (§12) is the only delivery
+path into a session; the socket it writes to is described in [Socket wire format](#socket-wire-format).
 
 ## 1. Purpose
 
@@ -146,7 +146,7 @@ Sourced callers use these; they are not CLI verbs.
 | `sh_pane_pid <main> <address>` | The foreground pane's pid (Herdr: the terminal's root program), for the TeamLead ownership probe |
 | `sh_inbox_session <main> <inbox address>` | The session an inbox write rings: a role → itself; a team → `<team>-lead` |
 | `sh_alive_addr`, `sh_read_addr` | `alive` / `read` with the record's backend, for the `team-lib.sh` wrappers |
-| `--host tmux` on `start` | Pins tmux (team-watch's helpers, until that daemon is retired) |
+| `--host tmux` on `start` | Pins tmux (no shipped caller) |
 
 ## 6. Locks
 
@@ -262,7 +262,9 @@ the inbox file; the line only wakes the session.
    `<address>.reg.json`) is passed to `team-watch-send.py`. The wire format is an auth line, then
    one user line; there is no ack. The socket must be a socket file of mode 0600 owned by this uid.
    That mode is the only trust boundary, so a wider one is refused, never used. This path is safe
-   against a person's draft and against dialogs.
+   against a person's draft and against dialogs. The doorbell returns success right after the
+   socket write: nothing acknowledges a pickup. A failed send falls through to step 3.
+   Details: [Socket wire format](#socket-wire-format).
 3. **The typed fallback, no registration:**
    - **tmux:** the line is typed only on a recognised idle, empty input, under the target lock.
      Otherwise skip (`10`).
@@ -340,3 +342,37 @@ Closed by the live check of 2026-11-15:
 - **Pane title:** Claude Code replaces the OSC 2 title with its own `Claude Code` at once; the
   address shows only at a startup dialog or after the exit (§2). The OSC 2 line stays: it is
   harmless.
+
+## Socket wire format
+
+The transport behind the doorbell's step 2 (§12), written by `team-watch-send.py`
+(`python3 -I .claude/lib/team-watch-send.py <registration.json>`, the message text on stdin).
+
+- The socket is `/tmp/cc-socks/<claude pid>.sock`, mode **0600**, owned by the user;
+  `CLAUDE_CODE_MESSAGING_SOCKET` / `_TOKEN` are in the session's tool environment (read with
+  `env | grep '^CLAUDE_CODE_MESSAGING_'`; BSD `printenv` takes one name). The registry record's
+  registration file carries both (`session-registry.sh` writes it).
+- Two lines, each JSON + `\n`: `{"type":"auth","token":"<t>"}` then
+  `{"type":"user","message":{"role":"user","content":"<text>"}}`, then the write side is shut down.
+  No session id field is ever sent: the receiver drops a message whose session id does not match.
+- **No ack exists.** Exit 0 of the sender means written, not read. The doorbell returns success right
+  after that write; a failed write (exit 1 on a socket error or the `TEAM_WATCH_SEND_SECS` deadline,
+  default 5 s) falls through to the typed fallback (§12 step 3).
+- **The 0600 file mode is the only boundary.** The sender checks the socket before every send and
+  refuses (exit 3, stderr `socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>`)
+  anything that is not a socket file of mode 0600 owned by the current uid; no byte is sent.
+  Delivered text stays untrusted data: the receiving CLI frames it as a peer message.
+- `--check <socket path>` sends nothing: it prints exactly one of `ok 0600` · `missing` ·
+  `refused mode <4-digit mode>` · `refused owner <uid>` · `refused not-a-socket` (exit 0 ok,
+  1 missing, 3 refused), the same predicate the send applies.
+
+**Verification record (history).** Verified on **Claude Code 2.1.318 (2026-11-05)**, macOS, on a
+private tmux server with a fixture `claude --model haiku` in a scratch repo, never a live session:
+right token → rc 0, shown as a user turn framed `Another Claude session sent a message: …`; a wrong
+32-char token, the token `x` and no auth line at all were all **delivered**; after `/clear` a
+SessionStart hook sees both variables, with the values unchanged. So on 2.1.318 the messaging token
+is not enforced: any same-uid process can inject. Socket push, the pid-from-basename lookup and the
+hook environment are **verified on 2.1.318 / macOS**; token rejection is **not verified / not
+enforced**; the `--permission-mode bypassPermissions` behaviour (`crossSessionInbound`) is **not
+verified**; any other CLI version is **to verify** — ring a role session with `session-host.sh send`
+and check that the line arrives (`supervisor-sessions.sh preflight` prints the version row).

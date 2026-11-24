@@ -32,7 +32,7 @@ project's box.
 | E05 | profiles | live-a, live-b | `supervisor-sessions.sh check` → `Supervisor OK`, `TeamLead OK` | pending |
 | E06 | preflight | live-a, live-b | every row ok (notifications off is an ok row), or the health check's declared-loss line | pending |
 | E07 | roles up | live-a | 3 tmux sessions `p9-supervisor|teamlead|advisor`, each `/session-role` shows its role | pending |
-| E08 | ping | live-a | `team-watch.sh ping` per role, `stats` → `picked` ≥ 1 each | pending |
+| E08 | doorbell | live-a | `session-host.sh send <Role> "<line>"` per role → the line arrives in each window | pending |
 | E09 | mail round-trip | live-a (pair, then solo) | TeamLead→Advisor and back delivered and processed; Reviewer only in pair | pending |
 | E10 | routing | live-a | `status` shows `routing: split`, receivers active | pending |
 | E11 | tier-1 menu exactly once | live-a | one `answer`; replaying the batch → `already answered` | pending |

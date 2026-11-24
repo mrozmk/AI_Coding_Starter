@@ -134,8 +134,8 @@ Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`,
 `id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body and an
 optional `--message` line. A team
 clone writes with `--main <teamlead.json main_root>`, never its own git root. A team address
-(`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. Team-watch carries no
-team signal, so a run's stops reach only its own lead.
+(`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. A run's stops
+reach only its own lead.
 
 **Sender rules.** To the Supervisor: a team sender (an anchor exists for `--from`) only the four
 events above; a declared role or an `adhoc-*` session also `message` and `advice`; any other
@@ -669,8 +669,8 @@ runs again.
   report header, tracker markers). Prompts get `{{RUN_DIR}}` (the round's dir), `{{ROUND}}` and
   `{{REWORK}}` (the order, or `none`). Readers resolve the dir through `team_run_ref` (merge-check,
   integrate, automerge, validation, `pending`, `diff`); the records digest and the audit include
-  every round. The `r<n>` directory never matches a record glob (`*-*-*.json`); team-watch and the
-  snapshot also read `r*/` and take the newest record by time, so a round-2 stop is seen.
+  every round. The `r<n>` directory never matches a record glob (`*-*-*.json`); the
+  snapshot also reads `r*/` and takes the newest record by time, so a round-2 stop is seen.
 - **Transition** (runner, on the rework verdict): the order file must exist and the PR state is read
   live (`pr_published`); the intent `round-transition` is written first, then the qa session is
   ended, `runs/<run>/r<n+1>/` created, `session.json`, `acked` and `verdict-acked` cleared, `round`
@@ -735,7 +735,7 @@ runs again.
     is the attempt's next free number: `team-record.sh` refuses a file a verdict already names, so a
     decided file is never rewritten. With nothing to propose it writes neither and goes on.
   - That record carries `proposals`, the mark that tells it apart from a block: no notes line,
-    `team-audit.sh` counts it under `records: proposals`, the team snapshot and `team-watch` show it
+    `team-audit.sh` counts it under `records: proposals`, the team snapshot shows it
     as the lead's (`proposals`), not as a blocked or failed stage, and no Operator case is opened.
     It still takes the ordinary stop path (`stop wrapup <a>` doorbell, `pending`, the paused clock).
   - The lead writes `runs/<run>/wrapup-decision-<n>.md`, one line per item:

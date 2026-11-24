@@ -87,14 +87,6 @@ box/tool no longer match the registry entry of `key` (stale: rerun the channel s
 | `team-channel.sh show` / `get <field>` | the exported values / one of them |
 | `team-channel.sh name <Role>` | `<Role><suffix>` for `Supervisor\|TeamLead\|Advisor\|Reviewer` |
 | `team-channel.sh turn <From> <To> [send args]` | a wake-up `--kind turn --awaiting <To><suffix>` through `team-mail.sh <key> send` |
-| `team-channel.sh render [--dry-run]` | the generated local configs below |
-
-**Generated, never typed.** `render` (run by the channel step after it writes
-`channel.local.json`) fills `.claude/team/watch.local.json.tmpl` into the gitignored
-`.agents/team/watch.local.json` (the team-watch probes — every probe calls `team-mail.sh <key>`,
-so the box and tool are resolved from the registry at run time and no path is written). A rendered file carries a `_generated` marker; a
-file without it is hand-written and is reported `keep … hand-written`, never replaced. A path the
-generated commands cannot carry (outside `[A-Za-z0-9_./~@%+=:, -]`) refuses the render.
 
 ## The client: `team-mail.sh`
 
@@ -239,7 +231,7 @@ deliveries that went `failed` come back with `requeue <id> --for Reviewer<suffix
 
 ## The operator kit
 
-The role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md). Nothing pushes mail into an idle Advisor (a `monitor`-adapter recipient without a team-watch receiver): it reads its mail by hand (`inbox --unread`) or with `wait --follow`. The Reviewer's `codex-queue` deliver loop is unchanged.
+The role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md). Nothing pushes mail into an idle Advisor (a `monitor`-adapter recipient): it reads its mail by hand (`inbox --unread`) or with `wait --follow`. The Reviewer's `codex-queue` deliver loop is unchanged.
 
 ## What the channel does not guarantee
 
@@ -254,7 +246,6 @@ Linux (`flock`, `ps` formats) is to verify.
 
 In the repository: the tool code, the client, the setup step, this document. Local and never
 committed: the box and its WAL files, `recipients.json` (session ids), `*.lock`, `deliver-*.log`,
-`decisions/`, `.agents/team/channel.local.json` and the rendered
-`.agents/team/watch.local.json`. The tool's own fallback box (no `--box`, no
+`decisions/` and `.agents/team/channel.local.json`. The tool's own fallback box (no `--box`, no
 `AGENT_MAIL_BOX`) is `<repo>/.agents/agent-mail/mail.sqlite` — ignored by `.gitignore`, and
 never used by the client.
