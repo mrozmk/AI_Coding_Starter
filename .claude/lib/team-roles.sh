@@ -7,8 +7,8 @@
 
 # Three layers, later wins: roles.json (the shipped default, travels with main), the project
 # profile's optional `teams.roles` (the project's own choice, committed), and the per-ticket
-# override. Overrides and the profile may name the clone's runnable roles plus cli, whose shipped
-# default is TEAM_CLI_MODEL/TEAM_CLI_EFFORT (team-modes.sh).
+# override. Overrides and the profile may name the clone's runnable roles plus cli, whose base is
+# the TeamLead's model/effort (the cli path is its session); for cli only the permission is merged.
 TEAM_CONFIG_ROLES='planner coder qa wrapup'
 TEAM_ROLE_VALUE_RE='^[A-Za-z0-9._:-]+(\[[a-z0-9]+\])?$'
 
@@ -42,13 +42,24 @@ team_roles_config_check() {  # <file> (or - for stdin) [known roles] → first p
 team_roles_override_check() { team_roles_config_check "$1"; }
 
 team_role_cfg() {  # team_role_cfg <roles.json> <override> <role> [profile] → merged JSON
-  local base='{}' ov='{}' pr='{}'
-  [ ! -f "$1" ] || base="$(jq -c --arg r "$3" '.[$r] // {}' "$1")" || return 1
+  local base='{}' ov='{}' pr='{}' tl='{}'
   [ ! -f "$2" ] || ov="$(jq -c --arg r "$3" '.[$r] // {}' "$2")" || return 1
   [ -z "${4:-}" ] || [ ! -f "$4" ] \
     || pr="$(jq -c --arg r "$3" '.teams.roles[$r] // {}' "$4")" || return 1
-  [ "$3" != cli ] || base="$(jq -cn --arg m "$TEAM_CLI_MODEL" --arg e "$TEAM_CLI_EFFORT" \
-    '{model: $m, effort: $e}')"
+  if [ "$3" = cli ]; then
+    # The TeamLead's model/effort: team-profile.sh's values once loaded (the runner), else the
+    # profile's teams.sessions.TeamLead (the dashboard loads no profile), else its defaults. Only
+    # the permission comes from teams.roles.cli and the override.
+    [ -z "${4:-}" ] || [ ! -f "$4" ] || tl="$(jq -c '.teams.sessions.TeamLead
+      | if type == "object" then . else {} end' "$4")" || return 1
+    jq -cn --arg m "${TEAM_LEAD_MODEL:-}" --arg e "${TEAM_LEAD_EFFORT:-}" --argjson t "$tl" \
+      --argjson p "$pr" --argjson o "$ov" '
+      {model: (if $m != "" then $m else (($t.model | strings) // "fable") end),
+       effort: (if $e != "" then $e else (($t.effort | strings) // "medium") end)}
+      + (($p + $o) | if .permission then {permission} else {} end)'
+    return
+  fi
+  [ ! -f "$1" ] || base="$(jq -c --arg r "$3" '.[$r] // {}' "$1")" || return 1
   jq -cn --argjson b "$base" --argjson p "$pr" --argjson o "$ov" '$b + $p + $o'
 }
 
@@ -68,6 +79,9 @@ team_roles_add_entry() {  # <override JSON> <role>=[<model>][/<effort>][/<permis
     case "$rest" in */*) perm="${rest#*/}" ;; esac ;;
   esac
   [ -n "$model$effort$perm" ] || { echo "'$e' sets none of model, effort, permission"; return 1; }
+  [ "$role" != cli ] || [ -z "$model$effort" ] || {
+    echo "the cli path is the TeamLead's session — set teams.sessions.TeamLead (only cli=//<auto|manual> is allowed)"
+    return 1; }
   jq -c --arg r "$role" --arg m "$model" --arg f "$effort" --arg p "$perm" \
     'if has($r) and (.[$r] | type) != "object" then .
     else .[$r] = ((.[$r] // {})
@@ -99,13 +113,6 @@ team_roles_permission() {  # <roles.json> <override> <role> [profile] → auto|m
   local cfg
   cfg="$(team_role_cfg "$1" "$2" "$3" "${4:-}")" || { echo "error: cannot read $1 or $2"; return 1; }
   jq -r '.permission // empty' <<<"$cfg"
-}
-
-team_roles_cli_permission() {  # <override> → its cli.permission or nothing; rc 1 when invalid
-  local msg
-  [ -f "$1" ] || return 0
-  msg="$(team_roles_override_check "$1")" || { echo "error: $msg in $1"; return 1; }
-  jq -r '.cli.permission // empty' "$1"
 }
 
 team_roles_status() {  # <override>
@@ -149,23 +156,26 @@ team_roles_write() {  # <team> <override> <role>=[<model>][/<effort>][/<permissi
 }
 
 # ---- launch configuration, used by team-run.sh launch() ----------------------------------------
-# These read team-run.sh globals: ROLES, ROLES_OVERRIDE, CLONE, root, TEAM_CLI_* and its die().
+# These read team-run.sh globals: ROLES, ROLES_OVERRIDE, CLONE, root, TEAM_CLI_PERMISSION,
+# TEAM_LEAD_* (team-profile.sh) and its die().
 
 role_flags() {
   local flags
   flags="$(team_roles_flags "$ROLES" "$ROLES_OVERRIDE" "$1" "$root/.claude/project-profile.json")" \
     || die 1 "$flags"
+  if [ "$1" = cli ] && { jq -e '.cli | (.model // .effort) != null' "$ROLES_OVERRIDE" \
+    || jq -e '.teams.roles.cli | (.model // .effort) != null' "$root/.claude/project-profile.json"; } \
+    >/dev/null 2>&1; then
+    echo "warn: cli model/effort override ignored — the cli path runs on the TeamLead's model" >&2
+  fi
   printf '%s' "$flags"
 }
 
 role_permission() {  # after role_flags, which validated the config files
   local perm
-  if [ "$1" = cli ]; then
-    perm="$(team_roles_cli_permission "$ROLES_OVERRIDE")" || die 1 "$perm"
-    printf '%s' "${perm:-$TEAM_CLI_PERMISSION}"; return 0
-  fi
   perm="$(team_roles_permission "$ROLES" "$ROLES_OVERRIDE" "$1" "$root/.claude/project-profile.json")" \
     || die 1 "$perm"
+  [ "$1" != cli ] || perm="${perm:-$TEAM_CLI_PERMISSION}"
   printf '%s' "$perm"
 }
 

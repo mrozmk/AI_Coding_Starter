@@ -10,7 +10,7 @@ smoke_team AB-792 feature/AB-792-next
 case_mark "retry after a failed /start-team roles o"
 cp "$TD/team.json" "$WORK/retry-team.json"
 RETRY_HEAD="$(git -C "$CLONE" rev-parse HEAD)"
-run "$MAIN" $TR alfa roles planner=claude-fable-5-1/high
+run "$MAIN" $TR alfa roles planner=claude-fable-5-2/high
 expect 0 "roles override:" "retry fixture initial roles"
 cp "$TD/roles.override.json" "$WORK/retry-roles.json"
 RUN_ID=alfa-retry-fixture
@@ -19,7 +19,7 @@ echo preserved > "$TD/runs/$RUN_ID/notes.md"
 run "$MAIN" $TR alfa roles 'planner=x;y'
 expect 1 "bad model" "start-team step 4a failure"
 for retry_branch in feature/AB-792-next feature/AB-792-retry; do
-  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-792 "$retry_branch" origin/develop
+  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-792 "$retry_branch" origin/develop brainstorm
   expect 1 "resume with /start-team alfa" "same-ticket retry $retry_branch"
   cmp -s "$TD/team.json" "$WORK/retry-team.json" || fail "retry changed team.json"
   cmp -s "$TD/roles.override.json" "$WORK/retry-roles.json" || fail "retry changed roles"
@@ -30,7 +30,7 @@ for retry_branch in feature/AB-792-next feature/AB-792-retry; do
   ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-retry >/dev/null \
     || fail "retry created a branch"
 done
-run "$MAIN" $TR alfa roles planner=claude-fable-5-1/xhigh
+run "$MAIN" $TR alfa roles planner=claude-fable-5-2/xhigh
 expect 0 "roles override:" "resume applies corrected roles"
 run "$MAIN" $TR alfa status
 expect 0 '"ticket":"AB-792"' "resume keeps ticket identity"
@@ -347,11 +347,11 @@ case_mark "(18) per-ticket roles override"
 OV="$TD/roles.override.json"
 RUN_ID=alfa-20261005-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 rm -f "$TD/session.json"; rm -rf "$TD/lock" "$TD/acked"
-run "$MAIN" $TR alfa roles planner=claude-fable-5-1/high
-expect 0 'roles override: {"planner":{"model":"claude-fable-5-1","effort":"high"}}' "roles writes"
+run "$MAIN" $TR alfa roles planner=claude-fable-5-2/high
+expect 0 'roles override: {"planner":{"model":"claude-fable-5-2","effort":"high"}}' "roles writes"
 run "$MAIN" $TR alfa roles coder=/xhigh
 expect 0 '"coder":{"effort":"xhigh"}' "roles merges"
-has '"model": "claude-fable-5-1"' "$OV" || fail "roles merge dropped planner"
+has '"model": "claude-fable-5-2"' "$OV" || fail "roles merge dropped planner"
 cp "$OV" "$WORK/ov.bak"
 for bad in "planner=x;y" planer=opus planner= planner "planner coder=opus" \
   coder=/hihg coder=/HIGH coder=//bypassPermissions coder=//AUTO coder=/// cli=/HIGH; do
@@ -360,6 +360,13 @@ for bad in "planner=x;y" planer=opus planner= planner "planner coder=opus" \
   expect 1 "error:" "roles rejects $bad"
   cmp -s "$OV" "$WORK/ov.bak" || fail "rejected roles entry $bad changed the file"
 done
+# The cli path is the TeamLead's session: its model/effort come from teams.sessions.TeamLead.
+run "$MAIN" $TR alfa roles cli=opus/medium
+expect 1 "the cli path is the TeamLead's session" "roles refuses a cli model/effort"
+cmp -s "$OV" "$WORK/ov.bak" || fail "a refused cli entry changed the file"
+run "$MAIN" $TR alfa roles cli=//manual
+expect 0 '"cli":{"permission":"manual"}' "roles takes a cli permission"
+cp "$WORK/ov.bak" "$OV"
 run "$MAIN" $TR alfa status
 expect 0 'roles override: {"planner"' "status shows the override"
 for args in '' '--clear coder=/high'; do
@@ -393,7 +400,7 @@ cmp -s "$OV" "$WORK/ov.bak" || fail "unknown clone role changed override"
 mv "$CLONE/.claude/lib/team-roles.sh" "$WORK/team-roles.sh"; : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 1 of planner" "planner launch with override"
-has "-n alfa-planner --model 'claude-fable-5-1' --effort 'high' --permission-mode 'auto' -- " \
+has "-n alfa-planner --model 'claude-fable-5-2' --effort 'high' --permission-mode 'auto' -- " \
   "$STUB_LOG" || fail "planner launch lacks the override model/effort or roles.json permission"
 mv "$WORK/team-roles.sh" "$CLONE/.claude/lib/team-roles.sh"
 cp "$WORK/team-lib.bak" "$CLONE/.claude/lib/team-lib.sh"
@@ -484,7 +491,7 @@ for f in '{"planer":{"model":"opus"}}' '{' '{} {}' '{"qa":{"modle":"opus"}}' \
 done
 rm -f "$TD/session.json"; cp "$WORK/ov.bak" "$OV"
 PL='(.teams[0].roles[] | select(.role == "planner"))'
-snap "override in dashboard" "$PL"' | .model == "claude-fable-5-1" and .effort == "high"'
+snap "override in dashboard" "$PL"' | .model == "claude-fable-5-2" and .effort == "high"'
 BASE_ROLES="$MAIN/.claude/team/roles.json"; CLONE_ROLES="$CLONE/.claude/team/roles.json"
 cp "$BASE_ROLES" "$WORK/dashboard-base.bak"; cp "$CLONE_ROLES" "$WORK/dashboard-clone.bak"
 jq '.teams[0].roles | map({role, model, effort})' "$WORK/snap.json" > "$WORK/config.before"
@@ -519,7 +526,7 @@ snap "bad clone base fallback" \
   '(.teams[0].roles | length == 4 and all(.model == null and .effort == null))
    and any(.errors[]; contains("main-alfa/.claude/team/roles.json") and contains("bad effort"))'
 rm -f "$CLONE_ROLES"
-snap "both bases missing with override" "($PL"' | .model == "claude-fable-5-1")
+snap "both bases missing with override" "($PL"' | .model == "claude-fable-5-2")
   and (.teams[0].roles[] | select(.role == "coder") | .model == null and .effort == "xhigh")
   and (.errors | all(contains("roles.json") | not))'
 rm -f "$OV"

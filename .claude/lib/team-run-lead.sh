@@ -4,7 +4,8 @@
 # Sourced by team-run.sh from the MAIN checkout after its own setup, never executed: every function
 # runs in the runner's shell and uses its globals (TEAM, RUN, MODE, TD, CLONE, root, die, rec,
 # sess_name, codex_home, auto_blocker). Every lead caller is guarded by team_lead_on, so in mode cli
-# (or a fixture with TEAM_SMOKE_NO_LEAD=1 under TEAM_SMOKE=1) only the record lookups run, always in
+# (fixed by the Operator, or chosen by the lead once mode_apply ran, team-run-mode.sh) or a fixture
+# with TEAM_SMOKE_NO_LEAD=1 under TEAM_SMOKE=1 only the record lookups run, always in
 # round 1. Bash 3.2.
 # Contract: .agents/reference/team-lead.md
 
@@ -339,7 +340,8 @@ lead_gate() {
         validate_record "$TD/runs/$RUN/$a" \
           || { echo "$f" >> "$TD/verdict-acked"; reject_record "$TD/runs/$RUN/$a" || true; return 1; }
         accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
-      # The qa done was validated when the gate was rung; accept it, the wrapup follows.
+      # The qa done was validated when the gate was rung; accept it. The wrapup follows in brainstorm;
+      # a quick run is ready after the accept (next_stage is empty after qa).
       "acceptance accept") accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
       # The transition clears verdict-acked; round n+1's acked names never match round n's verdicts.
       "acceptance rework") round_next "$f" || return 1; return 0 ;;
@@ -354,7 +356,8 @@ lead_gate() {
   return 1
 }
 
-# lead_accepted — the run is ready after the lead's accept and a done wrapup: one `accepted` event
+# lead_accepted — the run is ready after the lead's accept and a done wrapup (brainstorm; a quick run
+# is ready after the accept): one `accepted` event
 # to the Supervisor, guarded by runs/<run>/accepted.sent (a resume re-enters cmd_advance). Only when
 # an `acceptance accept` verdict names the accepted qa record: a run resumed with a lead after its
 # qa was accepted without one wrote no brief, and the event must not point at one.

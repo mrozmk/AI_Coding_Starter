@@ -1,9 +1,9 @@
 ---
 name: correctness-reviewer
-description: Correctness finder for /check-implementation Step 1ab — runs /code-review at xhigh over the scoped files and reports confirmed bugs. Read-only, never applies a fix; the main session is the mutator. Runs in parallel with structure-reviewer.
+description: Correctness finder for /check-implementation Step 1ab — runs /code-review at high over the scoped files and reports confirmed bugs. Read-only, never applies a fix; the main session is the mutator. Runs in parallel with structure-reviewer.
 tools: Read, Glob, Grep, Bash, Skill
 model: claude-opus-5-5
-effort: xhigh
+effort: high
 permissionMode: default
 skills:
   - code-review
@@ -11,7 +11,7 @@ skills:
 
 You are the **correctness finder** of `/check-implementation` Step 1ab. You run `/code-review` and report what it confirms. You never fix anything — the main session applies findings in 1ab-apply, after your sibling `@structure-reviewer` has reported too.
 
-`effort: xhigh` is pinned in the frontmatter **and** passed as the skill argument. A skill preloaded through `skills:` runs inline in this agent (CLI 2.1.280 — a smoke transcript showed `effort: medium` with the frontmatter unpinned), so the frontmatter is what sets the effort; the argument covers a CLI that forks the skill instead. Keep both, and keep `model:` pinned — `finder-model.sh` checks the transcript against this frontmatter after every run.
+`effort: high` is pinned in the frontmatter **and** passed as the skill argument. A skill preloaded through `skills:` runs inline in this agent (CLI 2.1.280 — a smoke transcript showed `effort: medium` with the frontmatter unpinned), so the frontmatter is what sets the effort; the argument covers a CLI that forks the skill instead. Keep both, and keep `model:` pinned — `finder-model.sh` checks the transcript against this frontmatter after every run.
 
 When this pinned model is rate-limited or unavailable twice, the caller re-runs the review as `@correctness-reviewer-fallback` on the session's model, with this file's body as its contract (`workflow.finder_fallback`; `off` stops instead). Keep the body self-contained for that reason.
 
@@ -27,7 +27,7 @@ The parent passes:
 ## Procedure
 
 1. `cd WORKTREE_PATH`. `git status --porcelain` and, when `BASE` is a rev, `git diff --stat BASE...HEAD` — so you know what the diff is before reviewing.
-2. Run the `code-review` skill at **`xhigh`** over `SCOPE_FILES`, **without `--fix` and without `--comment`**. Review only; findings outside `SCOPE_FILES` go under `OUT_OF_SCOPE`.
+2. Run the `code-review` skill at **`high`** over `SCOPE_FILES`, **without `--fix` and without `--comment`**. Review only; findings outside `SCOPE_FILES` go under `OUT_OF_SCOPE`.
 3. For every finding, open the cited `file:line` and confirm it holds against the real code. Drop what fails inspection. Keep severity honest.
 4. Emit the report below and stop.
 
@@ -52,7 +52,7 @@ The parent passes:
 === CORRECTNESS REPORT ===
 WORKDIR_TOPLEVEL: <git rev-parse --show-toplevel>
 SCOPE: <N files>
-EFFORT: xhigh
+EFFORT: high
 FINDINGS:
 - [C1] <critical|major|medium|minor> · <file:line> · <problem> · fix: <concrete edit> · confidence: <high|medium>
 - ...

@@ -27,32 +27,24 @@ opens; the runner prints `attach: tmux attach -t …` for the planner and the wr
 decision that needs you notifies you (`notify.sh`, opt-in channels — below). After answering: `/start-team alfa`. To look at a role:
 `bash .claude/lib/session-host.sh hint alfa-coder`. Merge: ask the supervisor ("merge alfa").
 
-- **Which mode** (`/start-team alfa ABC-801 --mode quick`, fixed per ticket, shown by `status` and
-  the team snapshot). Each mode has a **When**, read from the ticket and the files it names, not
-  from an impression of its size:
-  - `brainstorm` (default) — typical tickets: spec + plan, then coder → QA → wrapup. **When** any
-    holds: an open design question (two or more approaches with a real trade-off the ticket does
-    not settle); or any `/quick-change` Phase 0 hit (`.claude/commands/quick-change.md` → Phase 0).
-  - `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then the same
-    coder → QA → wrapup. **When** all hold: the ticket states the wanted behaviour and its limits
-    (what changes, what stays); no open design question — one sane approach, or the ticket picks
-    it; no Phase 0 hit (the quick planner re-runs Phase 0 and stops with "too big for quick"
-    otherwise).
-  - `cli` — very simple changes: one unattended session (`opus[1m]` / `medium`) that guards
-    eligibility, changes, runs the gates and publishes the PR itself — no QA, no wrapup. **When**
-    everything `quick` requires holds (the cli role re-runs Phase 0 as its eligibility guard), and:
-    the change is text or configuration that no script reads as behaviour (docs, comments,
-    wording, a value the ticket names); no test to add or change; nothing in the pipeline's own
-    scripts, prompts, hooks or guards (`.claude/lib/**`, `.claude/hooks/**`, `.claude/team/**`,
-    `.claude/commands/**` and the `.agents/reference/` contracts they cite).
+- **Which mode** — the run's TeamLead chooses it before any stage, by the **When** rules in
+  [team-lead.md → Mode choice](team-lead.md) (§1a); `status` and the team snapshot show it with
+  the reason. One line per mode:
+  - `brainstorm` — typical tickets: spec + plan, then coder → QA → wrapup.
+  - `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then coder → QA
+    (no wrapup; the ticket moves on merge).
+  - `cli` — very simple changes: the TeamLead makes the change itself in its own conversation
+    (gates, `/codex-review`, the PR) — no QA, no wrapup.
 
-  Pick the lightest mode whose **When** holds; unsure between two → the heavier. A literal
-  `/start-team` without `--mode` still starts `brainstorm`; when the Supervisor starts a ticket
-  itself (no mode from the Operator), it passes the lightest allowed mode as `--mode`. The start
-  report names the mode and the criterion that decided it (`/start-team` step 7).
+  The Operator overrides the choice with `--mode` (`/start-team alfa ABC-801 --mode quick`): the
+  mode is then fixed for the ticket and no choice is made. Without `--mode` the clone is written
+  in mode `lead`.
 
 - **Model and effort per role** come from `.claude/team/roles.json` (default: Opus [1M] for all; effort
-  planner high, coder medium, qa high). The runner reads it from the main checkout, so a local edit
+  planner high, coder medium, qa high). The planner runs `/brainstorm` at its role effort and
+  `/plan-feature` at the command's `effort: medium` (frontmatter). Proof in a run:
+  `jq -r 'select(.type=="assistant") | .effort' <planner transcript>` shows `high` before the
+  `plan-feature` Skill call and `medium` after it. The runner reads `roles.json` from the main checkout, so a local edit
   applies at the next role launch; commit it to change the default. The qa role's
   `/check-implementation` spawns the two pinned finders in parallel (`correctness-reviewer`,
   `structure-reviewer`; models and efforts in their agent files), proves their model and effort with
@@ -68,7 +60,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   `CLAUDE_CONFIG_DIR`: an optional `.claude/claude-profile` in the main checkout names it, else the
   runner forwards its own value; it is recorded as `claude_config_dir` in the role's `session.json`,
   where the transcript readers (`team-answer`) take it from.
-  Per ticket, without a commit: `/start-team alfa ABC-787 --roles planner=claude-fable-5-1/high`
+  Per ticket, without a commit: `/start-team alfa ABC-787 --roles planner=claude-fable-5-2/high`
   (or `bash .claude/lib/team-run.sh alfa roles …` on a running team) writes the clone's
   `.agents/team/roles.override.json`, merged per role and key over `roles.json`; validated at write
   and at each launch, shown by `status`, kept across resumes, archived by `team-next`, removed with
@@ -270,7 +262,7 @@ lock is older than 10 s; the runner never removes a lock by itself (that would r
 
 ## 5a. Per-run TeamLead — the Supervisor's runbook
 
-In brainstorm and quick mode (not in mode cli) the runner launches one TeamLead per run before
+In every mode except a cli run fixed with `--mode cli` the runner launches one TeamLead per run before
 the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it.
 It gates the plan against the order (there is no spec gate — the planner approves its own spec),
 answers the stages on an authority, accepts against the order and orders rework;
@@ -286,7 +278,7 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
 
    | Event | Means | Run |
    |---|---|---|
-   | `accepted` | the lead accepted the delivery and the wrapup is done; the runner printed `ready:` | (github) `bash .claude/lib/team-starter-land.sh <team>` when the run has a starter half (§6), then `bash .claude/lib/team-merge-check.sh <team>`, then `bash .claude/lib/team-integrate.sh <team>`; (ADO) `bash .claude/lib/team-merge-check.sh <team>`, then `/pr-merge`; the brief is the event's `ref` |
+   | `accepted` | the lead accepted the delivery and the wrapup is done (quick: right after the accept); the runner printed `ready:` | (github) `bash .claude/lib/team-starter-land.sh <team>` when the run has a starter half (§6), then `bash .claude/lib/team-merge-check.sh <team>`, then `bash .claude/lib/team-integrate.sh <team>`; (ADO) `bash .claude/lib/team-merge-check.sh <team>`, then `/pr-merge`; the brief is the event's `ref` |
    | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next` or `clone free` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; else abandon the named PR (if any) and free the clone with `team-next` |
    | `collision` | the lead found another team's in-flight work touching this run | answer the lead: `bash .claude/lib/team-inbox.sh write <team> collision-answer --from Supervisor --ticket <k> --run <run> --message "<line>"` |
    | `session_dead` | the lead died, or a stage died with partial work (`ref` = its `.session`) | `/start-team <team>` (it relaunches the lead, or resumes the stage) |
@@ -319,7 +311,7 @@ team question.
 ## 6. Merge
 
 **GitHub, in order:**
-1. **Start signal** — the `accepted` event (wrapup done) in a run with a TeamLead; in mode cli
+1. **Start signal** — the `accepted` event (wrapup done; quick: the accept) in a run with a TeamLead; in mode cli
    (no TeamLead, no `accepted` event) the runner's `ready:` line with an accepted cli record.
 2. **Release freeze and the tracker check** — §5 item 5, as before.
 3. **The starter half** — only in the project that develops the starter (`teams.starter_root` set),
@@ -348,7 +340,8 @@ team question.
 bash .claude/lib/team-merge-check.sh alfa
 ```
 
-It checks a wrapup finished (an old run gets one on `/start-team <team>`), the PR
+It checks the final record is accepted — the mode's last role: the wrapup in brainstorm (and a pre-#296
+quick clone), the qa in quick, the cli in cli (an old run gets a wrapup on `/start-team <team>`); then, after a wrapup, the PR
 source is the wrapup revision, every change after QA is under `.agents/memory/`, no wrapped-up
 memory file also changed on the line since the wrapup's `target_rev`, ADO's merge is current (`mergeStatus succeeded`, source
 and target commits match the live tips), builds and runs `test-gate.sh` on `refs/pull/<id>/merge`,

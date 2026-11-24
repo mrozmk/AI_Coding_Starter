@@ -3,7 +3,7 @@ name: correctness-reviewer-fallback
 description: Fallback of the correctness finder — spawned only by /check-implementation Step 1ab after @correctness-reviewer failed twice on a rate or usage limit or an unavailable pinned model, and only while workflow.finder_fallback is not "off". Runs on the session's model, same contract as correctness-reviewer. Read-only, never applies a fix.
 tools: Read, Glob, Grep, Bash, Skill
 model: inherit
-effort: xhigh
+effort: high
 permissionMode: default
 skills:
   - code-review

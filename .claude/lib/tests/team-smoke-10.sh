@@ -109,7 +109,7 @@ echo "team-smoke-10: (d) brainstorm launch OK"
 # ---- (e) team-next to another ticket works afterwards -------------------------------------------
 rm -f "$TD/session.json"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' \
-  bash .claude/lib/team-next.sh alfa AB-1261 chore/AB-1261-y origin/develop
+  bash .claude/lib/team-next.sh alfa AB-1261 chore/AB-1261-y origin/develop brainstorm
 expect 0 "was AB-1260" "team-next after remode"
 echo "team-smoke-10: (e) team-next OK"
 

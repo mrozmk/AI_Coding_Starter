@@ -9,23 +9,23 @@ case_mark "(3) team-new"
 run "$MAIN" $NEW alfa AB-790
 expect 2 "Usage:" "team-new argc"
 chmod 644 "$MAIN/.env"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop brainstorm
 expect 1 "chmod 600 .env" "team-new .env 644"
 chmod 600 "$MAIN/.env"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/rc
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/rc brainstorm
 expect 1 "base has no team harness" "team-new base without harness"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop brainstorm
 expect 0 "next:" "team-new happy path"
 CLONE="$WORK/main-alfa"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-790-x ] || fail "clone branch"
 jq -e '.base_sha and .line == "develop" and .ticket == "AB-790"' "$CLONE/.agents/team/team.json" >/dev/null \
   || fail "team.json fields"
 [ -f "$CLONE/.env" ] && [ ! -L "$CLONE/.env" ] && [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail ".env copy"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop brainstorm
 expect 1 "already exists" "team-new existing dir"
-run "$MAIN" $NEW beta AB-790 feature/AB-790-x origin/develop
+run "$MAIN" $NEW beta AB-790 feature/AB-790-x origin/develop brainstorm
 expect 1 "already used by team alfa" "team-new branch of another team"
-run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop
+run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop brainstorm
 expect 1 "already exists on origin" "team-new pushed branch"
 
 # ---- (4) team-record -------------------------------------------------------------------------------
@@ -429,14 +429,14 @@ has "new-session" "$STUB_LOG" && fail "cancelled run launched a session"
 case_mark "(10) team-next: reuse the clone for the"
 NEXT="bash .claude/lib/team-next.sh"
 reset_runner
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "still open (session.json)" "next while a stage is open"
 rm -f "$TD/session.json"; mkdir "$TD/lock"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "runner lock present" "next while the runner holds the lock"
 rmdir "$TD/lock"; echo '{}' > "$TD/roles.override.json"
 pr_json false "$C1"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "previous PR #8371 of AB-790 is active" "next with an open PR"
 next_state() {  # the clone's ticket state as one comparable text
   local f
@@ -451,28 +451,28 @@ next_untouched() {  # next_untouched <label> — state as at the last next_state
 }
 next_state > "$WORK/next.before"
 pr_set '.status = "completed" | .lastMergeSourceCommit.commitId = "0001"'
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "merged source" "next with commits after the merged PR source"
 next_untouched "tip mismatch"
 TIP=$(git -C "$CLONE" rev-parse refs/heads/feature/AB-790-x)
 pr_set ".status = \"completed\" | .lastMergeSourceCommit.commitId = \"$TIP\""
 STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=fetch \
-  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "git fetch origin failed in" "next with a failing clone fetch"
 next_untouched "fetch failure"
 STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=switch \
-  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 128 "forced switch failure" "next with a failing switch"
 next_untouched "switch failure"
 ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-next >/dev/null \
   || fail "switch failure left the new branch"
 git -C "$CLONE" branch feature/AB-792-next
 next_state > "$WORK/next.before"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 1 "already exists in" "next onto an existing local branch"
 next_untouched "existing local branch"
 git -C "$CLONE" branch --quiet -D feature/AB-792-next
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop brainstorm
 expect 0 "was AB-790" "next after the PR completed"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-792-next ] || fail "next did not switch branch"
 ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-790-x >/dev/null || fail "old branch kept"
@@ -481,17 +481,17 @@ jq -e '.ticket == "AB-792" and .branch == "feature/AB-792-next"' "$TD/team.json"
 ls -d "$TD"/archive/AB-790-*/runs "$TD"/archive/AB-790-*/roles.override.json >/dev/null 2>&1 || fail "archive lacks the previous runs or roles override"
 [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail "next did not re-seed .env"
 commit_file wip.txt wip
-run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop brainstorm
 expect 1 "has commits on feature/AB-792-next but no PR" "next over unfinished work without a PR"
 NEXT_RUN=alfa-20261002-000001; mkdir -p "$TD/runs/$NEXT_RUN"; echo "$NEXT_RUN" > "$TD/run"
 jq -n --arg run "$NEXT_RUN" '{team: "alfa", ticket: "AB-792", run: $run, role: "coder",
   attempt: 1, seq: 1, verdict: "done", pr_id: 8371}' > "$TD/runs/$NEXT_RUN/coder-1-1.json"
 pr_set '.status = "abandoned"'
 next_state > "$WORK/next.before"
-run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop brainstorm
 expect 1 "is abandoned" "next after an abandoned PR without --abandoned"
 next_untouched "abandoned refusal"
-run "$MAIN" $NEXT --abandoned alfa AB-793 feature/AB-793-other origin/develop
+run "$MAIN" $NEXT --abandoned alfa AB-793 feature/AB-793-other origin/develop brainstorm
 expect 0 "kept:" "next --abandoned"
 [ "$(git -C "$CLONE" branch --show-current)" = feature/AB-793-other ] \
   || fail "--abandoned did not switch"
@@ -512,7 +512,7 @@ CL="$WORK/claude"; mkdir -p "$CL/sess-1/subagents"
 printf '%s\n' '{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5"}}' \
   '{"type":"assistant","message":{"model":"<synthetic>"}}' > "$CL/sess-1.jsonl"
 printf '%s\n' '{"type":"user","timestamp":"2026-10-03T10:00:00.123Z"}' \
-  '{"type":"assistant","effort":"high","message":{"model":"claude-fable-5-1","stop_reason":"end_turn"}}' \
+  '{"type":"assistant","effort":"high","message":{"model":"claude-fable-5-2","stop_reason":"end_turn"}}' \
   > "$CL/sess-1/subagents/agent-a1.jsonl"
 echo '{"agentType":"structure-reviewer","description":"smoke"}' > "$CL/sess-1/subagents/agent-a1.meta.json"
 # a2 waits on a long tool call: silent for 10 min, yet still running.
@@ -525,7 +525,7 @@ STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane" snap "prompt open" '.schema == 1 and (.
   and (coder | .status == "attention"
     and .actions == ["bash .claude/lib/session-host.sh hint alfa-coder", "/start-team alfa"])
   and .supervisor.model == "claude-opus-5-5"
-  and (.subagents[] | select(.id == "a1") | .model == "claude-fable-5-1" and .status == "done")
+  and (.subagents[] | select(.id == "a1") | .model == "claude-fable-5-2" and .status == "done")
   and (.subagents[] | select(.id == "a2") | .status == "running")'
 STUB_TMUX_ALIVE=1 snap "killed session" '(coder | .status) == "stopped"'
 STUB_TMUX_ALIVE=1 STUB_TMUX_ERR="protocol version mismatch" snap "tmux probe error" \
@@ -564,20 +564,20 @@ jq -e '.origin_ticket == "AB-793" and .parent_ticket == null' "$TD/team.json" >/
   || fail "(14) team.json of a first ticket: origin_ticket is the ticket, parent_ticket null"
 run "$MAIN" $LIN record AB-801 x1 --follow-up-of AB-790; expect 0 "recorded AB-801 (origin AB-790)" "(14) follow-up 1"
 run "$MAIN" $LIN record AB-802 x2 --follow-up-of AB-801; expect 0 "recorded AB-802 (origin AB-790)" "(14) follow-up 2"
-run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of AB-802
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop brainstorm --follow-up-of AB-802
 expect 9 "follow-up 3 of origin AB-790 (AB-801, AB-802 started) — needs the Operator's consent" "(14) team-new refuses the third"
 [ ! -e "$WORK/main-gamma" ] || fail "(14) a refused team-new made a clone"
 ! grep -q '"ticket":"AB-803"' "$LD/starts.jsonl" || fail "(14) a refused team-new was recorded"
-run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of AB-803
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop brainstorm --follow-up-of AB-803
 expect 2 "cannot be a follow-up of itself" "(14) team-new on a contradiction"
 [ ! -e "$WORK/main-gamma" ] || fail "(14) a contradiction made a clone"
-run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop brainstorm --follow-up-of
 expect 2 "--follow-up-of needs a ticket key" "(14) team-new --follow-up-of without a value"
 next_state > "$WORK/next.before"
-run "$MAIN" $NEXT alfa AB-804 feature/AB-804-x origin/develop --follow-up-of AB-790
+run "$MAIN" $NEXT alfa AB-804 feature/AB-804-x origin/develop brainstorm --follow-up-of AB-790
 expect 9 "needs the Operator's consent" "(14) team-next refuses the third"
 next_untouched "(14) a refused team-next"
-run "$MAIN" $NEW gamma AB-811 feature/AB-811-x origin/develop --follow-up-of AB-810
+run "$MAIN" $NEW gamma AB-811 feature/AB-811-x origin/develop brainstorm --follow-up-of AB-810
 expect 0 "next:" "(14) a free follow-up"
 jq -e '.parent_ticket == "AB-810" and .origin_ticket == "AB-810"' "$WORK/main-gamma/.agents/team/team.json" >/dev/null \
   || fail "(14) team.json lineage of a follow-up"
@@ -586,7 +586,7 @@ jq -e '.parent_ticket == "AB-810" and .origin_ticket == "AB-810"' "$WORK/main-ga
 cp "$MAIN/.claude/lib/team-lineage.sh" "$WORK/lin-real.sh"
 printf '#!/usr/bin/env bash\n[ "$1" != record ] || { echo "follow-up 3 of origin AB-1 — needs the consent" >&2; exit 9; }\nexec bash "%s" "$@"\n' \
   "$WORK/lin-real.sh" > "$MAIN/.claude/lib/team-lineage.sh"
-run "$MAIN" $NEW delta AB-821 feature/AB-821-x origin/develop
+run "$MAIN" $NEW delta AB-821 feature/AB-821-x origin/develop brainstorm
 expect 9 "needs the consent" "(14) a failed record stops team-new"
 ! has "next:" "$WORK/out" || fail "(14) a failed record still printed next:"
 jq -e '.ticket == "AB-821" and .origin_ticket == "AB-821"' "$WORK/main-delta/.agents/team/team.json" >/dev/null \

@@ -144,14 +144,14 @@ chmod 600 "$MAIN/.env"
 export SMOKE_ORIGIN=github
 setprofile '.teams.pr_provider = "github" | .teams.github = {repo: "acme/other"}'
 : > "$STUB_LOG"
-run "$MAIN" $NEW delta AB-794 feature/AB-794-x origin/develop
+run "$MAIN" $NEW delta AB-794 feature/AB-794-x origin/develop brainstorm
 expect 2 "is not teams.github.repo acme/other" "team-new refused a mismatched github repo"
 [ ! -e "$WORK/main-delta" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
 unset SMOKE_ORIGIN
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop brainstorm
 expect 2 "the PR layer is off" "team-new refused before side effects"
 [ ! -e "$WORK/main-alfa" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
@@ -165,7 +165,7 @@ arch_count() { { ls -1 "$TD/archive" 2>/dev/null || true; } | wc -l | tr -d ' ';
 ARCH0="$(arch_count)"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
-run "$MAIN" $NEXT alfa AB-791 chore/AB-791-x origin/develop
+run "$MAIN" $NEXT alfa AB-791 chore/AB-791-x origin/develop brainstorm
 expect 2 "the PR layer is off" "team-next refused before side effects"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR0" ] || fail "refused team-next switched the branch"
 [ "$(jq -r .base_sha "$TD/team.json")" = "$SHA0" ] || fail "refused team-next rewrote team.json"
@@ -177,7 +177,7 @@ PAR="$WORK/teams dir"
 CUSTOM=".teams.clone_parent = \"$PAR\""
 mkdir -p "$PAR"
 setprofile "$CUSTOM"
-run "$MAIN" $NEW gamma AB-792 chore/AB-792-x origin/develop
+run "$MAIN" $NEW gamma AB-792 chore/AB-792-x origin/develop brainstorm
 expect 0 "next:" "team-new into a clone_parent with a space"
 GC="$PAR/main-gamma"
 [ -f "$GC/.agents/team/team.json" ] || fail "clone_parent ignored: no clone at $GC"
@@ -272,7 +272,7 @@ for bad in '{team}-x' 'a/{team}' 'nope' '{team}{team}'; do
 done
 # Consumers: a clone created under the template is found by the resolver and the Supervisor.
 setprofile "$CN"
-run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop
+run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop brainstorm
 expect 0 "next:" "team-new honours clone_name"
 ZC="$PAR2/DTS-Zeta"
 [ -f "$ZC/.agents/team/team.json" ] || fail "clone_name ignored: no clone at $ZC"
@@ -281,7 +281,7 @@ echo zeta-20261018-000001 > "$ZC/.agents/team/run"
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir zeta)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
 expect 0 "monitor-ok: $ZC" "the preflight accepts a clone_name template"
-run "$MAIN" $NEXT zeta AB-796 chore/AB-796-x origin/develop
+run "$MAIN" $NEXT zeta AB-796 chore/AB-796-x origin/develop brainstorm
 expect 0 "clone:    $ZC" "team-next switches the {Team} clone it resolved"
 
 echo "team-profile-smoke: OK"

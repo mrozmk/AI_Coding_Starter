@@ -366,7 +366,7 @@ validate_record() {
   REJECT_WHY=""
   role="$(rec "$r" role)"; pr="$(rec "$r" pr_id)"; rev="$(rec "$r" output_rev)"
   check_common "$r" || return 1
-  case " $(team_mode_roles "$MODE") " in
+  case " $(team_mode_roles "$MODE" "${CLONE:-}") " in
     *" $role "*) ;;
     *) fail "role $role does not run in mode $MODE"; return 1 ;;
   esac

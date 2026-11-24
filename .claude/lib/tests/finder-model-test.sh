@@ -12,7 +12,7 @@ trap 'rm -rf "$T"' EXIT
 die() { echo "finder-model-test: FAIL — fixture setup: $1"; exit 1; }
 
 R="$T/fixture repo"; CFG="$T/config dir"; H="$T/home dir"
-OPUS=claude-opus-5-5; FABLE=claude-fable-5-1
+OPUS=claude-opus-5-5; FABLE=claude-fable-5-2
 mkdir -p "$R/.claude/agents" "$CFG" "$H" || die "dirs"
 agent() {  # <type> <model> [effort]
   { echo '---'; echo "name: $1"; echo "model: $2"; [ -z "${3:-}" ] || echo "effort: $3"

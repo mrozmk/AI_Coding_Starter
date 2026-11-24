@@ -6,7 +6,7 @@
 #   internal: bash .claude/lib/team-run.sh <team> check <record>   (validate one record)
 #   bash .claude/lib/team-run.sh <team> roles <role>=[<model>][/<effort>][/<perm>]… | --clear
 #   bash .claude/lib/team-run.sh <team> summary   (post-run summary sources, read-only)
-#   modes (team.json .mode, set by team-new/next): brainstorm · quick · cli
+#   modes (team.json .mode): lead (the TeamLead chooses) · brainstorm · quick · cli
 #
 # Env: TEAM_ATTACH=all|planner (default all) — Herdr: every stage, or only the attended planner and
 # wrapup, gets a pane in its team's tab while it runs. tmux: no effect (no window is opened; planner
@@ -52,6 +52,7 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-run-asks.sh"
 . "$root/.claude/lib/team-run-dialog.sh"
 . "$root/.claude/lib/team-run-stop.sh"
+. "$root/.claude/lib/team-run-mode.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -172,7 +173,7 @@ render_prompt() {
   put() { local LC_ALL=C k="{{$1}}"; p="${p//"$k"/$2}"; }  # C: see render_lead_prompt
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   local o; o="$(team_json origin_ticket)"; put ORIGIN_TICKET "${o:-$(team_json ticket)}"  # pre-#86 clone: own origin
-  put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
+  put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"; put MODE "$MODE"
   put RUN_DIR ".agents/team/runs/$(run_ref)"; put ROUND "$(cur_round)"; put REWORK "$(round_rework)"
   put PLAN "$plan"; put SPEC "$spec"; put PR "$pr"; put ORG_URL "$ADO_ORG_URL"; put QA_REPORT "$report"
   # Project gates come from the profile; TEST_GATE is a ready sentence, never a raw path.
@@ -181,7 +182,7 @@ render_prompt() {
 }
 
 launch() {
-  local role="$1" attempt="$2" name pf sid ch cc ck extra="" perm why costs=()
+  local role="$1" attempt="$2" name pf sid start ch cc ck extra="" perm why costs=()
   team_cancelled && cancel_exit
   name="$(sess_name "$role")"; pf="$TD/runs/$(run_ref)/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
@@ -197,6 +198,12 @@ launch() {
   mkdir -p "$TD/runs/$(run_ref)"
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(new_uuid)" || die 1 "error: new_uuid gave no UUID"
+  # A lead-chosen cli resumes the choosing lead's session id (team-run-mode.sh).
+  start="$(session_start_flag "$role")"
+  if [ "$start" = --resume ]; then sid="$(cli_resume_sid "$cc")" || exit "$?"
+  elif [ "$role" = cli ] && ! team_cli_prompt_ok "$CLONE"; then
+    echo "warn: clone base has the pre-#296 cli prompt — this run keeps the old cli contract (no /codex-review)" >&2
+  fi
   # A team.json written before 2b has no cost_key; jq's `//` would keep the empty string.
   ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   jq -n --arg team "$TEAM" --arg role "$role" --arg run "$RUN" --argjson attempt "$attempt" \
@@ -232,7 +239,7 @@ launch() {
     --env "TEAM_RUN_ID=$RUN" --env "TEAM_RUN_ATTEMPT=$attempt" --env "CODEX_HOME=$ch" \
     ${cc:+--env "CLAUDE_CONFIG_DIR=$cc"} \
     ${costs[@]+"${costs[@]}"} \
-    -- "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\"" >/dev/null
+    -- "claude $start $sid -n $name ${extra}-- \"\$(cat '$pf')\"" >/dev/null
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
@@ -315,14 +322,14 @@ resume_stage() {
 
 next_stage() {
   local role
-  for role in $(team_mode_roles "$MODE"); do
+  for role in $(team_mode_roles "$MODE" "$CLONE"); do
     [ -n "$(accepted_record "$role")" ] || { echo "$role"; return 0; }
   done
 }
 
 check_orphans() {
   local role
-  for role in $(team_mode_roles "$MODE"); do
+  for role in $(team_mode_roles "$MODE" "$CLONE"); do
     [ "$role" = "${1:-}" ] && continue
     ! team_tmux_alive "$(sess_name "$role")" || die 7 "orphan session $(sess_name "$role") — attach or stop"
   done
@@ -337,7 +344,12 @@ cmd_advance() {
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
   [ ! -f "$TD/runs/$RUN/closed.json" ] || die 1 "run closed ($(jq -r .reason "$TD/runs/$RUN/closed.json")) — team-next for the next ticket, team-remode for remode"
+  # A persisted mode verdict first: a replacement judge must not launch for a choice already made.
+  [ "$MODE" != lead ] || [ -z "$(mode_verdict)" ] || mode_apply "$(mode_verdict)"
   lead_start; round_reconcile
+  # Mode lead has no stage yet (next_stage is empty): wait for the choice, never print ready.
+  [ "$MODE" != lead ] || mode_wait
+  cli_handover
   while :; do
     if [ -f "$TD/session.json" ]; then
       check_orphans "$(session_json role)"; resume_stage; continue
@@ -371,14 +383,14 @@ cmd_roles() {
 cmd_status() {
   local role r pid
   jq -c '{team, ticket, branch, line, base_sha}' "$TD/team.json"
-  echo "mode: $MODE"
+  mode_status
   # Durable non-fatal failures recorded by team-warn.sh.
   jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
   RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}$([ "$(run_ref)" = "$RUN" ] || echo " round $(cur_round)")"
   [ ! -f "$TD/runs/${RUN:-none}/closed.json" ] || echo "closed: $(jq -r .reason "$TD/runs/$RUN/closed.json")"
   [ ! -f "$TD/session.json" ] || echo "session:$(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
   [ ! -f "$ROLES_OVERRIDE" ] || echo "roles override: $(team_roles_status "$ROLES_OVERRIDE")"
-  for role in $(team_mode_roles "$MODE"); do
+  for role in $(team_mode_roles "$MODE" "$CLONE"); do
     r="$(ls -1t "$TD/runs/$(run_ref)/$role"-*.json 2>/dev/null | head -n 1)" || true
     [ -z "$r" ] || echo "$role: $(basename "$r") $(rec "$r" verdict)$([ -e "$r.accepted" ] && echo ' accepted')"
     ! team_tmux_alive "$(sess_name "$role")" || dialog_label "$(sess_name "$role")"
@@ -404,48 +416,10 @@ cmd_stop() {
   fi
   # cli too: a stop also ends a cli session left behind by a mode mix-up.
   for role in $TEAM_ROLES cli; do end_session "$role"; done
+  # A lead-chosen cli whose handover did not run yet still has the judge open.
+  [ "$MODE" != cli ] || end_session lead
   rm -rf "$TD/lock"
   echo "stopped; session.json kept for the next run"
-}
-
-# Read-only sources for the post-run summary: clone files are outside the supervisor's dirs.
-cmd_summary() {
-  local r f trk tf title="" url=""
-  RUN="$(cat "$TD/run" 2>/dev/null || true)"
-  trk="$(team_json tracker)"; [ -n "$trk" ] || trk=jira
-  # A supervision session never reads clone files, so the ticket title and link travel through here. `jira` has no
-  # ticket.json — it keeps reading them over MCP, and both values stay empty.
-  tf="$TD/ticket.json"
-  if [ -f "$tf" ]; then
-    title="$(jq -r '.title // ""' "$tf" 2>/dev/null || true)"
-    url="$(jq -r '.url // ""' "$tf" 2>/dev/null || true)"
-  fi
-  echo "ticket: $(team_json ticket)"; echo "tracker: $trk"
-  echo "title: $title"; echo "url: $url"
-  echo "mode: $MODE"; echo "branch: $BRANCH"
-  echo "run: ${RUN:-none}"
-  r="$(accepted_record "$([ "$MODE" = cli ] && echo cli || echo coder)")"
-  echo "pr: $([ -z "$r" ] || rec "$r" pr_id)"
-  if [ "$MODE" = cli ]; then
-    summary_file cli "$(accepted_summary_file cli cli)"
-    return 0
-  fi
-  f="$(accepted_summary_file qa qa-report)"
-  echo "--- qa"
-  if [ -f "$f" ]; then grep -E '^(Verdict|Warnings|Rethink signals):' "$f" || true
-  else echo "missing: qa-report-<n>.md"; fi
-  summary_file wrapup "$(accepted_summary_file wrapup wrapup)"
-}
-
-accepted_summary_file() {  # <role> <filename stem>
-  local r
-  r="$(accepted_record "$1")"
-  [ -z "$r" ] || echo "$TD/runs/$(run_ref)/$2-$(rec "$r" attempt).md"
-}
-
-summary_file() {  # summary_file <label> <file> — the body without the machine target_rev line
-  echo "--- $1"
-  if [ -f "$2" ]; then grep -v '^target_rev: ' "$2" || true; else echo "missing: $1-<n>.md"; fi
 }
 
 # Deliberate, supervisor-run removal of a dead runner's lock; never automatic, it would race a start.

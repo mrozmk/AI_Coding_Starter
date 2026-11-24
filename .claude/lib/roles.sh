@@ -191,7 +191,13 @@ roles_runs() (
       [[ "$p" =~ ^[0-9]+$ ]] && kill -0 "$p" 2>/dev/null && continue
     fi
     mode="$(team_mode "$td/team.json" 2>/dev/null)" || mode=""
-    roles="$(team_mode_roles "$mode" 2>/dev/null)" || roles=""
+    if [ "$mode" = lead ]; then  # no stage yet: the TeamLead was choosing the run's mode (#296)
+      jq -cn --arg t "$t" --arg r "$run" --arg c "$c" \
+        '{team: $t, run: $r, stage: "mode choice", state: "open", clone: $c, resume: "/start-team \($t)"}'
+      continue
+    fi
+    # The clone decides whether a quick run still ends in a wrapup (a pre-#296 qa.md keeps it).
+    roles="$(team_mode_roles "$mode" "$c" 2>/dev/null)" || roles=""
     [ -n "$roles" ] || continue
     last="$(echo $roles | awk '{print $NF}')"; first="$(echo $roles | awk '{print $1}')"
     d="$td/runs/$(team_run_ref "$td" "$run")"

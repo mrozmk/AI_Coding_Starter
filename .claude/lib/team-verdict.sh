@@ -8,6 +8,8 @@
 #        bash .claude/lib/team-verdict.sh event collision --ref <file> --message "<line>"
 #        bash .claude/lib/team-verdict.sh wrapup decide --for <wrapup_proposals-<a>_<k>.json>
 #          --ref .agents/team/runs/<run>/wrapup-decision-<n>.md --message "<line>"
+#        bash .claude/lib/team-verdict.sh mode brainstorm|quick|cli --message "<reason>"
+#   mode → once per run, when team.json says `lead`; no --for (team-lead.md → Mode choice).
 #   gates: plan → approve|revise|escalate|remode (remode in quick only); there is no spec gate.
 #   --for names the planner's newest record, a done. revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
 #   --decision names an answered decision with answer_outcome more-revise that grants one more round.
@@ -47,7 +49,7 @@
 #   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""; REASON=""
@@ -69,6 +71,7 @@ case "$NOTIFY" in ""|human_decision|abandon_decision) ;;
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 . "$LIB/team-lead-lib.sh"
+. "$LIB/team-modes.sh"
 
 team_lead_caller || { echo "error: only this run's TeamLead writes verdicts" >&2; exit 3; }
 TD="$(team_dir)"; RUN="$(cat "$TD/run")"; RD="$TD/runs/$RUN"; MAIN="$(team_lead_json main_root)"
@@ -207,6 +210,14 @@ if [ "$GATE" = wrapup ]; then
   echo "$t"; exit 0
 fi
 
+# The run's mode, chosen once by the lead when the Operator gave none; the runner applies it.
+if [ "$GATE" = mode ]; then
+  team_mode_valid "$VERDICT" || bad "verdict $VERDICT is not a mode (brainstorm|quick|cli)"
+  [ "$MODE" = lead ] || bad "mode fixed by the Operator ($MODE) — no choice to make"
+  [ -z "$(verdicts)" ] || bad "mode already chosen ($(verdicts | head -n 1))"
+  FOR=""; write_verdict; exit 0
+fi
+
 # A run with nothing left to lose: the lead closes it (work delivered elsewhere, or the plan ends
 # the team's part). Anything that could lose unmerged work stays the Operator's decision close.
 if [ "$GATE" = run ]; then
@@ -240,7 +251,7 @@ case "$GATE" in
   spec) bad "no spec gate: the first gate is the plan gate" ;;
   plan) role=planner; want=done ;;
   acceptance) role=qa; want=done ;;
-  *) bad "unknown gate $GATE (plan|acceptance|decision|wrapup|run)" ;;
+  *) bad "unknown gate $GATE (plan|acceptance|decision|wrapup|run|mode)" ;;
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
   || bad "no $role session — the $GATE gate is the $role's"
@@ -265,6 +276,9 @@ esac
 # Acceptance: the blind order-vs-diff check comes first, the brief is written from it.
 acc_fail() { echo "error: acceptance: $1" >&2; exit 8; }
 if [ "$GATE $VERDICT" = "acceptance accept" ]; then
+  # A run that does not end in a wrapup (quick on the current contract) has nobody to carry a
+  # follow-up ticket: neither a warning nor cut ordered work may be routed `→ follow-up`.
+  NO_WRAPUP=""; [ "$(team_mode_last_role "$MODE" "$(team_root)")" = wrapup ] || NO_WRAPUP=1
   blind="$RRD/blind-check.md"; brief="$RRD/acceptance-brief.md"
   [ -s "$blind" ] || acc_fail "runs/$RREF/blind-check.md missing — the blind order-vs-diff check comes first"
   [ -s "$brief" ] || acc_fail "runs/$RREF/acceptance-brief.md missing"
@@ -282,10 +296,19 @@ if [ "$GATE $VERDICT" = "acceptance accept" ]; then
       w="$(printf '%s' "$w" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; [ -n "$w" ] || continue
       ok=""
       while IFS= read -r l; do
-        case "$l" in "- $w → keep — "?*|"- $w → fix — "?*|"- $w → follow-up — "?*) ok=1 ;; esac
+        case "$l" in "- $w → keep — "?*|"- $w → fix — "?*) ok=1 ;;
+          "- $w → follow-up — "?*) [ -z "$NO_WRAPUP" ] \
+              || acc_fail "quick has no wrapup: '$w' needs keep or fix, not follow-up"
+            ok=1 ;;
+        esac
       done <<<"$sect"
       [ -n "$ok" ] || acc_fail "## Warnings has no '- $w → keep|fix|follow-up — <why>' line"
     done
+  fi
+  if [ -n "$NO_WRAPUP" ]; then
+    l="$(awk '/^## Ordered vs delivered$/ { f = 1; next } /^## / { f = 0 } f' "$brief" \
+      | grep -F ' → follow-up — ' | head -n 1 || true)"
+    [ -z "$l" ] || acc_fail "quick has no wrapup: '$l' needs keep or fix, not follow-up"
   fi
   # A lead launched with ask_operator lists every verification-only answer it gave itself under a
   # seventh heading; the answers are read from their structured fields, never from a log line.

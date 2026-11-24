@@ -377,10 +377,10 @@ done
 NST="$HOME/.agent-comms/outbox/state"
 # A failed switch leaves the run in place, so its notifications stay open.
 STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=switch \
-  run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
+  run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop brainstorm
 expect 128 "forced switch failure" "(k) team-next with a failing switch"
 [ ! -e "$NST/smk_alfa_${RUN_ID}_x-k.resolved" ] || fail "(k) a failed switch resolved the still-live run's notifications"
-run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
+run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop brainstorm
 expect 0 "was AB-1500" "(k) team-next"
 [ -f "$NST/smk_alfa_${RUN_ID}_x-k.resolved" ] && [ ! -e "$NST/smk_alfa_alfa-20990102-000000_x-k.resolved" ] \
   || { ls "$NST" > "$WORK/out" 2>&1; fail "(k) team-next did not resolve exactly the archived run's notifications"; }

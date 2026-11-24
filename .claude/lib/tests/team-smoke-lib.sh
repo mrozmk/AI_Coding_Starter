@@ -768,7 +768,7 @@ mkdir_spy() {
 
 smoke_team() {  # smoke_team <ticket> <branch>; build a fresh team via the real producer.
   chmod 600 "$MAIN/.env"
-  run "$MAIN" $NEW alfa "$1" "$2" origin/develop
+  run "$MAIN" $NEW alfa "$1" "$2" origin/develop brainstorm
   [ "$RC" = 0 ] || fail "fixture team creation"
   CLONE="$WORK/main-alfa"
   TD="$CLONE/.agents/team"

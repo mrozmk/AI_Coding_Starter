@@ -1,6 +1,7 @@
 ---
 description: "Create a comprehensive implementation plan from an approved spec, then grill it (mandatory) — surface critical gaps with self-critique loop, apply user-accepted fixes in-place"
 argument-hint: "[path-to-spec | optional — defaults to newest file in .agents/specs/]"
+effort: medium
 ---
 
 # Plan a new task (with built-in grilling)

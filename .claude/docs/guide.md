@@ -471,9 +471,9 @@ It is off until you opt in. `/setup:teams` installs the team layer into a projec
 
 ### Per-run TeamLead (pilot)
 
-Instead of one global TeamLead watching every team, each team run can get its own **TeamLead**: a session the runner starts next to the stages and ends with the run. It gates the plan against the order (there is no spec gate), answers the stages' questions and permission prompts on an authority, accepts the delivery against the order (a blind order-vs-diff check) and orders rework within a budget. It never edits code, commits or merges.
+Instead of one global TeamLead watching every team, each team run can get its own **TeamLead**: a session the runner starts next to the stages and ends with the run. It gates the plan against the order (there is no spec gate), answers the stages' questions and permission prompts on an authority, accepts the delivery against the order (a blind order-vs-diff check) and orders rework within a budget. It never edits code, commits or merges — except in a cli run it chose, where it is the worker.
 
-- **When:** every brainstorm and quick run (mode `cli` never has one); `/start-team` asks for the order brief of each new run.
+- **When:** every run except a cli the Operator fixed with `--mode cli`; `/start-team` asks for the order brief of each new run. Without `--mode` the TeamLead first **chooses the mode** (brainstorm, quick or cli — `team-lead.md` → Mode choice); choosing cli, it makes the change itself in its own conversation (on its model), with `/codex-review` before the PR.
 - **Where you answer:** the `<team>-lead` window. Only human-only items reach you — a settings or permission edit, a production ask rule, egress, an irreversible delete — as `[d-<n>] <question>`. Type your answer there.
 - **What reaches you:** two notifications — `human_decision` (a pending decision) and `abandon_decision` (the lead recommends abandoning a run past its rework budget). The Supervisor gets four inbox events: `accepted`, `closed`, `collision` and `session_dead`.
 - **Where to look:** `runs/<run>/acceptance-brief.md` in the team clone (what was ordered vs delivered), and `.agents/team/teamlead-log.md` in your checkout (the lead's notes, one block per finished run).
@@ -485,19 +485,19 @@ Two commands do heavy multi-step work. They use **two different mechanisms** and
 
 ### Model & effort strategy (shared across the pipeline)
 
-**Model and effort are chosen per role**, pinned in each agent's frontmatter (`model:` + `effort:`). Effort cannot be passed at spawn time (the `Agent` tool takes `model`, not `effort`), so it lives in each agent's frontmatter. The rule is **lower the effort for doers, never for gates**: a false "pass" from a weakened audit lets a defect onto `main` and costs more than every token it saved.
+**Model and effort are chosen per role**, pinned in each agent's frontmatter (`model:` + `effort:`). Effort cannot be passed at spawn time (the `Agent` tool takes `model`, not `effort`), so it lives in each agent's frontmatter. The rule is **lower the effort for doers, never below `high` for gates**: a false "pass" from a weakened audit lets a defect onto `main` and costs more than every token it saved. The correctness finder runs at `high` (Operator decision 2026-11-23, #296).
 
 | Role | Agent | Model · effort | Mutates? | Why |
 |------|-------|----------------|----------|-----|
 | Design parity | `orchestrator-designer` | Opus 5 · **`high`** | ❌ read-only | pixel/structural audit vs reference design |
-| Design critique | `design-critic` | Fable 5.1 · **`high`** | ❌ read-only | judges `/design-ui` mockups from rendered screenshots — the author fixes, the critic never edits |
+| Design critique | `design-critic` | Fable 5.2 · **`high`** | ❌ read-only | judges `/design-ui` mockups from rendered screenshots — the author fixes, the critic never edits |
 | Start-phase critique | `start-critic` | Fable (alias) · **`high`** | ❌ read-only | judges `/discover`, `/architect`, `/check-backlog` and `/setup:delivery-plan` (per Epic) artifacts against their rubric — the author fixes, the critic never edits |
 | Backlog structure | `backlog-author` | Fable (alias) · **`high`** (`acceptEdits`) | ✅ backlog files | `/setup:create-backlog`: writes `backlog.md` and the Epic files with a Summary per Task — never criteria |
 | Epic detail | `backlog-epic-author` | Opus · **`high`** (`acceptEdits`) | ✅ one Epic file | `/setup:delivery-plan`: one per Epic, in parallel — Goal, In scope, Out of scope and acceptance criteria |
 | Epic fixes | `backlog-epic-fixer` | Opus · `medium` (`acceptEdits`) | ✅ one Epic file | `/setup:delivery-plan`: applies the findings the Tech Lead accepted to one Epic file |
 | Delivery-plan reading | `delivery-analyst` | Opus · `medium` | ❌ read-only | `/setup:delivery-plan`: reads the computed plan JSON and writes the analysis the command inserts — the script schedules, the agent only explains |
-| Correctness finder | `correctness-reviewer` | Opus 5.5 · **`xhigh`** | ❌ read-only | `/check-implementation` Step 1ab: runs `/code-review` and reports confirmed bugs; the main session applies fixes |
-| Structure finder | `structure-reviewer` | Fable 5.1 · **`high`** | ❌ read-only | runs `/deep-review report-only` in parallel with the correctness finder |
+| Correctness finder | `correctness-reviewer` | Opus 5.5 · **`high`** | ❌ read-only | `/check-implementation` Step 1ab: runs `/code-review` and reports confirmed bugs; the main session applies fixes |
+| Structure finder | `structure-reviewer` | Fable 5.2 · **`high`** | ❌ read-only | runs `/deep-review report-only` in parallel with the correctness finder |
 | Finder fallbacks | `correctness-reviewer-fallback`, `structure-reviewer-fallback` | the session's model (`inherit`) · same effort as their finder | ❌ read-only | only after a finder's pinned model failed twice on a rate/usage limit or was unavailable, unless `workflow.finder_fallback` is `off`; same contract, named in the report |
 | Architecture sweep | `architecture-sweeper` | Opus 5.5 · `medium` | ❌ read-only | `/architecture-review`: one area (or group of small areas) per instance in Phase 1, returning depth + risk + coverage; one interface variant per instance in Phase 3 |
 | Security audit | `audit-threat-modeler`, `audit-control-verifier`, `audit-finding-validator` | Opus 5 · **`high`** | ❌ read-only | threat model, invariant checks and a falsifier pass for `/audit-security` |
@@ -514,7 +514,7 @@ Two commands do heavy multi-step work. They use **two different mechanisms** and
 
 ### `/check-implementation` — in-context quality loop (no fleet)
 
-Drives freshly-written code to **commit-ready**, then stops. Runs **in your own session** (you see every step) — it does *not* spawn an executor fleet; it spawns the two read-only finders each round (their reports come back, your session applies them), the design gate (to isolate visual-tool output) and, when installed, the Codex cross-model review. It **applies fixes** but never commits. **Cost:** two subagents per iteration (Opus 5.5 `xhigh` + Fable 5.1 `high`, up to 3 iterations) instead of one inline pass of each skill — faster wall-clock, more tokens.
+Drives freshly-written code to **commit-ready**, then stops. Runs **in your own session** (you see every step) — it does *not* spawn an executor fleet; it spawns the two read-only finders each round (their reports come back, your session applies them), the design gate (to isolate visual-tool output) and, when installed, the Codex cross-model review. It **applies fixes** but never commits. **Cost:** two subagents per iteration (Opus 5.5 `high` + Fable 5.2 `high`, up to 3 iterations) instead of one inline pass of each skill — faster wall-clock, more tokens.
 
 `/check-implementation codex` swaps the fixer: Codex (effort `high`, workspace-write) becomes the only thing that edits code, the review steps run report-only, and Claude stays the judge. It needs a clean tree and a plan, and takes `--base <rev>` to set the diff base.
 

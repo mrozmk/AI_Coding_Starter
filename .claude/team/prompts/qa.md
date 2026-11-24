@@ -72,6 +72,9 @@ Without a lead nobody answers questions and the tool is disabled.
      the report (gate outcomes, test counts, cross-model outcome, every finder `FALLBACK` line
      verbatim, and — when the report has an `AC:` line — the criteria list below). Keep the
      template checklist; stay ≤ 4000 characters.
+   - **Mode {{MODE}}.** In mode `quick` no wrapup follows you: also copy `## Follow-ups` of the
+     run notes into the PR description (as `## Follow-ups`), and write no tracker comment, no
+     status change and no follow-up ticket — the ticket moves on merge only.
    - The criteria list, from the report's ledger: the `AC:` line; every `unconfirmed` row in full
      (`- <id> — <criterion text> — <evidence>`); `To check by hand:` with every `deferred` row in
      full (`- <id> — <criterion text> — <manual check>`); `Met:` with one `- <id> — <criterion

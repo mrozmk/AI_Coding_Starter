@@ -2,7 +2,7 @@
 name: structure-reviewer
 description: Structure finder for /check-implementation Step 1ab — runs /deep-review report-only over the scoped files and reports high-conviction structural findings plus NEEDS_HUMAN items. Read-only, never applies a fix. Runs in parallel with correctness-reviewer.
 tools: Read, Glob, Grep, Bash, Skill
-model: claude-fable-5-1
+model: claude-fable-5-2
 effort: high
 permissionMode: default
 skills:

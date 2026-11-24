@@ -82,9 +82,9 @@ expect 1 "mode cli" "cli refuses creating an override"
 cp "$WORK/cli-override" "$TD/roles.override.json"; : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of cli" "cli launch retries then stops"
-CLI_LINE="-n alfa-cli --model 'opus[1m]' --effort 'medium' --permission-mode"
+CLI_LINE="-n alfa-cli --model 'fable' --effort 'medium' --permission-mode"
 has "$CLI_LINE 'auto' --disallowedTools AskUserQuestion -- " "$STUB_LOG" \
-  || fail "cli launch lacks the fixed model/effort/permission or the AskUserQuestion block"
+  || fail "cli launch lacks the TeamLead's model/effort, the permission or the AskUserQuestion block"
 jq -e --arg b "$BASE" '.role == "cli" and .mode == "cli" and .attempt == 2 and .input_rev == $b
   and .permission_mode == "auto"' \
   "$TD/session.json" >/dev/null || fail "cli session.json: $(cat "$TD/session.json")"
@@ -96,24 +96,21 @@ expect 0 '"cli":{"permission":"manual"}' "cli accepts a permission override"
 : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of cli" "cli launch with a manual override"
-has "-n alfa-cli --model 'opus[1m]' --effort 'medium' --permission-mode 'manual' --disallowedTools" \
-  "$STUB_LOG" \
-  || fail "cli launch ignored cli.permission manual"
+has "$CLI_LINE 'manual' --disallowedTools" "$STUB_LOG" || fail "cli launch ignored cli.permission manual"
 [ "$(jq -r .permission_mode "$TD/session.json")" = manual ] || fail "cli session.json not manual"
-# The cli model is a default, not a fixed value: the profile's teams.roles and the ticket override
-# both reach it, the override last.
+# The cli path runs on the TeamLead's model (teams.sessions.TeamLead); a teams.roles.cli model is
+# ignored with a warn:, and a cli= model/effort override is refused.
 rm -f "$TD/session.json" "$TD/roles.override.json"
 PROF="$MAIN/.claude/project-profile.json"; cp "$PROF" "$WORK/prof-cli"
-jq '.teams.roles = {cli: {model: "claude-fable-5-1", effort: "high"}}' "$WORK/prof-cli" > "$PROF"
+jq '.teams.sessions.TeamLead = {model: "claude-fable-5-2", effort: "high"}
+  | .teams.roles = {cli: {model: "sonnet"}}' "$WORK/prof-cli" > "$PROF"
 : > "$STUB_LOG"; run "$MAIN" $TR alfa
-has "-n alfa-cli --model 'claude-fable-5-1' --effort 'high' --permission-mode 'auto'" "$STUB_LOG" \
-  || fail "cli launch ignored the profile's teams.roles.cli"
+has "-n alfa-cli --model 'claude-fable-5-2' --effort 'high' --permission-mode 'auto'" "$STUB_LOG" \
+  || fail "cli launch did not take the TeamLead's model from teams.sessions.TeamLead"
+has "warn: cli model/effort override ignored" "$WORK/out" || fail "a teams.roles.cli model was not warned about"
 rm -f "$TD/session.json"
-run "$MAIN" $TR alfa roles cli=sonnet/medium
-expect 0 '"cli":{"model":"sonnet","effort":"medium"}' "cli accepts a model/effort override"
-: > "$STUB_LOG"; run "$MAIN" $TR alfa
-has "-n alfa-cli --model 'sonnet' --effort 'medium' --permission-mode 'auto'" "$STUB_LOG" \
-  || fail "the ticket override does not win over the profile for cli"
+run "$MAIN" $TR alfa roles cli=sonnet/high
+expect 1 "the cli path is the TeamLead's session" "cli refuses a model/effort override"
 jq '.teams.roles = {cli: {model: "x y"}}' "$WORK/prof-cli" > "$PROF"
 rm -f "$TD/session.json" "$TD/roles.override.json"
 : > "$STUB_LOG"; run "$MAIN" $TR alfa
@@ -235,7 +232,7 @@ has 'UNACCEPTED' "$WORK/out" && fail "summary shown without accepted records"
 # ---- (25) team-next sees the cli PR -------------------------------------------------------------
 case_mark "(25) team-next sees the cli PR"
 setmode cli; rm -f "$RD"/coder-1-1.json*; pr_w "$C1"
-run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop brainstorm
 expect 1 "previous PR #8371" "team-next refuses while the cli PR is active"
 
 # ---- (27) old clone without the new files -------------------------------------------------------
