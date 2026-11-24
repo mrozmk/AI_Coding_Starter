@@ -124,9 +124,9 @@ class StagesTest(unittest.TestCase):
         data, got = self.run_report(
             [_a(0, "req_0", output=1), _a(2, "req_2", output=2), _a(4, "req_4", output=4),
              _a(6, "req_6", output=8)],
-            marks=[_mark("start", "orchestrate", 1), _mark("start", "execute", 3),
+            marks=[_mark("start", "quick-change", 1), _mark("start", "execute", 3),
                    _mark("end", "execute", 5)])
-        self.assertEqual(got, {"outside-stage": 1, "orchestrate": 10, "execute": 4})
+        self.assertEqual(got, {"outside-stage": 1, "quick-change": 10, "execute": 4})
         self.assertIn("runtime markers for 1 sessions, transcript approximation for 0;"
                       " inferred ends 1, unmatched ends 0.", self.header(data))
 
@@ -163,7 +163,7 @@ class StagesTest(unittest.TestCase):
     def _subagent(self, agent_id, records, tool_id=None):
         path = self.env.claude_file(S, agent_id=agent_id)
         helpers.write_jsonl(path, records)
-        helpers.write_meta(path, "orchestrator-executor", tool_id)
+        helpers.write_meta(path, "general-purpose", tool_id)
 
     def test_subagent_marks_never_move_parent(self):
         self._subagent("ax", [
@@ -172,13 +172,13 @@ class StagesTest(unittest.TestCase):
                                      content=_skill("execute", "toolu_sub")),
             helpers.claude_assistant(S, _ts(4), request_id="req_ay", agent_id="ax", output=32,
                                      inp=0, cache_write=0,
-                                     content=_end_block("orchestrate", "toolu_subend"))])
+                                     content=_end_block("quick-change", "toolu_subend"))])
         _, got = self.run_report(
-            [_a(1, "req_1", _skill("orchestrate", "t1"), output=1), _a(5, "req_5", output=2)],
-            marks=[_mark("start", "orchestrate", 1, "t1"),
+            [_a(1, "req_1", _skill("quick-change", "t1"), output=1), _a(5, "req_5", output=2)],
+            marks=[_mark("start", "quick-change", 1, "t1"),
                    _mark("start", "execute", 3, "toolu_sub"),
-                   _mark("end", "orchestrate", 4, "toolu_subend", source="skill-end")])
-        self.assertEqual(got, {"outside-stage": 1, "orchestrate": 50})
+                   _mark("end", "quick-change", 4, "toolu_subend", source="skill-end")])
+        self.assertEqual(got, {"outside-stage": 1, "quick-change": 50})
 
     def test_marker_workflow_subagent_uses_first_ts(self):
         _, got = self.run_report([_a(2, "req_2", output=1)], subagents=[("wf", None, 7)],

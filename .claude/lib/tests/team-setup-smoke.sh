@@ -587,7 +587,7 @@ done
 
 # The stage-end step every core pipeline command runs is silent there: exit 0, nothing on stdout or
 # stderr, no file — without $AGENT_COSTS_HOME, and with it but without jq on PATH.
-for c in prime brainstorm plan-feature execute check-implementation qa-verify pr-create orchestrate quick-change; do
+for c in prime brainstorm plan-feature execute check-implementation qa-verify pr-create quick-change; do
   grep -qxF "\`bash .claude/lib/costs/runtime-mark.sh stage end $c\`" "$ST/.claude/commands/$c.md" \
     || fail "21: /$c has no exact stage end step"
 done

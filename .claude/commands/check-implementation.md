@@ -8,7 +8,7 @@ allowed-tools: Bash(bash .claude/lib/branch-model.sh:*), Bash(bash .claude/lib/t
 
 Drive freshly-written code (from a spec/plan or a manual change) to **commit-ready**: two pinned-model finders review in parallel, the main session applies their findings (bugs first, then structure), then gate — looping until the read-only gate approves — then (once, if `codex` is on PATH) have an independent second model cross-review the approved diff. Escalates if a cap is hit.
 
-This command **applies fixes**, unlike [/gates:verify-implementation](gates/verify-implementation.md) (report-only gate). It does **not** commit or push, unlike [/orchestrate](orchestrate.md) — it leaves an approved, clean working tree for you to `/commit`.
+This command **applies fixes**, unlike [/gates:verify-implementation](gates/verify-implementation.md) (report-only gate). It does **not** commit or push — it leaves an approved, clean working tree for you to `/commit`.
 
 The pieces it composes (each a distinct role — see CLAUDE.md / the command docs):
 
@@ -23,7 +23,7 @@ The pieces it composes (each a distinct role — see CLAUDE.md / the command doc
 | Design gate *(conditional)* | `@orchestrator-designer` → `/gates:design-quality-check` | **pixel/structural parity** vs the reference design (Figma MCP or `.agents/specs/design/Ready/`) — spawned as a sub-agent to isolate its visual-tool output; runs **only** when the change touches UI **and** a reference exists | ❌ read-only |
 | Cross-model review *(conditional)* | `codex exec` (different model, via `.claude/lib/codex-bg.sh`) | independent second-model read of the gate-approved diff — reports correctness bugs + simplifications a same-model self-review structurally misses. **Judge only — its findings feed the fixer (1ab-apply; 1ab-codex in `codex` mode).** Runs **once** after the loop reaches DONE, only when `codex` is on PATH | ❌ read-only |
 
-> The design gate is spawned as the read-only `@orchestrator-designer` (not run inline) so its Figma-MCP / browser / screenshot output stays out of this loop's context — it returns only a compact verdict. This mirrors `/orchestrate`'s Step 5.3.
+> The design gate is spawned as the read-only `@orchestrator-designer` (not run inline) so its Figma-MCP / browser / screenshot output stays out of this loop's context — it returns only a compact verdict.
 
 > **Loader Convention.** Assumes `/prime` already loaded `CLAUDE.md`, `index.md`, `project-brief.md` and `architecture.md`; `patterns.md`, `decisions.md` and `domain/*.md` are full-mode only — consult them on demand per the `When to Read` table in `index.md`. If context isn't primed, run `/prime` first. Do **not** re-read the primed files here.
 
@@ -294,7 +294,7 @@ Write the score for each finding explicitly (one line: `[#NN] KEEP/DROP — reas
 
 ### 1.5d — Route surviving findings (codex does NOT apply — the fixer does)
 
-- **`kind: "patchable"` and it survived scoring** → feed it into **one** 1ab-apply pass, exactly as if it were a gate finding: apply 🔴/🟠 (critical/major) with a verified anchor; 🟡/🟢 (medium/minor) go through **the finding filter (own + reached)** (Step 1ab) — this is its one cross-model apply pass. **`MODE=codex`:** the same filtered list goes to **one** 1ab-codex spawn instead — Claude never edits in this mode. In normal mode **codex never edits the tree itself** — keeping judge and fixer separate is the same invariant as the rest of this loop and `/orchestrate`.
+- **`kind: "patchable"` and it survived scoring** → feed it into **one** 1ab-apply pass, exactly as if it were a gate finding: apply 🔴/🟠 (critical/major) with a verified anchor; 🟡/🟢 (medium/minor) go through **the finding filter (own + reached)** (Step 1ab) — this is its one cross-model apply pass. **`MODE=codex`:** the same filtered list goes to **one** 1ab-codex spawn instead — Claude never edits in this mode. In normal mode **codex never edits the tree itself** — keeping judge and fixer separate is the same invariant as the rest of this loop.
 - **`kind: "fundamental"`** → do **NOT** apply (it questions the approach, not a local edit) → collect as a **🔶 RETHINK SIGNAL** for the user, surfaced in Step 3's report. The fixer cannot resolve a "should we build it this way?" objection.
 
 ### 1.5e — Re-gate after the fixer ran (mandatory if anything was applied)
@@ -312,7 +312,7 @@ If 1.5d applied nothing (clean review, or all findings dropped/fundamental) → 
 
 ## Step 2 — Memory reflection
 
-Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what the finders reported, what 1ab-apply fixed and how many iterations the gate took. That is high-quality reflection material, so read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** over this run **before** writing the final report, so the report's `Memory:` line states what actually happened.
+This loop ran in your own context — you saw first-hand what the finders reported, what 1ab-apply fixed and how many iterations the gate took. That is high-quality reflection material, so read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** over this run **before** writing the final report, so the report's `Memory:` line states what actually happened.
 
 Apply its bar strictly — **the default is to save nothing.** A clean loop (no real bugs, gate approved first try) almost never produces a memory-worthy lesson; do not invent one to justify the step. Save only when the run surfaced something a fresh Claude would get wrong without the note:
 - a **non-obvious bug** the correctness finder surfaced (root-cause, not a typo) → application defect → `errors.md` (name the source file); toolchain friction → `domain/harness.md` — per the reflection-protocol target table
@@ -381,7 +381,7 @@ Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated —
 - **Pinned models, the declared fallback, or STOP.** The finders run on the models and efforts pinned in `.claude/agents/correctness-reviewer.md` and `structure-reviewer.md`. An unknown agent type, a missing report, or transcript evidence of another model or effort is a STOP, never a silent in-session review — a review on the wrong model reported as the pinned one is a fake gate. The only sanctioned deviation is a finder's `-fallback` on the session's model after two rate/usage-limit or model-unavailable failures, while `workflow.finder_fallback` is not `off` (1ab step 2) — verified by `finder-model.sh` and named in the report.
 - **Cap at 3 iterations — escalate, don't grind.** Iteration limits exist to surface real blockers.
 - **A mutation must be followed by the gate(s).** Never end on a 1ab-apply without re-running the code gate (and the design gate if `RUN_DESIGN`) — a refactor can break tests or shift a token.
-- **Never commit or push.** This command produces a commit-ready tree; committing is `/commit`, the full pipeline is `/orchestrate`.
+- **Never commit or push.** This command produces a commit-ready tree; committing is `/commit`.
 - **Non-mechanical blockers go to the human.** If a gate blocks on architecture, a product decision, a structural design gap, or an ambiguous design interpretation, stop and ask — fixers can't resolve those.
 
 ## Stage end marker (token usage)

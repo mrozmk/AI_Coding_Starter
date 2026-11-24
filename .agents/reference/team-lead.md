@@ -20,8 +20,15 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   The launch copies the brief into `runs/<run>/order-brief.md` (frozen for the run), materialises
   the profile (`team-lead.sh materialize`) and starts
   `claude --settings <clone>/.agents/team/teamlead.settings.json --model <TEAM_LEAD_MODEL>
-  --effort <TEAM_LEAD_EFFORT> --disallowedTools AskUserQuestion` with the prompt rendered from the
-  **main checkout's** `.claude/team/prompts/teamlead.md`.
+  --effort <TEAM_LEAD_EFFORT>` with the prompt rendered from the **main checkout's**
+  `.claude/team/prompts/teamlead.md`. The lead may raise `AskUserQuestion`: it is how a decision
+  reaches the Operator (§7). Its own dialog reaches the human because the ask hooks exist only in a
+  stage's `stage-hooks.settings.json`, the project's `guard-team-question.sh` is inert (`exit 0`),
+  and `team-attention.sh` ignores the lead. `teamlead.json` carries `ask_operator: true`, and the
+  launch records a snapshot of the lead session's effective `AskUserQuestion` hook registrations in
+  the anchor (`lead_ask_hooks[<session id>]`, §7 → Provenance guard). An unclean snapshot prints
+  `warn: TeamLead dialog — answers will not count as Operator evidence and the dialog may not
+  surface (<cause>); decisions wait in <lead window>`; the run goes on.
 - **Reuse.** A runner that restarts within the same run reuses a live lead whose
   `teamlead.json.run` is the current run; a dead one is launched again.
 - **Wait in place.** A stage's `blocked` / `failed` record no longer ends the runner: the runner
@@ -68,7 +75,8 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 |---|---|---|
 | `order-brief.md` | `team-brief.sh write` | the order (team-mode.md §2) |
 | `runs/<run>/order-brief.md` | runner at launch | the frozen copy the lead reads |
-| `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
+| `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root, claude_config_dir, ask_operator` — `ask_operator: true` marks a lead the current runner launched: the dialog contract of §7, the reminder and the seventh brief heading (§8) apply only to it; a reused older lead (no key) keeps the older contract |
+| `<main>/.agents/team/anchors/<team>.json` → `lead_sessions`, `lead_ask_hooks` | runner at each lead launch (`lead_session_record`, one write) | the run's lead sessions (`run, ids, current_id, config_dir`) and, per session id, its launch snapshot `{run, clean, digest, cause, config_dir, at}` (§7 → Provenance guard); a new run starts both afresh |
 | `teamlead.settings.json` | `team-lead.sh materialize` (mode 600; refuses a template that is not the per-run profile — env role `TeamLead` with the `git commit*` and `team-record.sh*` denies, so a retired global file a partial sync left behind never becomes a lead's profile) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session; the owning scripts in the clone's `.claude/lib/` pass; nothing under `costs/` does — the lead runs no stage command, and the runner registers its session for costs) |
 | `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
@@ -81,7 +89,8 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `runs/<run>/asks/a-<n>.json`, `a-<n>.answer.json` | the stage hook (`team-ask-hook.sh`, main checkout) files the ask; `team-answer.sh` (the lead) or the hook (class tier) writes the answer once | §6 — the ask: `id, kind, role, attempt, round, session_id, agent_id, agent_type, payload, tier, tier_cause, fp, state, filed_at`; the answer: `id, form, value, authority, why, decision, answered_at, lead_session_id`. The format is `team-ask.sh`'s header |
 | `stage-hooks.settings.json` | runner, at every stage launch of a lead run (from `<main>/.claude/team/stage-hooks.json`) | the stage's `--settings` layer: the ask hooks and the asks write guard, every command an absolute path into the main checkout |
 | `runs/<run>/answers.md` | `team-answer.sh` and the class-tier hook (every ask answer); the runner re-derives a missing line from an answer file | `- <utc> [<role> <attempt>] ask a-<n> <one line> → <form>: <value> — <why> [authority <a>] [decision <id>]`; the value is never cut (a tracker reconciliation's `id@sha256` tokens are read back) |
-| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision`; the runner withdraws one whose ask is withdrawn | a human decision, §7 |
+| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision`; the runner withdraws one whose ask is withdrawn | a human decision, §7; opened by an `ask_operator` lead it ends with `## Dialog` and the one-line `AskUserQuestion` input |
+| `runs/<run>/decisions/.unasked-<id>`, `.unclean-warned-<id>` | runner (`lead_unasked_decisions`) | the epoch of the last `unasked` ring of a decision; the marker of its one `dialog unreliable` warn (§7 → Notify) |
 | `runs/<run>/operator-touches` | `team-lead.sh decision answer` (a human answer), the runner's dialog watch (a startup dialog, first sight) | `<utc> decision d-<n>` / `<utc> dialog <who>:<kind>` — append-only, §10 |
 | `closing`, `runs/<run>/close-refused` | runner (`lead_close`, §4) | the close fence (the sender and the hook refuse every answer while it exists); a refused close after the stage was ended (nothing is relaunched) |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
@@ -262,8 +271,8 @@ clone cut before the ask channel no longer refuses the run start for its sender.
 **Stage hooks.** At each stage launch the runner materialises `<main>/.claude/team/stage-hooks.json`
 into `<clone>/.agents/team/stage-hooks.settings.json` (every command an absolute path into the
 **main checkout's** `.claude/hooks/team-ask-hook.sh`, so a ticket editing the hook or the checker
-cannot change its own run) and passes it with `--settings`; `--disallowedTools AskUserQuestion` is
-dropped. One script, five registrations:
+cannot change its own run) and passes it with `--settings`; the launch flag that disables
+`AskUserQuestion` is dropped for the stage. One script, five registrations:
 
 | Stop | Hook | Ask kind | Answer → hook output |
 |---|---|---|---|
@@ -293,10 +302,25 @@ ask is published:
 | `operator` | egress by the real egress classifier (`guard_team_egress.bash_reason` / `webfetch_reason`, so an inline interpreter is caught), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write, a tool name, a bare `mcp__<server>`, or a parameterized rule of an unevaluated tool — `Skill(<name>)` / `Skill(<name> *)` by the skill name, `Read(<glob>)` and any argument it cannot judge as covered), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
 
 Relative operands resolve against the payload's `cwd`; the clone root stays the boundary.
-`question` and `text` asks are tier `lead`, unless the lead finds a workflow human gate in one — a
-product-fit hit, a `/quick-change` Phase 0 override other than size, a scope or criteria change the
-order does not cover — and opens a decision (`requires_decision` on the ask; from then on only the Operator's
-relay answers it).
+`question` and `text` asks are tier `lead`, unless the lead finds one of the escalated classes
+below in one and opens a decision (`requires_decision` on the ask; from then on only the
+Operator's relay answers it).
+
+**Decision classes.** The lead classifies a `question` or `text` ask before it answers:
+
+- **verification-only** — the asking role recommends an option that keeps the ticket's intent and
+  only moves how or where a criterion is proven (the test's location, which suite step proves it,
+  an AC re-worded with the same meaning). The lead answers it itself, without a Codex opinion:
+  `--authority teamlead --why "verification-only: <reason>"`. The record is the answer file's
+  structured fields (`authority: teamlead` and a `why` starting `verification-only:`); the
+  acceptance brief lists every such answer (§8).
+- **escalated** — the lead opens a decision with `--ask a-<n>`: scope beyond the ticket; dropping or
+  weakening a criterion (a re-wording that weakens it included); contradicting an Operator decision
+  (an answered decision, an order-brief line, a CLAUDE.md or `decisions.md` Operator decision); an
+  irreversible or outward-facing action; a product-fit hit; a `/quick-change` Phase 0 override
+  other than size.
+- any other change of criteria, contract or a sensitive class: a Codex second opinion first
+  (`teamlead.md` → Answering, rule 7), then the lead decides.
 
 **Filing and states** (`team-ask.sh`, its header is the file contract): `a-<n>.json` written
 atomically under the ask lock; `waiting` (a live `waiter_pid`) → `timed-out` (the hook returned its
@@ -378,8 +402,12 @@ clone: like §7's "Limit of the human binding", this raises the bar, it is not p
 
 ## 7. Human decisions
 
-The lead never waits on the Operator (`AskUserQuestion` is disabled for it); a decision only it
-cannot make becomes a file, and the stop that needs it waits while everything else goes on.
+A decision only the Operator can make becomes a file, and the lead raises it as an
+`AskUserQuestion` dialog in its own window (lead launched with `ask_operator`, §1). The cost: the
+lead blocks while the dialog is open. Other asks fall back to their hook deadline meanwhile (see
+**Blocking**), and every doorbell is re-derived from files afterwards, so nothing is lost — only
+delayed. A lead an older runner launched (no `ask_operator`) keeps the older contract: it prints the
+decision in plain text and the Operator types the reply.
 
 - **Open** (lead only): `team-lead.sh decision open <team> --source <run file|attention:<n>>
   --question "<line>" [--options "a|b"] [--recommend "<line>"] [--notify human_decision|abandon_decision]
@@ -390,14 +418,37 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   It prints the decision with its reply format and writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
   notify, touch_reason`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
+  **New path** (`teamlead.json.ask_operator: true`): the Operator's choices are required —
+  ask-bound permission or plan `allow|deny`; ask-bound question the stage question's labels and
+  `multiSelect`; a text ask or an unbound decision `--options "a|b"`, or the derived default
+  (`--notify abandon_decision` → `continue|close`, `--gate plan` → `approve|revise|close`; past the
+  revise limit the lead passes `more-revise|approve|close`); otherwise exit 2. 2–4 options per
+  question, ≤ 4 questions. `--recommend` is required and must be one of the (first question's)
+  labels. The dialog JSON `{"questions": […]}` is built from the **filed ask payload**, never the
+  shortened one-line summary: one dialog question per stage question (`d-<n> [<role>: ]<full
+  question>`, the stage's headers, labels, descriptions and `multiSelect` kept; a single question
+  takes the header `d-<n>`); a permission or plan `d-<n> <role>: <tool> <target>` with the target
+  never cut (Bash the whole command, a file tool the path, WebFetch the url, ExitPlanMode the plan's
+  first line plus `(full plan: asks/a-<n>.json)`, any other tool its whole `tool_input` as JSON);
+  an unbound decision `d-<n> <question>`. The recommended option goes first, its description
+  `Recommended — <label>. <its own description>`. Validated before anything is written (exit 2,
+  nothing written), stored as one line under `## Dialog`, printed as `ask-operator: <json>` after
+  the existing lines. The lead calls `AskUserQuestion` with that input verbatim (several pending
+  decisions may share one call).
 - **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
-  <event>` (the one sender, the only path to the Operator). The event id
+  <event>` (an extra channel to the Operator; the dialog is the primary one). The event id
   `<project>:<team>:<run>:<d-n>` is written once into `~/.agent-comms/outbox/events/` — that file
   is the dedup across ticks and runner restarts. The hint is the driver's for the answering session
   (`session-host.sh hint <team>-lead`); with no session found it reads
   `no <team>-lead session found — bash .claude/lib/session-host.sh status <team>-lead`. A failed call (exit ≠ 0) is retried on the next tick, three
   tries per verdict, then one `warn: notify.sh failed 3× for <verdict> — the decision waits in
   <window>`; the decision stays pending and shows in `/tasks-status` either way.
+  **The unasked reminder** never depends on `notify.sh`: while an `ask_operator` lead has a pending
+  decision with `## Dialog` that no `AskUserQuestion` call in its transcript has named (one
+  streaming pass per poll, `team_evidence_dialog_raised`), the runner rings the lead `unasked d-<n>:
+  no AskUserQuestion raised yet — …` after `TEAM_UNASKED_GRACE_SECS` (60 s) from `created_at`,
+  then every `TEAM_ASK_RERING_SECS` (300 s; epoch file `decisions/.unasked-<id>`). A decision
+  without `## Dialog` is never reminded.
 - **Human-only and operator-tier asks — through the lead's window.** An ask of tier `operator`
   (§6) is rung `ask <role> a-<n> operator: …`; the lead opens a decision `--ask a-<n> --options
   "allow|deny"` and the Operator answers **in the lead's window**, allow or deny — never in a
@@ -431,6 +482,73 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   message is evidence for one decision, unless it names the other decision's id too
   (`d-8 yes, d-9 no`). A non-pending decision refuses with exit 4 (a late answer to a withdrawn
   decision is never applied).
+- **Answer from the dialog:** `decision answer <team> d-<n> --from-ask [--outcome …] --tuning …
+  --why …` (instead of `--text`) reads the Operator's answer entry from the current lead session's
+  transcript — the user entry whose `toolUseResult.answers` answers an `AskUserQuestion` call
+  (never the `tool_result` text). It needs a `## Dialog` (exit 7 "opened without a dialog"
+  otherwise), a lead session the anchor records — the legacy `teamlead.json` fallback is refused
+  ("not one the anchor records") — and the provenance guard below. **All-equal rule:** every call
+  at or after `created_at` that names `d-<n>` must carry exactly the stored dialog (question,
+  header, `multiSelect`, every option's label and description) and an input of exactly
+  `{"questions": […]}` (an input that already carries `answers`, the hook-supplied form, is no
+  evidence); differing dialogs make the evidence ambiguous, so editing `## Dialog` cannot pick
+  between them. The newest answer entry of such a call with a value for each `d-<n>` question
+  counts; a half-written last transcript line is skipped. The writer searches only the current
+  session: an answer left in an earlier session's transcript is asked again after a relaunch. The
+  answer becomes the canonical reply: one question → `d-<n> <answer>` (parsed by `ask_parse_reply`
+  as a typed one); several → `answer_map` keyed by the stage question texts straight from the
+  structured answers (a `;` or `:` inside an answer survives). An **unbound** decision stores the
+  label or free text as `answer_value`; a label in the outcome enum (`continue|close|more-revise|
+  approve`) also sets `answer_outcome` (a differing `--outcome` → 7). A **control decision**
+  (`gate: plan` or `notify: abandon_decision`) takes only one of its labels: a free "Other" text
+  refuses with 7 and the decision stays pending; `revise` on the plan menu sets no outcome (the
+  lead runs `plan revise` within the limit). Recorded as `answered_via: teamlead-ask <uuid>` with
+  `answered_session`; the touch log, `operator-touches`, `## Answer` and the tuning line as for a
+  typed answer. A typed reply in the window (`--text`) still works.
+- **Provenance guard.** A dialog answer counts only when the lead session's effective
+  `AskUserQuestion` hook registrations are the inert project guard alone — any other hook could
+  answer the dialog with no menu shown. `team_evidence_ask_hooks <main> <clone> <config dir>`
+  (`team-evidence.sh`) reads the user profile (`<config dir>/settings.json`), the project
+  `settings.json`, `settings.local.json` and the lead's `teamlead.settings.json`, and takes every
+  `PreToolUse` and `PermissionRequest` entry (both can answer the dialog through `updatedInput`)
+  whose matcher is absent, empty, `*`, a comma- or pipe-separated name list naming
+  `AskUserQuestion`, or a regex matching it (unanchored; an invalid regex counts). Clean iff the
+  only such entries are the project's `PreToolUse`
+  `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command each), the clone's
+  guard equals main's byte for byte and main's is inert (`exit 0` only); an enabled plugin in any
+  source, a clone mod (`.claude/skills/<name>/hooks/`) that differs from main's tree, or any
+  user-level mod is unclean (code-registered hooks cannot be inventoried). The runner snapshots it
+  at each lead launch (`lead_ask_hooks[<session id>] = {run, clean, digest, cause, config_dir,
+  at}` in the anchor); `--from-ask` and the hook require that session's own snapshot to be clean
+  and the current registrations to give the same digest — Claude Code may snapshot hooks at session
+  start, so both semantics are covered, and the script bytes are re-checked each time. Uncertain
+  provenance (no snapshot, unclean, changed) → exit 7 naming the cause; the Operator types the
+  `d-<n>` reply instead. A session not in the anchor (e.g. after `/clear`) → a typed reply fails
+  too; the Operator answers from a terminal.
+- **The hook's re-verification** of a `teamlead-ask <uuid>` decision (`verify_operator`, main
+  checkout) requires `answered_session` (a recorded, non-legacy session), that session's clean
+  snapshot and an unchanged digest now, the transcript under the snapshot's own `config_dir` (never
+  `lead_sessions.config_dir`, which a relaunch overwrites), and re-reads exactly the recorded entry
+  under the all-equal rule: form `answers` compares the structured map, every other form parses the
+  canonical reply with `ask_parse_reply`. A newer dialog never replaces the recorded entry.
+- **Recovery after a rejected relay.** A relay the hook could not verify moves the answer aside and
+  times the ask out (`ask_reject`). When the stage's retry reclaims the same ask (an operator-tier
+  permission with a usable retry key) the lead opens a new decision on that ask; otherwise the
+  retry files a fresh ask, which gets its own decision, and the old ask is withdrawn.
+- **Degraded environment** (TeamLead decision "Degrade + warn"). When a session's launch snapshot is
+  unclean, or its registrations changed since, the dialog may be answered by a hook with no menu
+  shown, so a raised dialog is no attention and its answer is no evidence. AC2/AC3 then hold only as
+  the runner's `warn:` line and `notify.sh`: the reminder keeps ringing every interval as `unasked
+  d-<n>: the dialog is unreliable here (<cause>) — print d-<n> in plain text for the Operator — …`,
+  and once per decision (`decisions/.unclean-warned-<id>`) the runner prints `warn: <id> waits in
+  <lead window> — dialog unreliable (<cause>)`. The cause is named at launch (§1). This is a
+  narrowing, stated plainly.
+- **Blocking.** While a dialog is open the lead answers nothing else. A lead-tier ask re-asks at its
+  hook deadline. An operator-tier permission ask that cannot be pinned is withdrawn and its caller
+  stops (a coder/QA `blocked` record, a finder `STATUS: failed`); that stop reaches the lead as an
+  ask once the dialog closes. Accepted (spec → Assumptions). No hook deadline changes.
+- **Supervisor relay seam (#278, not built).** A Supervisor relaying an Operator answer would be one
+  more `answered_via` kind, verified the same way by the hook.
 - **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
   `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
   stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,
@@ -461,8 +579,13 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   stage under the same uid could write an answer file by means the write guard and the verdict
   guard do not see; the hook's main-checkout re-verification of an Operator answer raises that bar,
   it does not remove it. The evidence matcher (`team-evidence.sh`) excludes the machine prefixes
-  `ask ` and `attention ` too, so a doorbell that arrives while a decision is pending never counts
-  as the Operator's words.
+  `ask `, `attention ` and `unasked ` too, so a doorbell that arrives while a decision is pending
+  never counts as the Operator's words. The dialog path has the same limit: a lead could write a
+  matching `tool_use`/answer pair into its own transcript, and the window between the provenance
+  check and the dialog call is not closed. Whether an attended answer entry can be told apart from
+  one a `PreToolUse` hook supplied (`updatedInput.answers`) is a manual check on the attended host
+  (TeamLead decision, plan review); a distinguishing field becomes a follow-up that makes it
+  required.
 - **Limit of the write lock.** The lead's profile denies `tmux send-keys|send|paste-buffer`,
   `hc keys|send|interrupt`, `session-host.sh keys|type` and `session-host.sh send` to a stage
   address, and `guard-teamlead-bash.sh` refuses the same and any command writing a script-owned
@@ -484,12 +607,17 @@ stage clock is paused while the gate waits (`lead_waiting`).
   the order brief and the patch path; the lead saves its answer as `blind-check.md` and never opens
   the patch.
 - **Brief:** `acceptance-brief.md` with `## Ordered vs delivered`, `## Scope delta`, `## Fit risks`,
-  `## Open defects`, `## Warnings`, `## Recommendation`.
+  `## Open defects`, `## Warnings`, `## Recommendation`, and — for a lead launched with
+  `ask_operator` — `## Decided by the TeamLead`: one `- a-<n> — <one line> → <value> — <why>` line
+  per verification-only answer of the run (§6 → Decision classes), or `none`.
 - **Verdict** (`team-verdict.sh acceptance <v> --for <qa record>`):
   - `accept` — needs `blind-check.md`, then the brief (not older than the blind check) with the six
     headings, and for a QA `Verdict: ready-with-warnings` one `- <warning> → keep|fix|follow-up —
     <why>` line under `## Warnings` per comma-separated item of the report's `Warnings:` line;
-    otherwise exit 8 naming the missing piece. The runner accepts the qa record and launches the
+    for an `ask_operator` lead also the seventh heading and, for every `runs/<run>/asks/a-*.answer.json`
+    with `authority: teamlead` and a `why` starting `verification-only:` (the structured fields,
+    never a substring of the log line), a line starting `- <id> ` or `- <id>:` under it;
+    otherwise exit 8 naming the missing piece. An older lead keeps the six-heading check. The runner accepts the qa record and launches the
     wrapup. Routing (prompt rule; the script checks only the line's shape): an item is a comma-free
     label; `→ follow-up` needs the failure sentence and
     `not fixable here: <path outside the delta | decision needed>` in `<why>`, else the lead routes

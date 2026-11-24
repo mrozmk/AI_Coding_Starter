@@ -215,6 +215,15 @@ echo $$ > "$TD/lock/pid"
 run "$MAIN" $TR alfa unlock
 expect 1 "is alive" "unlock a live runner"
 echo 999999 > "$TD/lock/pid"; touch -t "$(date -v-1M +%Y%m%d%H%M.%S)" "$TD/lock"
+# No reader of the lock's age (stat failing, Python refusing st_mtime): refused, the lock stays.
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/stat"
+printf '#!/bin/sh\ncase "$*" in *st_mtime*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/stat" "$WORK/bin/python3"
+run "$MAIN" $TR alfa unlock
+rm -f "$WORK/bin/stat" "$WORK/bin/python3"
+expect 1 "its age cannot be read" "(u) unlock refuses an unreadable lock age"
+[ -f "$TD/lock/pid" ] || fail "(u) unlock refuses an unreadable lock age: the lock is gone"
 run "$MAIN" $TR alfa unlock
 expect 0 "removed stale lock" "unlock a dead runner"
 [ ! -e "$TD/lock" ] || fail "unlock left the lock"

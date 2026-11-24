@@ -656,7 +656,7 @@ smoke_repos() {
   mkdir -p "$SEED/.claude/lib" "$SEED/.claude/hooks" "$SEED/.claude/team/prompts"
   # branch-model.sh: integrate's remote branch cleanup reads the KEEP lists through it.
   cp "$SRC"/.claude/lib/team-*.sh "$SRC"/.claude/lib/session-host*.sh "$SRC"/.claude/lib/roles-lib.sh \
-    "$SRC"/.claude/lib/branch-model.sh "$SEED/.claude/lib/"
+    "$SRC"/.claude/lib/branch-model.sh "$SRC"/.claude/lib/portable-lib.sh "$SEED/.claude/lib/"
   # Every runner exit paid a python3 audit (team-run.sh on_exit), and only team-audit-test.sh asserts
   # it: the fixture gets a no-op unless that suite asks for the real one.
   if [ "${SMOKE_REAL_AUDIT:-}" != 1 ]; then

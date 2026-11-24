@@ -85,6 +85,30 @@ brief() {  # brief [warnings section lines] — the acceptance brief, written af
     echo; echo "## Recommendation"; echo "accept"; } > "$RD/acceptance-brief.md"
 }
 unset TEAM_SMOKE_NO_LEAD
+
+# ---- (z) a lead launched with ask_operator lists its verification-only answers (seventh heading) --
+case_mark "(z) verification-only answers listed"
+setup_run alfa-20261115-090000
+jq '.ask_operator = true' "$TD/teamlead.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/teamlead.json"
+mkdir -p "$RD/asks"
+# a-3 the lead decided itself as verification-only; a-4 at teamlead authority, only quoting the marker
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" \
+  && ask_answer_write a-3 '{"id":"a-3","form":"text","value":"prove AC-2 in the smoke step","authority":"teamlead","why":"verification-only: same AC, the test moves","decision":"","answered_at":"2026-11-15T09:00:00Z","lead_session_id":"sid-lead"}' \
+  && ask_answer_write a-4 '{"id":"a-4","form":"text","value":"the plan calls this verification-only: keep the wording","authority":"teamlead","why":"the order names it","decision":"","answered_at":"2026-11-15T09:00:01Z","lead_session_id":"sid-lead"}') \
+  || fail "(z) fixture answers"
+echo "- export button → src/export.txt" > "$RD/blind-check.md"
+zbrief() { brief; printf '\n## Decided by the TeamLead\n%s\n' "$1" >> "$RD/acceptance-brief.md"; }
+zbrief "- a-4 — wording kept → as ordered — the order names it"
+V acceptance accept --for qa-1-1.json --message ok; expect 8 "no line for verification-only answer a-3" "(z) a-3 not listed"
+brief; V acceptance accept --for qa-1-1.json --message ok
+expect 8 "lacks the heading '## Decided by the TeamLead'" "(z) a six-heading brief from an ask_operator lead"
+zbrief "- a-3 — where AC-2 is proven → the smoke step — verification-only: same AC, the test moves"
+V acceptance accept --for qa-1-1.json --message ok; expect 0 "teamlead-acceptance-1.json" "(z) a-3 listed, a-4 not required"
+setup_run alfa-20261115-091000
+echo "- export button → src/export.txt" > "$RD/blind-check.md"; brief
+V acceptance accept --for qa-1-1.json --message ok; expect 0 "teamlead-acceptance-1.json" "(z) an older lead: six headings"
+echo "team-smoke-23: (z) verification-only answers listed under ## Decided by the TeamLead OK"
+
 setup_run alfa-20261115-100000
 
 # ---- (a) qa done with the lead on: validated, the acceptance gate rung, no wrapup yet -------------
@@ -369,7 +393,7 @@ done
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message x
 expect 9 "rework budget 2 reached (teams.teamlead.rework_budget.brainstorm) — write abandon-recommended with --notify abandon_decision" "(m) third rework"
 [ ! -e "$RD/teamlead-acceptance-3.json" ] || fail "(m) a refused rework wrote a verdict"
-ldec open alfa --source qa-1-1.json --question "Budget spent — one more round?" --notify abandon_decision --recommend abandon
+ldec open alfa --source qa-1-1.json --question "Budget spent — one more round?" --notify abandon_decision --recommend close
 expect 0 "[d-1]" "(n) abandon decision"
 V acceptance abandon-recommended --for qa-1-1.json --decision d-1 --message "budget spent"; expect 0 "teamlead-acceptance-3.json" "(n) abandon-recommended"
 # The two rework rounds happened; the runner acts only on what comes after them.

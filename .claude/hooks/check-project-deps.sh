@@ -54,7 +54,7 @@ if [ -f .env.example ]; then
     if grep -qE '^CONFLUENCE_URL=.+' .env && ! grep -qE '^CONFLUENCE_URL=.*/wiki[[:space:]]*$' .env; then
       add ".env: CONFLUENCE_URL must END with /wiki (instance URL, not a space URL)"
     fi
-    perms=$(stat -f "%Lp" .env 2>/dev/null || stat -c "%a" .env 2>/dev/null)
+    perms=$(stat -c "%a" .env 2>/dev/null || stat -f "%Lp" .env 2>/dev/null)
     [ -n "$perms" ] && [ "$perms" != "600" ] && add ".env is mode $perms — it holds live tokens. Fix: chmod 600 .env"
   fi
 fi

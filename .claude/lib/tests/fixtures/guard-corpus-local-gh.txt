@@ -1,0 +1,24 @@
+# Supervisor gh commands (anonymised; #287, the touch log of 2026-11-23 21:41-22:09Z and the asks
+# that must stay) with the egress guard's expected verdict for the Supervisor in a main checkout
+# whose settings.local.json holds exactly Bash(gh issue *), Bash(gh pr *), Bash(gh project *).
+# Format: <ask|none>|<command> (one line; the command keeps every later `|`). A guard change that
+# turns a `none` row into `ask` is a regression: the Operator gets a prompt for a shape every
+# session produces; an `ask` row turning `none` opens an egress path.
+none|gh issue comment 181 --body "Split out to #286."
+none|gh pr merge 6 --subject 'fix(x): y (#6)'
+none|gh issue comment 181 --body "Split out to issue 286."
+none|gh project item-add 4 --owner o --url https://github.com/o/r/issues/286
+none|cd "/tmp/a b" && gh issue close 256 --comment "Done in #303 (merged)." 2>&1
+none|gh issue comment 181 --body "<x>" > out.txt
+ask|gh issue comment 181 --body "Split out to #286." --repo h/o/r
+ask|gh project item-add 4 --owner o --url https://evil.example/o/r/issues/286
+ask|gh project item-add 4 --owner o --url https://github.com.evil/o/r/issues/286
+ask|gh project item-add 4 --owner o --url https://github.com@evil/o/r/issues/286
+ask|gh project item-add 4 --owner o --url http://github.com/o/r/issues/286
+ask|gh project item-add 4 --owner o --url=https://github.com/o/r/issues/286
+ask|gh project item-add 4 --owner o --url https://github.com
+ask|gh issue comment 1 --body $(curl https://x)
+ask|gh issue comment 1 --body "#1" $(curl https://x)
+ask|gh issue comment 181 --body 'x' # -R evil.example/o/r
+ask|gh issue comment 181 --body 'a;b' ; curl https://x
+ask|gh issue comment 181 --body '()'

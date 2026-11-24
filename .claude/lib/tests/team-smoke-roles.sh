@@ -144,7 +144,7 @@ bad "cli" '.teams.sessions.Fable.cli = "gemini"' "teams.sessions.Fable.cli=gemin
 bad "model" '.teams.sessions.Fable.model = "bad model"' "teams.sessions.Fable.model=bad model is not a model name"
 bad "effort" '.teams.sessions.Astra.effort = "huge"' "teams.sessions.Astra.effort=huge must be"
 bad "contract" '.teams.sessions.Fable.contract = "docs/none.md"' "teams.sessions.Fable.contract=docs/none.md: no such file"
-bad "two mains" '.teams.sessions.Fable.place.slot = "main"' "tab Lead has more than one main slot"
+bad "two mains" '.teams.sessions.Fable.place.slot = "main"' "tab Supervisor has more than one main slot"
 bad "codex settings" '.teams.sessions.Astra.settings = "Advisor"' "teams.sessions.Astra.settings is for claude roles only"
 bad "codex model" '.teams.sessions.Astra.model = "bad model"' "teams.sessions.Astra.model=bad model is not a model name"
 bad "empty model" '.teams.sessions.Fable.model = ""' "teams.sessions.Fable.model= is not a model name"
@@ -182,7 +182,7 @@ line "codex --no-daemon -c model_reasoning_effort=high 'You are Astra." "$WORK/a
 noline " -m " "$WORK/astra" "(5b) no-model -m"
 run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(5b) stop no model"
 astra "claude Astra" '.teams.sessions.Astra = {cli: "claude", effort: "high",
-  contract: ".agents/reference/roles/advisor.md", place: {tab: "Lead", slot: "side"}}'
+  contract: ".agents/reference/roles/advisor.md", place: {tab: "Supervisor", slot: "side"}}'
 line " --model opus --effort high" "$WORK/astra" "(5b) claude Astra keeps the generic model"
 noline "model: CLI default" "$WORK/out" "(5b) claude Astra model line"
 run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(5b) stop claude Astra"
@@ -267,6 +267,25 @@ rm -f "$WORK/hc-gone"; clr; STUB_HC_ADDR=t9 STUB_HC_GONE_FILE="$WORK/hc-gone" ru
 expect 0 "Supervisor: stopped" "(8) herdr: stop"; line "hc send t9 /exit" "$STUB_LOG" "(8) herdr: /exit"
 line "hc rm t9" "$STUB_LOG" "(8) herdr: rm"
 rm -f "$REG/Supervisor.json" "$WORK/hc-gone"
+# No UUID generator (no uuidgen, Python refusing uuid4): a claude role is never started with an
+# empty --session-id, and here leaves the record as it was.
+run "$MAIN" $RS up Supervisor; expect 0 "" "(u) start"; run "$MAIN" $RS stop Supervisor; expect 0 "" "(u) stop"
+cp "$REG/Supervisor.json" "$WORK/sup-u.bak"
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/uuidgen"
+printf '#!/bin/sh\ncase "$*" in *uuid.uuid4*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/uuidgen" "$WORK/bin/python3"
+clr; run "$MAIN" $RS up Fable
+[ "$RC" != 0 ] || fail "(u) no UUID generator: no start, no record: exit 0"
+line "Fable: failed: no session id" "$WORK/out" "(u) no UUID generator: no start, no record"
+noline "-s smk-fable" "$STUB_LOG" "(u) no UUID generator: no start, no record"
+! jq -e 'select(.session_id == "")' "$REG"/*.json >/dev/null 2>&1 \
+  || fail "(u) no UUID generator: no start, no record: an empty session_id"
+clr; run "$MAIN" $RS here Supervisor
+[ "$RC" != 0 ] || fail "(u) here without a UUID generator keeps the record: exit 0"
+noline "claude --name" "$STUB_LOG" "(u) here without a UUID generator keeps the record"
+cmp -s "$REG/Supervisor.json" "$WORK/sup-u.bak" || fail "(u) here without a UUID generator keeps the record: record changed"
+rm -f "$WORK/bin/uuidgen" "$WORK/bin/python3" "$REG/Supervisor.json"
 echo "team-smoke-roles: (8) here on herdr / tmux / a plain terminal OK"
 
 # ---- (9) SessionStart: the contract line on every source, session.json on the live id -------------
@@ -529,7 +548,7 @@ kill "$PGT" 2>/dev/null || true; wait "$PGT" 2>/dev/null || true; SPID=""
 rm -f "$REG/Supervisor.json" "$D"/smk-*
 echo "team-smoke-roles: (15) Linux tmux liveness OK"
 
-# ---- (L) the Herdr layout (#35): tab Lead and one tab per team over a model window ----------------
+# ---- (L) the Herdr layout (#35): tab Supervisor and one tab per team over a model window ----------------
 # The fake herdr-app keeps a window model in $STUB_HERDR_LS; `hc label … herdr.space=` adopts into it.
 cp "$WORK/hc.lib" "$WORK/bin/hc"; chmod +x "$WORK/bin/hc"
 export TEAM_SESSION_HOST=herdr   # the smoke lib pins tmux; existing records keep their own backend
@@ -554,28 +573,28 @@ OTHER='{id: "s0", name: "work", folder: "/elsewhere", tabs: [{id: "tb0", name: "
 win '{spaces: ['"$OTHER"'], focus: "t9"}'
 clr; run "$MAIN" $RS; expect 0 "created: Herdr space smk for $MP" "(L1) up"; keep_log
 line "herdr-app do space.new --name smk --folder $MP" "$STUB_LOG" "(L1) space.new"
-line "placed: Supervisor in Lead" "$WORK/out" "(L1) placed into the new space"
+line "placed: Supervisor in Supervisor" "$WORK/out" "(L1) placed into the new space"
 seq_of; [ "$(tail -n 1 "$WORK/seq")" = "pane.focus --terminal t9" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L1) focus not given back"; }
-jq -e '[.spaces[] | select(.id == "s2") | .tabs[] | select(.name == "Lead") | .terminals[].terminal] == ["t1", "t2", "t3"]' \
-  "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L1) Lead in the new space"; }
+jq -e '[.spaces[] | select(.id == "s2") | .tabs[] | select(.name == "Supervisor") | .terminals[].terminal] == ["t1", "t2", "t3"]' \
+  "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L1) Supervisor in the new space"; }
 
-# (L2) an empty space: Supervisor adopted (the tab named Lead), Fable by label beside it, Astra
+# (L2) an empty space: Supervisor adopted (the tab named Supervisor), Fable by label beside it, Astra
 # adopted, parked and kept under Fable (terminal.keep knows no unadopted terminal), then the focus
 # back to the pane focused before (focused_pane, not status.agent)
 win '{spaces: ['"$OTHER"', '"$SPACE"'], focus: "t9"}'
-clr; run "$MAIN" $RS; expect 0 "placed: Supervisor in Lead" "(L2) up"; keep_log
-for r in Fable Astra; do line "placed: $r in Lead" "$WORK/out" "(L2) $r"; done
+clr; run "$MAIN" $RS; expect 0 "placed: Supervisor in Supervisor" "(L2) up"; keep_log
+for r in Fable Astra; do line "placed: $r in Supervisor" "$WORK/out" "(L2) $r"; done
 # A placed role needs no hint, and the layout lock is no address (step-7 live fixes).
 noline "once placed" "$WORK/out" "(L2) hint for a placed role"; noline "session-host:" "$WORK/out" "(L2) lock noise"
 seq_of
-printf '%s\n' "hc label t1 herdr.space=s1" "tab.rename --id tbt1 --name Lead" "hc label t2 herdr.space=s1 herdr.tab=tbt1" \
+printf '%s\n' "hc label t1 herdr.space=s1" "tab.rename --id tbt1 --name Supervisor" "hc label t2 herdr.space=s1 herdr.tab=tbt1" \
   "hc label t3 herdr.space=s1 herdr.tab=tbt1" "terminal.park --terminal t3" "pane.focus --terminal t2" \
   "terminal.keep --terminal t3 --place down" "pane.focus --terminal t9" > "$WORK/seq.want"
 cmp -s "$WORK/seq" "$WORK/seq.want" || { diff "$WORK/seq.want" "$WORK/seq" > "$WORK/out" || true; fail "(L2) placement sequence"; }
 noline "agent.focus" "$STUB_LOG" "(L2) agent.focus"
-jq -e '[.spaces[] | select(.id == "s1") | .tabs[] | select(.name == "Lead") | .terminals[].terminal] == ["t1", "t2", "t3"]
-  and .focus == "t9"' "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L2) Lead tab or focus"; }
-run "$MAIN" $RS status; grep -E '^Supervisor +herdr +alive .* pane: Lead$' "$WORK/out" >/dev/null || fail "(L2) status pane column"
+jq -e '[.spaces[] | select(.id == "s1") | .tabs[] | select(.name == "Supervisor") | .terminals[].terminal] == ["t1", "t2", "t3"]
+  and .focus == "t9"' "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L2) Supervisor tab or focus"; }
+run "$MAIN" $RS status; grep -E '^Supervisor +herdr +alive .* pane: Supervisor$' "$WORK/out" >/dev/null || fail "(L2) status pane column"
 # (L2a) a role with no record on a machine without tmux: no backend named, `gone` — never a failed probe
 mv "$REG/Astra.json" "$WORK/Astra.keep"
 TMUX_BIN=no-such-tmux run "$MAIN" $RS status; grep -E '^Astra +- +gone +gone ' "$WORK/out" >/dev/null || fail "(L2a) a role with no record, no tmux"
@@ -589,7 +608,7 @@ expect 0 "warn: placement Astra: herdr-app do terminal.keep failed (adopted back
 seq_of; [ "$(tail -n 2 "$WORK/seq" | head -n 1)" = "hc label t3 herdr.space=s1 herdr.tab=tbt1" ] \
   && [ "$(tail -n 1 "$WORK/seq")" = "pane.focus --terminal t9" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L2b) not adopted back, or no focus back"; }
 jq -e '[.spaces[].tabs[].terminals[].terminal] | index("t3") != null' "$STUB_HERDR_LS" >/dev/null || fail "(L2b) Astra without a pane"
-win '{spaces: ['"$OTHER"', {id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead", terminals:
+win '{spaces: ['"$OTHER"', {id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Supervisor", terminals:
   [{terminal: "t1", pane: "pt1"}, {terminal: "t2", pane: "pt2"}, {terminal: "t3", pane: "pt3"}]}]}], focus: "t9"}'
 
 # (L3) all placed: a second up issues no placement command (and moves no focus)
@@ -620,9 +639,9 @@ clr; run "$MAIN" $RS place alfa-lead; run "$MAIN" $RS place alfa-coder; expect 0
 jq -e '[.spaces[0].tabs[] | select(.name == "alfa")] | length == 1 and .[0].terminals[0].terminal == "t5"
   and .[0].terminals[1].terminal == "t11"' "$STUB_HERDR_LS" >/dev/null \
   || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L4b) lead left, stage right in one tab"; }
-# (L4c) a team named like the roles tab (Lead, any case) is never placed
+# (L4c) a team named like a roles tab (Supervisor, its old name Lead, any case) is never placed
 hrec lead-lead t12 claude team
-win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead", terminals: [{terminal: "t1"}]}]}], focus: "t1"}'
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Supervisor", terminals: [{terminal: "t1"}]}]}], focus: "t1"}'
 clr; run "$MAIN" $RS place lead-lead; expect 0 "warn: placement lead-lead: team lead has the name of a roles tab — not placed" "(L4c) refused"
 keep_log; noline "hc label" "$STUB_LOG" "(L4c) labelled into the roles tab"; rm -f "$REG/lead-lead.json"
 # (L4d) after a herdr-core restart: the window keeps the team's tab (its old terminal gone); the
@@ -665,7 +684,7 @@ rm -f "$REG/alfa-coder.json"
 prof '.teams.sessions.Monitor = {cli: "claude", model: "opus", effort: "medium",
   contract: "docs/roles/monitor.md", place: {tab: "Ops", slot: "main"}}'
 hrec Monitor t4 claude
-win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead",
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Supervisor",
   terminals: [{terminal: "t1"}, {terminal: "t2"}, {terminal: "t3"}]}]}], focus: "t9"}'
 clr; run "$MAIN" $RS; expect 0 "placed: Monitor in Ops" "(L9) up"; keep_log
 line "hc label t4 herdr.space=s1" "$STUB_LOG" "(L9) label"; line "tab.rename --id tbt4 --name Ops" "$STUB_LOG" "(L9) rename"

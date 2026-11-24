@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # session-host-layout.sh — puts running role and team terminals into the main checkout's Herdr space
-# (#35): tab Lead (the main-slot role left, side roles stacked right; any other place.tab the same
+# (#35): tab Supervisor (the main-slot role left, side roles stacked right; any other place.tab the same
 # way) and one tab per team, named after the team (its TeamLead left, the stage running now on the
 # right: the lead is placed first, at launch, and each stage is adopted as a new column). A team
-# whose name is a roles tab (Lead, case-insensitive) is never placed: team-new.sh and the runner
+# whose name is a roles tab (Supervisor, the pre-rename Lead, case-insensitive) is never placed: team-new.sh and the runner
 # refuse that name. Sourced after session-host-lib.sh; layout_place_roles also needs roles-lib.sh.
 #
 # Panes are views: placement never ends a terminal (no terminal.kill, pane.close, tab.close, hc kill,
@@ -15,7 +15,7 @@
 # adopted by label first. Every call is time-boxed. A failure prints `warn: placement <address>: <why>` and the
 # address's hint, and returns 0: nothing depends on the window. Under tmux every function is a no-op.
 #
-# Team tabs: label adoption only — a runner never moves the focus. Lead (/roles up, typed by the
+# Team tabs: label adoption only — a runner never moves the focus. Supervisor (/roles up, typed by the
 # Operator): the first role and the first one beside the main role by label; every further side role
 # is adopted, parked, and kept again under the previous one (park → pane.focus → keep down). The
 # focus — moved by pane.focus or by a new space — goes back to the pane focused before. The space lookup and
@@ -123,10 +123,11 @@ ly_warn() {  # ly_warn <main> <address> — the failure line and the hint
 ly_lock() { sh_lock "$1" layout "" "layout pid=$$ $2" "${TEAM_LAYOUT_LOCK_WAIT:-30}"; }
 ly_unlock() { sh_unlock "$1" layout ""; }
 
-# ly_roles_tab <name> → 0 when <name> equals a roles tab (Lead, or a role's place.tab), case-insensitive.
+# ly_roles_tab <name> → 0 when <name> equals a roles tab (Supervisor, Lead — the tab's old name, still
+# open in older windows — or a role's place.tab), case-insensitive.
 ly_roles_tab() {
   local t n; n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-  for t in Lead $(roles_list --standing 2>/dev/null | while read -r r; do roles_cfg "$r" place.tab 2>/dev/null; done); do
+  for t in Supervisor Lead $(roles_list --standing 2>/dev/null | while read -r r; do roles_cfg "$r" place.tab 2>/dev/null; done); do
     [ "$n" != "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" ] || return 0
   done
   return 1

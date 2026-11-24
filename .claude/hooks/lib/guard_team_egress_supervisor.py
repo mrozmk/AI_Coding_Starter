@@ -26,9 +26,10 @@ from guard_team_egress_loops import (  # noqa: E402
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
 # backslash anywhere else -> ignored (still asked).
 GH_RULE = re.compile(r"^Bash\(gh ([^()*:\"'\\]+?)(:\*| \*)?\)$")
-# What a plain `gh ...` never needs: any `$` (parameter or arithmetic expansion can assemble a
-# `$(...)` at run time: `${a=$}${b=(}…$[x]`), backquotes, redirection (bash /dev/tcp), and the
-# `#` / `\` that the shared comment stripper misreads (`x\ #; curl …` would hide the curl).
+# What the unquoted text of a covered `gh ...` never needs (quoted text was vetted by read_word and
+# is data, #287): any `$` (parameter or arithmetic expansion can assemble a `$(...)` at run time:
+# `${a=$}${b=(}…$[x]`), backquotes, redirection (bash /dev/tcp), and the `#` / `\` that the shared
+# comment stripper misreads (`x\ #; curl …` would hide the curl).
 UNPLAIN = re.compile(r"[$`<>#\\]")
 # gh reads `[HOST/]OWNER/REPO`; a third part, `git@…` or a scheme makes it pick another host.
 GH_PLAIN_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -55,10 +56,13 @@ class Seg(list):
     op = "end"
 
 
-def gh_host_selector(words):
+def gh_host_selector(words, plain_values=False):
     """True when <words> could point gh at another host: a repo value that is not plain
     OWNER/REPO (any -R / --repo spelling, also a short-flag cluster), a URL, --hostname, or the
-    gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
+    gh auth -h shorthand in any short-flag cluster. Over-matching only asks more.
+    <plain_values>: the words are plain_segments' decoded values (gh_covered, #287) — real
+    redirections are already split off, so a `<`/`>` left in a word is quoted data and the word is
+    judged whole, and a word starting `https://github.com/` names the default host."""
     auth = words[1:2] == ["auth"]
     # `gh repo view [HOST/]OWNER/REPO`: the repository is positional there.
     if words[1:3] == ["repo", "view"]:
@@ -66,9 +70,11 @@ def gh_host_selector(words):
         if pos and not GH_PLAIN_REPO.match(pos[0]):
             return True
     for i, w in enumerate(words):
-        # A glued redirection stays in the token: gh gets `--repo>/dev/null h/o/r` as --repo h/o/r.
-        w = re.split(r"[<>]", w, maxsplit=1)[0]
-        if ("://" in w or w == "--hostname" or w.startswith("--hostname=")
+        # A glued redirection stays in a read-path token: `--repo>/dev/null h/o/r` is --repo h/o/r.
+        if not plain_values:
+            w = re.split(r"[<>]", w, maxsplit=1)[0]
+        url = "://" in w and not (plain_values and w.startswith("https://github.com/"))
+        if (url or w == "--hostname" or w.startswith("--hostname=")
                 or BRACE.search(w) or GLOB_OPTION.match(w)):
             return True
         short = w.startswith("-") and not w.startswith("--")
@@ -327,9 +333,10 @@ def format_masked(cmd, egress_in):
 
 def gh_covered(seg, vals, rules):
     """A locally covered gh command — or a built-in read (GH_READ_FORMS, a GET `gh api`, a graphql
-    query) — by #148's plain test, no stricter (no GH_READS_TAINT): no unplain text outside
-    single-quoted formatting values or query fields, no glob, no word of separators only (`'()'`),
-    no host selector."""
+    query) — by #148's plain test, no stricter (no GH_READS_TAINT): no unplain character in the
+    unquoted text outside single-quoted formatting values or query fields (quoted text is data,
+    #287), no glob, no word of separators only (`'()'`), no host selector (plain values, so a
+    github.com URL passes)."""
     rest = tuple(vals[1:])
     builtin = rest[:2] in GH_READ_FORMS or gh_api_read(vals)
     if not builtin and not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
@@ -338,9 +345,10 @@ def gh_covered(seg, vals, rules):
         return False
     ok = bound_words(seg) | (format_words(seg, FMT, GH_FORMAT_CMDS) | graphql_values(seg)
                              if builtin else set())
-    text = " ".join(w.raw for i, w in enumerate(seg) if i not in ok)
+    text = " ".join(t for i, w in enumerate(seg) if i not in ok for k, t in w.parts if k == "u")
     return not (UNPLAIN.search(text) or any(set(v) <= SEPARATORS for v in vals)
-                or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)]))
+                or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)],
+                                    plain_values=True))
 
 
 def supervisor_verdict(cmd, project, egress_in, width=0):

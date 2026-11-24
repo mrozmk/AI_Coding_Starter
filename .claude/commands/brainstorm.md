@@ -10,7 +10,7 @@ argument-hint: "[topic or feature idea | empty → next free backlog task]"
 > **If `$ARGUMENTS` is empty, the topic is not given — it is *resolved* in Step 0 below** (default: the next free task from `.agents/backlog.md`). Do not treat an empty invocation as "ask the user what to build" unless Step 0 finds no resolvable task.
 
 <HARD-GATE>
-This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning. (In **pipeline mode** — `/orchestrate` is driving, see Step 9 — that approval point is auto-approved and the pipeline owns the handoff.)
+This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning.
 </HARD-GATE>
 
 <WHY-GATE>
@@ -60,7 +60,7 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
    Among all free Tasks, pick by **`Scope` rank — `CORE`, then `MUST`, then `COULD`** — and break ties by **table order (topmost first)**. On a fresh backlog this is `E0-1` (the scaffold), which is dependency-free by construction.
 
-   **c. Verify it is *genuinely* not already done** (guard against stale status — a prior `/orchestrate`/`/plan-feature` run may have completed work but left the `Status`/`Ref` write uncommitted or unwritten, so the table can lie). Before committing to the Task, cross-check for completion evidence:
+   **c. Verify it is *genuinely* not already done** (guard against stale status — a prior `/plan-feature` or `/execute` run may have completed work but left the `Status`/`Ref` write uncommitted or unwritten, so the table can lie). Before committing to the Task, cross-check for completion evidence:
    - Is there a plan in `.agents/plans/done/` whose header `**Tasks:**` line lists this Task id? **Whole-Task rule (umbrella D8):** a Task split across two plans with one still active is **in progress**, not done — the active-plan check in (b) already excluded it, so any Task reaching (c) has no active plan and its done-plan counts as evidence. Legacy backlog: match done-plans by task id / work-package name as before — the legacy branch has no `**Tasks:**` convention.
    - For a Task with a `Jira` cell: a status refreshed in (a′) to anything other than `DONE` **overrides** done-plan evidence — the Task was reopened in Jira, and Jira is authoritative.
    - Does its `Ref` column already point to a spec **and** a done-plan?
@@ -210,7 +210,7 @@ Create `.agents/specs/` if it doesn't exist.
 
 ## Assumptions
 
-<Every default you resolved yourself in Step 2, one bullet each, as "Assumed X (because Y)". If none, write "None — no defaults taken without asking". This section is never omitted and never left blank: an assumption that exists only in the conversation is invisible to `/plan-feature`, to `/orchestrate`, and to the cross-model reviewer that reads this file.>
+<Every default you resolved yourself in Step 2, one bullet each, as "Assumed X (because Y)". If none, write "None — no defaults taken without asking". This section is never omitted and never left blank: an assumption that exists only in the conversation is invisible to `/plan-feature` and to the cross-model reviewer that reads this file.>
 
 ## Architecture
 
@@ -242,7 +242,7 @@ Create `.agents/specs/` if it doesn't exist.
 - **Appetite:** <how much this is worth — a budget, not an estimate>
 - **Cut first:** <what gets dropped first if this grows too big, in priority order>
 
-<Read by `/plan-feature` when sizing, and by `/orchestrate` when a step overruns — it is the standing answer to "what do we drop?", so it must survive into the plan.>
+<Read by `/plan-feature` when sizing, and by the executor when the work overruns — it is the standing answer to "what do we drop?", so it must survive into the plan.>
 
 ## From tracker comments
 
@@ -461,9 +461,7 @@ This is the one place `/brainstorm` stops and waits. The spec is final here — 
 
 **Team mode** (`.agents/team/session.json` exists): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. There is no spec gate: a per-run TeamLead's first check is the plan gate. The exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question); the run's TeamLead answers them. A product-fit hit from Step 1.5 c is asked too, and is the Operator's decision, and so is an architecture hit's `AD-n` supersede proposal from Step 1.5 c. The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff. The brainstorm stage ends at the approval line: run `bash .claude/lib/costs/runtime-mark.sh stage end brainstorm` there, as its own Bash call ([Stage end marker](#stage-end-marker-token-usage)), then continue into planning.
 
-**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "brainstorm"` — `/orchestrate` Stage 1 is driving): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — pipeline)`) and return to `/orchestrate`, which compacts the session and runs `/plan-feature` in a fresh context — so, unlike team mode, do **not** continue into planning in this turn. The same exceptions still ask (a directional fork from Step 2 or Step 1.5, a 🔶 rethink signal from Step 8.7); a question you could not get answered leaves the spec `Draft`, and the pipeline relays it. The `<TERMINAL-GATE>` below applies with one change: the pipeline, not you, ends the turn.
-
-> **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. The two programmatic callers — the team planner and `/orchestrate`'s pipeline — are exactly the second mode this note once said to design "with a real case in hand": each is a yield to one named caller that leaves a state file (`.agents/team/session.json`, `.claude/orchestrate-run.json`), not a general `--yes` flag. A human-invoked `/brainstorm` still has no yield.
+> **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. The one programmatic caller — the team planner — is the second mode this note once said to design "with a real case in hand": a yield to one named caller that leaves a state file (`.agents/team/session.json`), not a general `--yes` flag. A human-invoked `/brainstorm` still has no yield.
 
 Hand off to `/plan-feature`. There is a single planning command — whether it performs a web-research phase is decided automatically from the `External docs required` flag in the spec (set in Step 5).
 
@@ -474,7 +472,7 @@ Tell the user:
 <TERMINAL-GATE>
 **STOP. `/brainstorm` is complete.**
 
-Do **NOT** write code. Do **NOT** scaffold files. **Do NOT auto-run `/plan-feature`** — naming it above is a handoff pointer for the user, not an instruction to yourself. In **pipeline mode** the same holds: report the spec path and return to `/orchestrate` Stage 1, which writes the handoff marker and ends the turn — `/plan-feature` runs after the compaction, never in this turn.
+Do **NOT** write code. Do **NOT** scaffold files. **Do NOT auto-run `/plan-feature`** — naming it above is a handoff pointer for the user, not an instruction to yourself.
 
 Report the spec path and end your turn.
 </TERMINAL-GATE>

@@ -89,17 +89,38 @@ run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/medium)" "(b) runner, 
 [ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
   && [ "$(line_of '-s smk-alfa-lead')" -lt "$(line_of '-s smk-alfa-planner')" ] || fail "(b) lead not before the planner"
 for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'medium'" \
-  "--disallowedTools AskUserQuestion -- " "-e TEAM_SESSION_ROLE=TeamLead"; do
+  "-e TEAM_SESSION_ROLE=TeamLead"; do
   grep -- "-s smk-alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
 done
-jq -e --arg r "$RUN_ID" '.run == $r and .model == "fable" and (.main_root | length > 0)' \
+grep -- "-s smk-alfa-lead" "$STUB_LOG" | grep -qF -- "--disallowedTools AskUserQuestion" \
+  && fail "(b) the lead may raise AskUserQuestion: the launch still disables it"
+jq -e --arg r "$RUN_ID" '.run == $r and .model == "fable" and (.main_root | length > 0) and .ask_operator == true' \
   "$TD/teamlead.json" >/dev/null || fail "(b) teamlead.json"
+jq -e --arg r "$RUN_ID" --arg s "$(cat "$RD/lead-1.session")" '.lead_ask_hooks[$s] | .run == $r
+  and (.clean | type) == "boolean" and has("config_dir")' "$MAIN/.agents/team/anchors/alfa.json" >/dev/null \
+  || fail "(b) no launch snapshot lead_ask_hooks[<sid>] in the anchor"
+echo "team-smoke-22: (b) the lead may raise AskUserQuestion OK"
 [ -s "$RD/lead-1.session" ] && [ -f "$RD/lead-1.prompt.md" ] && [ -f "$RD/order-brief.md" ] \
   || fail "(b) lead-1 session/prompt or frozen brief missing"
 has "$RUN_ID" "$RD/lead-1.prompt.md" && ! grep -q '{{' "$RD/lead-1.prompt.md" || fail "(b) prompt not rendered"
 [ "$(ls "$SUP" | wc -l | tr -d ' ')" = 1 ] && grep -q '^event: session_dead' "$SUP"/* \
   && grep -q "^ref: runs/$RUN_ID/planner-" "$SUP"/* || fail "(b) dead planner: no single session_dead"
 echo "team-smoke-22: (b) launch OK"
+# The lead's session id comes from new_uuid: Python stands in for a missing uuidgen, and no
+# generator at all stops the lead launch before its session file or tmux session.
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 127\n' > "$WORK/bin/uuidgen"; chmod +x "$WORK/bin/uuidgen"
+reset; run "$MAIN" $TR alfa
+grep -Eqx '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}' "$RD/lead-1.session" \
+  || fail "(u) a lead session id without uuidgen: $(cat "$RD/lead-1.session" 2>&1)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/uuidgen"
+printf '#!/bin/sh\ncase "$*" in *uuid.uuid4*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/python3"
+reset; run "$MAIN" $TR alfa
+has "error: new_uuid gave no UUID" "$WORK/out" && [ ! -e "$RD/lead-1.session" ] \
+  && ! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(u) no UUID generator stops the lead launch: exit $RC"
+rm -f "$WORK/bin/uuidgen" "$WORK/bin/python3"
+echo "team-smoke-22: (u) lead session id OK"
 
 # ---- (b2) Herdr: the lead's terminal into its team's tab through the main checkout's roles.sh place
 case_mark "(b2) Herdr: the lead's terminal into its"
@@ -606,6 +627,16 @@ DEC="bash .claude/lib/team-lead.sh decision"
 # The lead records every answer with the tuning question (team-lead.md §10); `ldec0` omits it.
 ldec() { if [ "$1" = answer ]; then set -- "$@" --tuning none --why fixture; fi; run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
 ldec0() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
+# The lead on the new path, as the runner launches it: ask_operator, its lead session in the anchor
+# and a launch snapshot of its AskUserQuestion registrations (team-lead.md §7).
+ANC22="$MAIN/.agents/team/anchors/alfa.json"
+jq '.ask_operator = true' "$TD/teamlead.json" > "$WORK/tlj" && mv "$WORK/tlj" "$TD/teamlead.json"
+AH="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_ask_hooks "$MAIN" "$CREAL" "" || true)"
+[ "${AH%% *}" = clean ] || fail "(m) the fixture's lead registrations are not clean: $AH"
+SN="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_snapshot "$AH")"
+jq --arg r "$RUN_ID" --argjson o "$SN" '.lead_sessions = {run: $r, ids: ["sid-lead"], current_id: "sid-lead", config_dir: ""}
+  | .lead_ask_hooks = {"sid-lead": ($o + {run: $r, config_dir: ""})}' \
+  "$ANC22" > "$WORK/anc" && mv "$WORK/anc" "$ANC22"
 SAID=0
 said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead window, now
   SAID=$((SAID + 1))
@@ -619,14 +650,18 @@ nev() { ls "$OB/events" 2>/dev/null | grep -c "_alfa_${RUN_ID}_$1\.json$" || tru
 run "$CLONE" $DEC open alfa --source coder-1-1.json --question "Edit the settings?"
 expect 3 "only this run's TeamLead opens decisions" "(m) open by a non-lead"
 ldec open alfa --source coder-1-1.json --question "Allow the coder to edit .claude/settings.json?" \
-  --options "yes|no" --recommend "no — not ordered"
+  --options "yes|no" --recommend no
 expect 0 "[d-2] Allow the coder to edit .claude/settings.json?" "(m) open"
+sed -n 's/^ask-operator: //p' "$WORK/out" | jq -e '.questions[0].header == "d-2" and (.questions[0].question | startswith("d-2 "))
+  and .questions[0].options[0].label == "no" and (.questions[0].options[0].description | startswith("Recommended — "))' >/dev/null \
+  || fail "(m) no ask-operator input: $(cat "$WORK/out")"
+echo "team-smoke-22: (m) ask-operator input printed OK"
 [ "$(sed -n 's/^status: //p' "$DLD/d-2.md")" = pending ] && grep -q '^## Recommendation' "$DLD/d-2.md" \
   || fail "(m) d-2.md not pending"
 V1="$(ls "$RD"/teamlead-decision-*.json | tail -n 1)"
 jq -e '.gate == "decision" and .verdict == "escalate" and .notify == "human_decision"
   and (.ref | endswith("/decisions/d-2.md")) and .for == "coder-1-1.json"' "$V1" >/dev/null || fail "(m) escalate verdict"
-ldec open alfa --source nothere.json --question q; expect 1 "verdict was refused" "(m) a source outside the run"
+ldec open alfa --source nothere.json --question q --options "yes|no" --recommend yes; expect 1 "verdict was refused" "(m) a source outside the run"
 rm -f "$DLD/d-3.md"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock"
@@ -639,8 +674,20 @@ cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep"
 cp "$STUB_LOG" "$WORK/stub.keep"; : > "$STUB_LOG"  # the first runner ended the coder on cancel
 printf '#!/usr/bin/env bash\necho x >> "%s/nfail.log"; exit 1\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"
 printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/nfail.log"
-STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa
+# The unasked reminder rides the lead's own doorbell (its socket here), never notify.sh.
+python3 -I "$WORK/srv.py" "$SD/l.sock" "$WORK/recv-m" & SPID=$!
+for _ in $(seq 1 50); do [ -S "$SD/l.sock" ] && break; sleep 0.1; done
+: > "$WORK/recv-m"; rm -f "$TD/send-lead.log" "$DLD"/.unasked-* "$WORK/lreg.keep"
+mkdir -p "$(dirname "$LREG")"; [ ! -f "$LREG" ] || cp "$LREG" "$WORK/lreg.keep"; jq -n --arg s "$SD/l.sock" '{socket: $s, token: "t", pid: null}' > "$LREG"
+TEAM_UNASKED_GRACE_SECS=0 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa
 expect 6 "warn: notify.sh failed 3× for teamlead-decision-" "(m) a failing notify.sh warns after three tries"
+for _ in $(seq 1 30); do grep -q 'unasked d-2: ' "$WORK/recv-m" 2>/dev/null && break; sleep 0.1; done
+jq -r 'select(.type == "user") | .message.content' "$WORK/recv-m" 2>/dev/null | grep -q '^unasked d-2: ' \
+  && ! grep -q 'doorbell-skipped' "$TD/send-lead.log" 2>/dev/null \
+  || { { cat "$WORK/recv-m"; cat "$TD/send-lead.log" 2>/dev/null; } >> "$WORK/out"; fail "(m) unasked reminder delivered with notify.sh failing: none on the socket"; }
+kill "$SPID" 2>/dev/null || true; SPID=""
+if [ -f "$WORK/lreg.keep" ]; then cp "$WORK/lreg.keep" "$LREG"; else rm -f "$LREG"; fi
+echo "team-smoke-22: (m) unasked reminder delivered with notify.sh failing OK"
 has "the decision waits in alfa-lead" "$WORK/out" || fail "(m) the warn does not name the window"
 [ "$(grep -c . "$WORK/nfail.log")" = 3 ] || fail "(m) notify.sh tried $(grep -c . "$WORK/nfail.log") times, want 3"
 [ "$(grep -c 'warn: notify.sh failed' "$WORK/out")" = 1 ] || fail "(m) more than one warn"
@@ -676,7 +723,7 @@ echo "team-smoke-22: (m) open + one notification OK"
 
 # ---- (n) two pending: answered by id, bound to the Operator's own words; a second answer → 4 ------
 case_mark "(n) two pending: answered by id, bound t"
-ldec open alfa --source coder-1-1.json --question "Which endpoint?" --options "old|new"; expect 0 "[d-3]" "(n) open d-3"
+ldec open alfa --source coder-1-1.json --question "Which endpoint?" --options "old|new" --recommend old; expect 0 "[d-3]" "(n) open d-3"
 ldec answer d-3 --text "use the old one"; expect 1 "not team d-3" "(n) answer without a team"
 ldec answer alfa d-3 --text "use the old one"; expect 7 "no Operator message" "(n) no Operator input yet"
 said_in_lead "prompt coder: use the old one"
@@ -710,7 +757,7 @@ echo "team-smoke-22: (o) withdraw OK"
 case_mark "the Operator's relay is bound to its ask"
 sleep 600 & WPID=$!
 bashp "az webapp restart --name y"; mkask a-7 permission operator "$(hookin)" "$WPID"
-ldec open alfa --ask a-7; expect 0 "[d-4] coder: Bash az webapp restart --name y" "(bind) open from the ask"
+ldec open alfa --ask a-7 --recommend deny; expect 0 "[d-4] coder: Bash az webapp restart --name y" "(bind) open from the ask"
 has 'reply: "d-4 allow" | "d-4 deny: <what instead>"' "$WORK/out" || fail "(bind) open names no reply form"
 grep -q '^bind_ask: a-7$' "$DLD/d-4.md" && grep -q '^bind_session_id: sid-auth-1$' "$DLD/d-4.md" \
   && grep -q '^source: asks/a-7.json$' "$DLD/d-4.md" || fail "(bind) the decision is not bound to the ask"
@@ -740,7 +787,8 @@ runner_attention() {  # runner_attention <label> [<line>] — one attention line
 rang() { grep -qF -- "$1" "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null; }
 win() {  # win <fn> [args…] → one runner function in the runner's shell; doorbells to $WORK/bells
   set +e; (cd "$CREAL" && TEAM=alfa RUN="$RUN_ID" CLONE="$CREAL" root="$MAIN" MODE=normal
-    . "$MAIN/.claude/lib/team-lib.sh"; TD="$(team_dir)"; . "$MAIN/.claude/lib/team-run-lead.sh"
+    . "$MAIN/.claude/lib/team-lib.sh"; TD="$(team_dir)"; . "$MAIN/.claude/lib/team-lead-lib.sh"
+    . "$MAIN/.claude/lib/team-run-lead.sh"
     . "$MAIN/.claude/lib/team-ask.sh"; . "$MAIN/.claude/lib/team-run-asks.sh"   # as team-run.sh sources them
     team_session_doorbell() { echo "$3" >> "$WORK/bells"; }
     "$@") > "$WORK/out" 2>&1; RC=$?; set -e
@@ -794,12 +842,12 @@ echo "team-smoke-22: (idle) idle stage OK"
 
 # ---- one typed message answers one decision, unless it names the others' ids -----------------------
 case_mark "one typed message answers one decision"
-ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-5]" "(once-ev) open d-5"
-ldec open alfa --source coder-1-1.json --question "Keep the old table?"; expect 0 "[d-6]" "(once-ev) open d-6"
+ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?" --options "yes|no" --recommend yes; expect 0 "[d-5]" "(once-ev) open d-5"
+ldec open alfa --source coder-1-1.json --question "Keep the old table?" --options "yes|no" --recommend yes; expect 0 "[d-6]" "(once-ev) open d-6"
 said_in_lead "yes"
 ldec answer alfa d-5 --text yes; expect 0 "answered: d-5" "(once-ev) the first answer"
 ldec answer alfa d-6 --text yes; expect 7 "no Operator message" "(once-ev) the same message twice"
-ldec open alfa --source coder-1-1.json --question "Ship today?"; expect 0 "[d-7]" "(once-ev) open d-7"
+ldec open alfa --source coder-1-1.json --question "Ship today?" --options "yes|no" --recommend yes; expect 0 "[d-7]" "(once-ev) open d-7"
 said_in_lead "d-6 yes, d-7 no"
 ldec answer alfa d-6 --text yes; expect 0 "answered: d-6" "(once-ev) a message naming d-6"
 ldec answer alfa d-7 --text no; expect 0 "answered: d-7" "(once-ev) the same message names d-7"
@@ -826,7 +874,7 @@ st() { sed -n 's/^status: //p' "$DLD/$1.md"; }
 sleep 600 & WPID=$!
 bashp "curl https://example.invalid/w"; mkask a-10 permission operator "$(hookin)" "$WPID"
 win lead_waiting coder 1; [ "$RC" = 0 ] || fail "(w) the stage clock runs while an ask is open"
-ldec open alfa --ask a-10; expect 0 "coder: Bash curl https://example.invalid/w" "(w) open from the ask"
+ldec open alfa --ask a-10 --recommend deny; expect 0 "coder: Bash curl https://example.invalid/w" "(w) open from the ask"
 DW="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; [ -n "$DW" ] || fail "(w) no decision id"
 # Every decision is answered in the lead's window: the Operator's event names it, never a stage's.
 jq -n --arg r "$DLD/$DW.md" --arg m "$DW: coder: Bash curl" '{gate: "decision", verdict: "escalate",
@@ -848,5 +896,63 @@ grep -qxF "ask coder a-10 withdrawn — the stage session or attempt was replace
 win lead_waiting coder 1; [ "$RC" = 1 ] || fail "(w) the stage clock still stopped after the asks were withdrawn"
 kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
 echo "team-smoke-22: (w) operator-tier ask OK"
+
+# ---- (m) the unasked reminder's timing, as runner functions (last: its decision shifts no id) -----
+case_mark "(m) the unasked reminder's timing"
+AH="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_ask_hooks "$MAIN" "$CREAL" "" || true)"
+[ "${AH%% *}" = clean ] || fail "(m) timing: the fixture's lead registrations are not clean: $AH"
+SN="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_snapshot "$AH")"
+jq --arg r "$RUN_ID" --argjson o "$SN" '.lead_ask_hooks["sid-lead"] = ($o + {run: $r, config_dir: ""})' \
+  "$ANC22" > "$WORK/anc" && mv "$WORK/anc" "$ANC22"; cp "$ANC22" "$WORK/anc.keep"
+ldec open alfa --source coder-1-1.json --question "Rename the export flag?" --options "yes|no" --recommend yes
+DR="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; [ -n "$DR" ] || fail "(m) timing: no decision id"
+grep -qx '## Dialog' "$DLD/$DR.md" || fail "(m) timing: $DR has no ## Dialog"
+unasked() { win eval 'sess_name() { team_tmux_name alfa "$1"; }; lead_unasked_decisions'; cp "$WORK/out" "$WORK/uq.out"; }
+nb() { grep -c "^unasked $DR: " "$WORK/bells" 2>/dev/null || true; }
+fresh() { rm -f "$DLD/.unasked-$DR" "$DLD/.unclean-warned-$DR"; : > "$WORK/bells"; }
+fresh; TEAM_UNASKED_GRACE_SECS=3600 unasked
+[ "$(nb)" = 0 ] || fail "(m) a reminder inside the grace: $(cat "$WORK/bells")"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=3600 unasked
+[ "$(nb)" = 1 ] && grep -q "^unasked $DR: no AskUserQuestion raised yet — run decision list --pending" "$WORK/bells" \
+  || fail "(m) no reminder after the grace: $(cat "$WORK/bells") $(cat "$WORK/uq.out")"
+TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=3600 unasked
+[ "$(nb)" = 1 ] || fail "(m) a second reminder inside the interval: $(cat "$WORK/bells")"
+echo "team-smoke-22: (m) one reminder per interval OK"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 1 ] || fail "(m) control: no reminder before the dialog is raised"
+jq -nc --arg q "$DR Rename the export flag?" '{type: "assistant", uuid: "ua-r", timestamp: "2099-01-01T00:00:00Z",
+  message: {role: "assistant", content: [{type: "tool_use", id: "toolu_r", name: "AskUserQuestion", input: {questions: [{question: $q,
+  header: "x", multiSelect: false, options: [{label: "yes", description: ""}, {label: "no", description: ""}]}]}}]}}' >> "$LTX"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 0 ] || fail "(m) a reminder for a raised dialog: $(cat "$WORK/bells")"
+echo "team-smoke-22: (m) no reminder once the dialog is raised OK"
+SLJ="$CREAL/.claude/settings.local.json"; rm -f "$WORK/slj.keep"; [ ! -f "$SLJ" ] || cp "$SLJ" "$WORK/slj.keep"
+{ cat "$SLJ" 2>/dev/null || echo '{}'; } | jq '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{matcher: "*", hooks: [{type: "command", command: "echo x"}]}])' > "$WORK/slj"
+mv "$WORK/slj" "$SLJ"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 1 ] && grep -q "^unasked $DR: the dialog is unreliable here (" "$WORK/bells" \
+  && grep -q "^warn: $DR waits in .*alfa-lead — dialog unreliable (" "$WORK/uq.out" \
+  || fail "(m) a registration change after launch: $(cat "$WORK/bells") $(cat "$WORK/uq.out")"
+if [ -f "$WORK/slj.keep" ]; then cp "$WORK/slj.keep" "$SLJ"; else rm -f "$SLJ"; fi
+echo "team-smoke-22: (m) a registration change after launch degrades the reminder OK"
+jq '.lead_ask_hooks["sid-lead"].clean = false | .lead_ask_hooks["sid-lead"].cause = "user profile: .* matcher"' "$WORK/anc.keep" > "$ANC22"
+cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep2"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 1 ] && grep -q "^unasked $DR: the dialog is unreliable here (launch snapshot unclean: user profile: .\* matcher) — print $DR in plain text" "$WORK/bells" \
+  && [ "$(grep -c "^warn: $DR waits in .*alfa-lead — dialog unreliable" "$WORK/uq.out")" = 1 ] \
+  || fail "(m) an unclean environment: $(cat "$WORK/bells") $(cat "$WORK/uq.out")"
+TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 2 ] && ! grep -q "^warn: $DR" "$WORK/uq.out" || fail "(m) an unclean environment: a second warn or no second ring"
+cp "$WORK/notify.sh.keep2" "$MAIN/.claude/lib/notify.sh"; cp "$WORK/anc.keep" "$ANC22"
+echo "team-smoke-22: (m) an unclean environment keeps the reminder and warns OK"
+grep -v '"toolu_r"' "$LTX" > "$WORK/ltx" || true; mv "$WORK/ltx" "$LTX"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 1 ] || fail "(m) control: no reminder for the new-path lead"
+jq 'del(.ask_operator)' "$TD/teamlead.json" > "$WORK/tlj" && mv "$WORK/tlj" "$TD/teamlead.json"
+fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
+[ "$(nb)" = 0 ] || fail "(m) a reminder for an older lead: $(cat "$WORK/bells")"
+jq '.ask_operator = true' "$TD/teamlead.json" > "$WORK/tlj" && mv "$WORK/tlj" "$TD/teamlead.json"
+echo "team-smoke-22: (m) no reminder for an older lead OK"
 
 echo "team-smoke-22: OK"

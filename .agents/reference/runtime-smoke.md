@@ -2,7 +2,7 @@
 
 The procedure behind the optional **Runtime smoke** paragraph in `CLAUDE.md → Validation`. It is
 **not** a slash command — whoever runs the gate (`/gates:verify-implementation`,
-`/check-implementation`, `/orchestrate`) reads and performs it when its conditions hold.
+`/check-implementation`) reads and performs it when its conditions hold.
 
 **Why it exists.** The shell gates (typecheck, lint, test) are static — none renders a frame.
 None can see a layout overflow, a component whose render threw on the screen just edited, an

@@ -89,7 +89,7 @@ bash .claude/lib/supervisor-sessions.sh preflight   # one verdict line per row, 
 
 After a crash or reboot, `/roles` also lists the interrupted team runs (resuming one is optional,
 `/start-team <team>`) and prints a resume line for each gone ad-hoc conversation. Under Herdr the
-roles land in the `Lead` tab of the checkout's space. A role that waits at the folder trust dialog
+roles land in the `Supervisor` tab of the checkout's space. A role that waits at the folder trust dialog
 is reported as `started (needs trust — pick Yes; Enter alone exits)`: accept it in that window. No
 wake loop and no team-watch daemon start; role messages are inbox files rung by the doorbell.
 

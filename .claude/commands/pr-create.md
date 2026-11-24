@@ -227,8 +227,6 @@ Otherwise:
 - Assumes the work is committed. Never stages, commits, or amends.
 - Everything — host, owner/repo, type, key, dest, merge strategy — is derived at run time from
   `origin` and the Branch model; nothing project-specific is hardcoded.
-- Natural completion of an `/orchestrate --publish branch-local` run (CLAUDE.md → *Orchestrate
-  publish*): the pipeline commits, this command publishes for review.
 
 ## Stage end marker (token usage)
 

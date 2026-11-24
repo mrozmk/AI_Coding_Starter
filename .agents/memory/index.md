@@ -140,8 +140,8 @@ Verified across downstream projects; each one cost a session before it was writt
 - **Bash cwd persists between calls.** A "scoped lint OK" after a chained `&&` may have run somewhere else — prefix with an absolute `cd <root> &&` and read the tool's own "N files processed" count, not the exit code.
 - **Never probe `.env` from Bash** — every spelling that reads it is denied and the denial is silent about why. The SessionStart hook `check-project-deps.sh` is the one sanctioned check; for anything else hand the user a `!`-prefixed command.
 - **Chained `git add X && git commit` is always blocked** — `guard-commit.sh` inspects the staged set *before* the chain runs and sees it empty. Stage and commit in two calls.
-- **Network-reaching plan tasks (`curl`, `pip install`, `npm i <new>`) park an `/orchestrate` sub-agent** on a permission prompt it cannot answer. Sequence them as a leading human-assisted task; never widen `allow` to get past it.
-- **A gate can fail on its own `!`-preamble** (`Shell command failed for pattern "!…"` / `permission check failed … simple_expansion`) — that is an environment block, not a code verdict. Retry at most once, never mark the gate passed, run its substance by hand and say so. A subagent cannot answer a permission prompt, so such a probe kills every `@orchestrator-verifier` spawn deterministically.
+- **Network-reaching plan tasks (`curl`, `pip install`, `npm i <new>`) park a sub-agent or an unattended role session** on a permission prompt it cannot answer. Sequence them as a leading human-assisted task; never widen `allow` to get past it.
+- **A gate can fail on its own `!`-preamble** (`Shell command failed for pattern "!…"` / `permission check failed … simple_expansion`) — that is an environment block, not a code verdict. Retry at most once, never mark the gate passed, run its substance by hand and say so. A subagent cannot answer a permission prompt, so such a probe kills every subagent spawn of that gate deterministically.
 - **A test runner that strips types is not a compiler.** Tests green ≠ compiles; the typecheck/build target is the only compile gate — run it separately.
 - **A task runner given a wrong project/target name can run 0 tasks and exit 0.** Read the reporter's counts ("N tests", "N files"), never a bare exit code.
 - **Reproduce before you believe.** IDE diagnostics go stale after `git mv`; a dev server started before the edit serves the old build (`pkill -f <alias>` misses the real cmdline — use `lsof -ti:<port>`); installed-vs-declared dependency drift after an upgrade merge → reinstall from the lockfile before editing.
@@ -167,7 +167,7 @@ Do NOT duplicate what's already in [CLAUDE.md](../../CLAUDE.md).
 
 The reflection pass (when it runs, the save-or-not bar, the entry formats) and the **domain-file template** live in [reflection-protocol.md](reflection-protocol.md) — **not here**.
 
-Read that file when you are about to **write** memory: at the end of a completed unit of work (`/execute`, `/check-implementation`, `/orchestrate` Phase 7), or when a `domain/{module}.md` file needs creating. Every other session never loads it.
+Read that file when you are about to **write** memory: at the end of a completed unit of work (`/execute`, `/check-implementation`), or when a `domain/{module}.md` file needs creating. Every other session never loads it.
 
 The one-line version, so a caller knows whether it is even worth opening: **the default outcome is to save nothing** — append only what a fresh Claude would otherwise get wrong, newest entry at the END, never duplicating what is already in the file.
 

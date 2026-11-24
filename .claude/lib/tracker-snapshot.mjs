@@ -32,7 +32,9 @@ const flag = (args, name) => { const i = args.indexOf(name); return i >= 0 ? arg
 // A producer's own marker, at the position that producer writes it: the team wrapup's
 // `[wrapup <run> <intent>]` as the LAST line; the cost report's `token-usage-report: <KEY>` as the
 // FIRST line; /qa-verify's complete v1 record marker as the whole LAST line, optionally after the
-// record's own verdict text (a Jira converter joins the two). A marker anywhere else (a quote) does
+// record's own verdict text (a Jira converter joins the two); the start's claim and claim-release
+// markers (team-claim.sh) as the LAST line, `<!-- … -->` on GitHub, plain on Jira, optionally after
+// their own first line (joined the same way). A marker anywhere else (a quote) does
 // not count. An ADF body counts only through a top-level paragraph — a blockquote, code block or list
 // holding a marker is a quote.
 function lineList(text) {
@@ -58,7 +60,8 @@ function ownMarker(body) {
   }
   return /^\[wrapup \S+ [a-z]+-\S+\]$/.test(last) || /^token-usage-report: \S+$/.test(first)
     || /^(?:(?:\*\*)?Blockers: \d+\.(?:\*\*)? (?:Acceptable — move the ticket yourself|Not acceptable|Not verifiable now — environment) )?qa-verify:v1 record run=\S+ ticket=\S+ mode=(?:first|recheck|light) group=\S+ build=\S+ pass=\d+ fail=\d+ cited=\d+ deferred=\d+ env=\d+ needs-human=\d+$/.test(last)
-    || /^(?:QA: .+\. )?qa-verify:v1 deferral src=(?:[A-Z]+-[0-9]+|[0-9]+) row=[A-Za-z0-9.-]{1,40} fp=[0-9a-f]{6}$/.test(last);
+    || /^(?:QA: .+\. )?qa-verify:v1 deferral src=(?:[A-Z]+-[0-9]+|[0-9]+) row=[A-Za-z0-9.-]{1,40} fp=[0-9a-f]{6}$/.test(last)
+    || /^(?:(?:Claimed by|Taken over by|Claim released) .+ )?(?:<!-- )?team:claim(?:-released)? v1 id=\S+(?: [a-z]+=\S+)*(?: -->)?$/.test(last);
 }
 
 // No author: the comparator does not need it, and a snapshot stored next to a spec is committed.

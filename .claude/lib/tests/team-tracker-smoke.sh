@@ -1101,4 +1101,305 @@ run "$MAIN" $TRK item-status L1 --out "$WORK/x.json"
 expect 0 "skipped (tracker=none)" "item-status is a no-op for none"
 [ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "pool under none called gh"; }
 
+# ================================================================================================
+# (16) the claim at the start: team-claim.sh check / claim / release / holder, and the set-status
+#      restore form
+# ================================================================================================
+export SMOKE_ORIGIN=github
+CLM="bash .claude/lib/team-claim.sh"
+ME="$(hostname -s 2>/dev/null || hostname)"; ME="${ME//[^A-Za-z0-9-]/-}"
+CL_GH='.teams.github = {repo: "acme/widgets", project_owner: "owner", project_number: 2,
+  project_id: "PVT_x", status_field_id: "PVTSSF_x",
+  status_options: {started: "opt-started", delivered: "opt-delivered"}}'
+claim_profile() {
+  setprofile ".teams.tracker = \"github\" | .teams.pr_provider = \"github\" | $CL_GH
+    | .teams.required_tools = [\"git\", \"jq\", \"gh\"]"
+}
+cl_reset() {
+  fx_reset
+  jq '.fields[0].options += [{id: "opt-todo", name: "Todo"}]' "$GH_DIR/fields.json" > "$GH_DIR/t" \
+    && mv "$GH_DIR/t" "$GH_DIR/fields.json"
+  jq 'map(.content.repository = "acme/widgets")' "$GH_DIR/items.json" > "$GH_DIR/t" \
+    && mv "$GH_DIR/t" "$GH_DIR/items.json"
+  rm -f "$GH_DIR"/timeline-*.json "$GH_DIR"/pr-*.json "$GH_DIR/race-claim.txt" "$GH_DIR/post-fail-once" \
+    "$GH_DIR/race-reread.txt" "$GH_DIR/race-reread.seen"
+  : > "$GH_LOG"
+}
+st44() { jq -r '[.[] | select(.id == "item-44")][0].status // "null"' "$GH_DIR/items.json"; }
+set44() {
+  jq --arg s "$1" 'map(if .id == "item-44" then .status = $s else . end)' "$GH_DIR/items.json" \
+    > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/items.json"
+}
+seed_comment() {  # seed_comment <body> — the next numeric id, a created_at like the API's
+  jq --arg b "$1" '. + [{id: (length + 900), created_at: "2026-11-22T10:00:00Z", body: $b}]' \
+    "$GH_DIR/comments.json" > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/comments.json"
+}
+claim_body() {  # claim_body <id> <machine> <who> <branch> <previous> [takeover] — the GitHub form
+  printf 'Claimed by %s on %s for branch %s at 2026-11-22T10:00:00Z.\n<!-- team:claim v1 id=%s machine=%s who=%s branch=%s at=2026-11-22T10:00:00Z previous=%s%s -->\n' \
+    "$3" "$2" "$4" "$1" "$2" "$3" "$4" "$5" "${6:+ takeover=$6}"
+}
+release_body() {  # release_body <id> <reason>
+  printf 'Claim released (%s): %s.\n<!-- team:claim-released v1 id=%s reason=%s -->\n' "$2" "$1" "$1" "$2"
+}
+n_bodies() {  # n_bodies <regex> — comments whose body matches
+  jq --arg r "$1" '[.[] | select(.body | test($r))] | length' "$GH_DIR/comments.json"
+}
+edits() { grep -c -- 'item-edit' "$GH_LOG" | tr -d ' '; }
+FID="othermac.beta.20261122T100000Z"
+OWN="$ME.alfa.20261122T100000Z"
+
+# 1. set-status, the restore form: by option name, and --clear for "had no status".
+claim_profile
+cl_reset
+run "$MAIN" $TRK set-status 7 started
+expect 0 "set started" "set-status started before the restore cases"
+run "$MAIN" $TRK set-status 7 --name Todo
+expect 0 "set Todo" "set-status --name restores a status by its option name"
+[ "$(st44)" = Todo ] || fail "set-status --name restores a status by its option name: status $(st44)"
+run "$MAIN" $TRK set-status 7 --clear
+expect 0 "cleared" "set-status --clear clears the status"
+[ "$(st44)" = null ] || fail "set-status --clear clears the status: status $(st44)"
+run "$MAIN" $TRK set-status 7 --clear
+expect 0 "unchanged" "set-status --clear on no status is a no-op"
+run "$MAIN" $TRK set-status 7 --name Nope
+expect 4 "is not in field" "set-status --name refuses an option the field lacks"
+run "$MAIN" $TRK set-status 7 started --clear
+expect 2 "usage: set-status" "set-status takes exactly one form"
+
+# 2. a free ticket: one claim comment, then the started status.
+cl_reset
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed id=$ME.alfa." "claim: a free ticket is claimed with one comment and the started status"
+has "previous=Todo" "$WORK/out" || fail "claim: a free ticket is claimed with one comment and the started status (previous)"
+has "status: set started" "$WORK/out" || fail "claim: the status line is missing"
+[ "$(posts)" = 1 ] || fail "claim: a free ticket is claimed with one comment and the started status ($(posts) POSTs)"
+[ "$(st44)" = "In Progress" ] || fail "claim: the status is $(st44), not In Progress"
+jq -r '.[-1].body' "$GH_DIR/comments.json" | sed '/^[[:space:]]*$/d' | tail -n 1 \
+  | grep -Eq "^<!-- team:claim v1 id=$ME\.alfa\.[0-9TZ]+ machine=$ME who=alfa branch=feat/7-fix at=[0-9TZ:-]+ previous=Todo -->$" \
+  || fail "claim: the marker is not the body's last line in the v1 grammar"
+
+# 3. the started status refuses, and nothing is written.
+cl_reset
+set44 "In Progress"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "refused: #7 — status In Progress" "claim: a ticket in started is refused"
+[ "$(posts)" = 0 ] || fail "claim: a ticket in started is refused — it posted"
+
+# 4. an open PR for the key (closes or branch) refuses; merged or mentions-only does not.
+pr_fx() {  # pr_fx <state> <head>
+  jq -n '[{event: "cross-referenced", source: {issue: {number: 60,
+    repository: {full_name: "acme/widgets"}, pull_request: {url: "u"}}}}]' > "$GH_DIR/timeline-7.json"
+  jq -n --arg s "$1" --arg h "$2" '{number: 60, title: "PR 60", state: $s, headRefName: $h,
+    baseRefName: "main", body: "", mergedAt: null, updatedAt: "", mergeCommit: null,
+    url: "https://github.com/acme/widgets/pull/60", closingIssuesReferences: []}' > "$GH_DIR/pr-60.json"
+}
+cl_reset; pr_fx OPEN feat/7-other
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "PR https://github.com/acme/widgets/pull/60" "claim: an open PR for the key is refused"
+[ "$(posts)" = 0 ] || fail "claim: an open PR for the key is refused — it posted"
+cl_reset; pr_fx MERGED feat/7-other
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed" "claim: a merged PR for the key does not refuse"
+cl_reset; pr_fx OPEN feat/other
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed" "claim: an open PR that only mentions the key does not refuse"
+
+# 5. a remote branch carrying the key refuses; another number's branch does not.
+cl_reset
+git -C "$MAIN" push --quiet origin HEAD:refs/heads/fix/7-other
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "branch fix/7-other" "claim: a remote branch for the key is refused"
+git -C "$MAIN" push --quiet origin --delete fix/7-other
+git -C "$MAIN" push --quiet origin HEAD:refs/heads/feat/77-x
+cl_reset
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed" "claim: a branch of key 77 does not refuse key 7"
+git -C "$MAIN" push --quiet origin --delete feat/77-x
+
+# 6. a closed ticket.
+cl_reset
+run "$MAIN" $CLM claim 9 --who alfa --branch feat/9-fix
+expect 3 "issue is CLOSED" "claim: a closed ticket is refused"
+
+# 7. a foreign unreleased claim refuses at the check; released, it does not.
+cl_reset
+seed_comment "$(claim_body "$FID" othermac beta feat/7-other Todo)"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "held by beta on othermac" "claim: a foreign unreleased claim is refused at the check"
+[ "$(posts)" = 0 ] || fail "claim: a foreign unreleased claim is refused at the check — it posted"
+seed_comment "$(release_body "$FID" start-failed)"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed" "claim: a released foreign claim does not refuse"
+
+# 8. the status move fails → exit 4, the claim released, the status untouched.
+cl_reset
+STUB_GH_EDIT_DENY=1 run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 4 "release posted" "claim: a failed status move stops with a release"
+[ "$(n_bodies "team:claim-released v1 id=$ME\\.alfa\\.")" = 1 ] \
+  || fail "claim: a failed status move stops with a release — no release comment"
+[ "$(st44)" = Todo ] || fail "claim: a failed status move stops with a release — status $(st44)"
+
+# 9. the comment post fails → exit 4, no claim comment, one cleanup release.
+cl_reset
+touch "$GH_DIR/post-fail-once"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 4 "claim comment not posted" "claim: a failed comment post stops with a release"
+[ "$(n_bodies 'team:claim v1 ')" = 0 ] || fail "claim: a failed comment post stops with a release — a claim exists"
+[ "$(n_bodies 'team:claim-released v1 ')" = 1 ] \
+  || fail "claim: a failed comment post stops with a release — $(n_bodies 'team:claim-released v1 ') releases"
+[ "$(st44)" = Todo ] || fail "claim: a failed comment post stops with a release — status $(st44)"
+
+# 10. a foreign claim lands just before ours → ours withdrawn, the status never written.
+cl_reset
+claim_body "$FID" othermac beta feat/7-other Todo > "$GH_DIR/race-claim.txt"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "lost the race: held by beta on othermac" "claim: an earlier foreign claim withdraws this one, status untouched"
+[ "$(n_bodies "team:claim v1 id=$ME\\.alfa\\.")" = 1 ] || fail "claim: race — our claim is missing"
+[ "$(n_bodies "team:claim-released v1 id=$ME\\.alfa\\.[^ ]+ reason=lost-race")" = 1 ] \
+  || fail "claim: race — our claim was not released"
+[ "$(st44)" = Todo ] && [ "$(edits)" = 0 ] \
+  || fail "claim: an earlier foreign claim withdraws this one, status untouched — status $(st44), $(edits) edits"
+
+# 11. an own claim from a crashed start: held, no second comment, previous from its marker; an
+#     advanced status is never moved back.
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+set44 "In Progress"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "held id=$OWN previous=Todo" "claim: an own claim is held — no second comment, previous from the first marker"
+[ "$(posts)" = 0 ] || fail "claim: an own claim is held — no second comment, previous from the first marker ($(posts) POSTs)"
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+set44 Delivered
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "status moved on to Delivered" "claim: an own claim never moves an advanced status back"
+[ "$(posts)" = 0 ] && [ "$(edits)" = 0 ] || fail "claim: an own claim never moves an advanced status back — it wrote"
+# A held claim confirms too: a takeover landing between its check and its confirm wins.
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+claim_body "$FID" othermac beta feat/7-other Todo "$OWN" > "$GH_DIR/race-reread.txt"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "lost the race: held by beta on othermac" "claim: a held claim superseded before the confirm is withdrawn, status untouched"
+[ "$(st44)" = Todo ] && [ "$(edits)" = 0 ] \
+  || fail "claim: a held claim superseded before the confirm is withdrawn, status untouched — status $(st44), $(edits) edits"
+[ "$(n_bodies "team:claim-released v1 id=$OWN reason=lost-race")" = 1 ] \
+  || fail "claim: a held claim superseded before the confirm is withdrawn — no release comment"
+
+# 12. a takeover only with --takeover, recorded in the marker; never over the new branch itself.
+cl_reset
+seed_comment "$(claim_body "$FID" othermac beta feat/7-other Todo)"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "held by beta" "claim: a held ticket is taken over only with --takeover, recorded in the marker"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix --takeover
+expect 0 "claimed" "claim: a held ticket is taken over only with --takeover, recorded in the marker"
+jq -r '.[-1].body' "$GH_DIR/comments.json" | grep -q "takeover=$FID -->" \
+  || fail "claim: a held ticket is taken over only with --takeover, recorded in the marker — no takeover field"
+cl_reset
+seed_comment "$(claim_body "$FID" othermac beta feat/7-other Todo)"
+git -C "$MAIN" push --quiet origin HEAD:refs/heads/feat/7-fix
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix --takeover
+expect 3 "remote branch feat/7-fix" "claim: takeover still refuses a remote branch equal to the new branch"
+git -C "$MAIN" push --quiet origin --delete feat/7-fix
+
+# 13. no Project (a solo profile): the comment alone is the claim, no board call.
+cl_reset
+echo '{"schema": 1, "tracker": "github", "github": {"repo": "acme/widgets"}}' > "$P"
+run "$MAIN" $CLM claim 7 --who solo --branch feat/7-fix
+expect 0 "previous=no-project" "claim: no Project — the comment alone is the claim"
+has "status: skipped (no project)" "$WORK/out" || fail "claim: no Project — the status line"
+[ "$(posts)" = 1 ] || fail "claim: no Project — the comment alone is the claim ($(posts) POSTs)"
+[ "$(grep -c '^gh project' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "claim: no Project, yet gh project was called"
+
+# 14. tracker none: one line, no gh; tracker jira: exit 2 (the MCP runs it).
+cl_reset
+setprofile '.teams.tracker = "none"'
+run "$MAIN" $CLM claim L1 --who alfa --branch feat/L1-x
+expect 0 "skipped (tracker=none)" "claim: tracker none is skipped with no gh call"
+[ ! -s "$GH_LOG" ] || fail "claim: tracker none is skipped with no gh call — gh was called"
+setprofile
+run "$MAIN" $CLM claim ABC-7 --who alfa --branch feat/ABC-7-x
+expect 2 "session's MCP" "claim: tracker jira refuses with exit 2"
+
+# 15. release after a won claim: the status first, then the comment; a rerun writes nothing.
+claim_profile
+cl_reset
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 0 "claimed" "release: the claim before the release"
+CID="$(sed -n 's/^claimed id=\([^ ]*\) .*/\1/p' "$WORK/out")"
+: > "$GH_LOG"
+run "$MAIN" $CLM release 7 --id "$CID" --reason start-failed
+expect 0 "status: restored Todo" "release: restores the previous status before the release comment"
+[ "$(st44)" = Todo ] || fail "release: restores the previous status before the release comment — status $(st44)"
+e1="$(grep -n -- 'item-edit' "$GH_LOG" | head -n 1 | cut -d: -f1)"
+p1="$(grep -n -- '-X POST' "$GH_LOG" | tail -n 1 | cut -d: -f1)"
+[ -n "$e1" ] && [ -n "$p1" ] && [ "$e1" -lt "$p1" ] \
+  || fail "release: restores the previous status before the release comment — edit line '$e1', post line '$p1'"
+: > "$GH_LOG"
+run "$MAIN" $CLM release 7 --id "$CID" --reason start-failed
+expect 0 "released id=$CID" "release: a rerun is idempotent"
+[ "$(posts)" = 0 ] && [ "$(edits)" = 0 ] || fail "release: a rerun wrote again ($(posts) POSTs, $(edits) edits)"
+
+# 16. previous=none → the status is cleared.
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix none)"
+set44 "In Progress"
+run "$MAIN" $CLM release 7 --id "$OWN" --reason start-failed
+expect 0 "status: restored none" "release: previous none clears the status"
+[ "$(st44)" = null ] || fail "release: previous none clears the status — status $(st44)"
+
+# 17. a superseded claim, or a status moved on, is not restored — the release comment still posts.
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+seed_comment "$(claim_body "othermac.beta.20261122T110000Z" othermac beta feat/7-y Todo "$OWN")"
+set44 "In Progress"
+run "$MAIN" $CLM release 7 --id "$OWN" --reason start-failed
+expect 0 "no longer the holder" "release: a superseded claim or an advanced status is not restored"
+[ "$(edits)" = 0 ] && [ "$(n_bodies "team:claim-released v1 id=$OWN ")" = 1 ] \
+  || fail "release: a superseded claim or an advanced status is not restored — superseded"
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+set44 Delivered
+run "$MAIN" $CLM release 7 --id "$OWN" --reason start-failed
+expect 0 "status is Delivered" "release: a superseded claim or an advanced status is not restored"
+[ "$(edits)" = 0 ] || fail "release: a superseded claim or an advanced status is not restored — advanced"
+
+# 18. holder: the HTML-comment, the plain and the Jira-joined marker judge alike.
+MK="team:claim v1 id=h.alfa.1 machine=h who=alfa branch=feat/7-a at=2026-11-06T09:00:00Z previous=To%20Do"
+printf '2026-11-06T09:00:00Z\t901\t<!-- %s -->\n' "$MK" > "$WORK/hl-html.tsv"
+printf '2026-11-06T09:00:00Z\t901\t%s\n' "$MK" > "$WORK/hl-plain.tsv"
+printf '2026-11-06 09:00:00+00:00\t901\tClaimed by alfa on h for branch feat/7-a at 2026-11-06T09:00:00Z. %s\n' \
+  "$MK" > "$WORK/hl-jira.tsv"
+run "$MAIN" $CLM holder --lines "$WORK/hl-html.tsv" --who alfa
+expect 0 "holder id=h.alfa.1 machine=h who=alfa" "holder: the HTML-comment and the plain marker form judge alike"
+cp "$WORK/out" "$WORK/hl-html.out"
+for f in plain jira; do
+  run "$MAIN" $CLM holder --lines "$WORK/hl-$f.tsv" --who alfa
+  cmp -s "$WORK/out" "$WORK/hl-html.out" \
+    || fail "holder: the HTML-comment and the plain marker form judge alike — the $f form differs"
+done
+{ printf '2026-11-06T09:00:00Z\t903\tClaim released (lost-race): h.alfa.1. team:claim-released v1 id=h.alfa.1 reason=lost-race\n'
+  printf '2026-11-06 09:00:00+00:00\t901\tClaimed by alfa on h for branch feat/7-a at t. %s\n' "$MK"
+  printf '2026-11-06T09:00:00Z\t902\tteam:claim v1 id=k.beta.2 machine=k who=beta branch=feat/7-b at=t previous=none\n'
+} > "$WORK/hl-mix.tsv"
+run "$MAIN" $CLM holder --lines "$WORK/hl-mix.tsv" --who alfa
+expect 0 "holder id=k.beta.2 machine=k who=beta" "holder: a joined release removes its claim"
+{ printf '2026-11-06T09:00:00Z\t900\tteam:claim-released v1 id=x.alfa.0 reason=post-failed\n'
+  printf '2026-11-06T09:00:00Z\t901\t<!-- team:claim v1 id=x.alfa.0 machine=x who=alfa branch=b at=t previous=none -->\n'
+} > "$WORK/hl-late.tsv"
+run "$MAIN" $CLM holder --lines "$WORK/hl-late.tsv" --who alfa
+expect 0 "holder none" "holder: a claim released before it landed is never the holder"
+printf '2026-11-06T09:00:00Z\tabc\t%s\n' "$MK" > "$WORK/hl-bad.tsv"
+run "$MAIN" $CLM holder --lines "$WORK/hl-bad.tsv" --who alfa
+expect 2 "malformed claim line 1" "holder: a non-numeric comment id is a usage error, never absent"
+
+# 19. a short comment read is exit 4 — never "no claim".
+cl_reset
+for i in $(seq 31); do seed_comment "a comment $i"; done
+STUB_GH_PAGE2_FAIL=1 run "$MAIN" $CLM check 7 --who alfa
+expect 4 "" "check: a short comment read is recoverable, never no claim"
+[ "$(posts)" = 0 ] || fail "check: a short comment read is recoverable, never no claim — it posted"
+
+unset SMOKE_ORIGIN
+setprofile
+
 echo "team-tracker-smoke: OK"

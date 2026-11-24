@@ -2,7 +2,7 @@
 
 The single source of truth for how any slash command launches Codex (`codex exec`) in the
 background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4),
-`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), `/design-ui` (Phase 4),
+`/check-implementation` (Step 1.5), `/design-ui` (Phase 4),
 `/architecture-review` and `/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
 *why*; the wrapper is the *how*. If you add a new command that runs codex, reuse the wrapper and
 link here; do **not** copy a fresh `codex exec` invocation into the command (that drift is exactly
@@ -98,7 +98,7 @@ re-validates everything).
 | `/brainstorm` Step 8 | `high` | (unset — `SCHEMA` run) |
 | `/plan-feature` Phase 7 | `high` | (unset — `SCHEMA` run) |
 | `/codex-review` | `high` | `read-only` (default) |
-| `/check-implementation` Step 1.5 (also `/orchestrate` Phase 7 step 0) | `high` | (unset — `SCHEMA` run) |
+| `/check-implementation` Step 1.5 | `high` | (unset — `SCHEMA` run) |
 | `/quick-change` Phase 2 | `high` | `read-only` (default) |
 | `/architecture-review --codex` | `high` | `read-only` (default) |
 | `/architecture-review` Phase 0b (auditor) and Phase A (refutation) | `high` | `read-only` (default) |
