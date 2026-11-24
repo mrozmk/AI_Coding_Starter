@@ -3,8 +3,8 @@
 > **Superseded for launching.** Role sessions are started, restored, stopped and taken over by
 > `/roles` (`roles.sh up|status|stop|here|resume`) through the session-host driver:
 > [session-host.md](session-host.md) and the role contracts in [roles/](roles/supervisor.md). The
-> old `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`) are gone
-> (#33): they print the usage and exit 2. `materialize`, `check`, `preflight`, `freeze`,
+> old `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`)
+> are gone (#33): they print the usage and exit 2. `materialize`, `check`, `preflight`, `freeze`,
 > `rollback` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The session table
 > below is the old launcher's naming, kept for reference; current session names follow
 > `teams.session_prefix` ([session-host.md](session-host.md)).
@@ -211,7 +211,8 @@ action (an `ask` rule). `sessions-health.sh` counts a Supervisor window as up.
 object; absent or `null` prints `ok team channel: not configured (no teams.channel)`, any other
 value is `FAIL team channel loads — teams.channel is not an object`; (2) the operator kit installed
 (`install.sh --verify`) — with no `teams.channel`, `ok operator kit: not in use (no
-teams.channel)`; (3) role profiles; (4) notifications (the `.claude/lib/notify.sh --check` lines on one
+teams.channel)`, any other value is `FAIL operator kit installed — not verified — teams.channel is
+not an object`; (3) role profiles; (4) notifications (the `.claude/lib/notify.sh --check` lines on one
 row; both channels off is an ok row); (5) the health check scheduled (`sessions-health.sh
 --scheduled`; none is an ok row with the declared loss); (6) the Claude Code version against the one
 the socket wire format was verified on ([session-host.md](session-host.md#socket-wire-format); any
@@ -294,7 +295,7 @@ checkout (no `TEAM_SESSION_ROLE`).
 | preflight channel rows: not declared, malformed, local half missing | `sessions` (1b) | `preflight` on a checkout without `teams.channel` |
 | preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
-| `roles.sh status` lines, `roles.sh up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` prints the Operator steps only | `sessions` (9) | `roles.sh up` after a reboot |
+| `roles.sh status` lines, `roles.sh up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` prints the Operator steps only | `roles` (2), (3), (8), (14); `sessions` (9) for `rollback` | `roles.sh up` after a reboot |
 | the doorbell's socket sender: deadline, 0666 refusal, 0600 delivery | part 15 (47) | `session-host.sh send` to a role window |
 
 ## Pilot

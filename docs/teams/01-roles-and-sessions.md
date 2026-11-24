@@ -119,7 +119,7 @@ Other verbs:
 | # | Row | WARN / FAIL |
 |---|---|---|
 | 1 | team channel loads | judged only with a `teams.channel` object: FAIL with the loader's last error line; absent or `null` is the ok row `team channel: not configured (no teams.channel)`; any other value is a FAIL |
-| 2 | operator kit installed | with a channel: FAIL on any `install.sh --verify` drift (fix: the Operator's `install.sh --apply`, [08](08-operator-kit.md)); without one the ok row `operator kit: not in use (no teams.channel)` |
+| 2 | operator kit installed | with a channel: FAIL on any `install.sh --verify` drift (fix: the Operator's `install.sh --apply`, [08](08-operator-kit.md)); without one the ok row `operator kit: not in use (no teams.channel)`; any other value is the FAIL row `not verified — teams.channel is not an object` |
 | 3 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
 | 4 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
 | 5 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
