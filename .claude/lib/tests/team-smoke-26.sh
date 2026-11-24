@@ -5,7 +5,10 @@
 # read (compare 4) are refused with exit 10; a current read passes and its line lands in the
 # verdict; the switch off or tracker none checks nothing. Acceptance accept: a change named under
 # `## Ordered vs delivered` passes, an unnamed one and an uncertain read are refused, and a comment
-# the lead already answered (answers.md `<id>@<sha>`) counts as reconciled.
+# the lead already answered (answers.md `<id>@<sha>`) counts as reconciled. An empty Jira MCP read
+# is uncertain at both gates; --decision d-<n> passes it only when answered approve, bound to that
+# very read (source) and opened after it, and unconsumed — the verdict records it and consumes it; a
+# confirmed change inside the uncertain read keeps its revise / Ordered-vs-delivered handling.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -170,5 +173,99 @@ fresh "$RD" acceptance 2 "$D0" "1001:CSV header row" "1003:after the spec"
 jq '.status = "possibly-truncated"' "$RD/tracker-acceptance-2.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-acceptance-2.json"
 V acceptance accept --for qa-1-1.json --message ok; expect 10 "uncertain — possibly-truncated" "(h) uncertain read"
 echo "team-smoke-26: (h) acceptance OK"
+
+# ---- (i) acceptance: an empty Jira read is uncertain; an answered decision bound to it accepts ----
+# The committed baselines stay github-shaped: the gate's comparison is provider-agnostic.
+jq '.tracker = "jira"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+# jfreshc <dir> <gate> <n> <limit|""> <description> [id:body...] — a Jira MCP read written now:
+# show's comments, its body as the description (the Jira snapshot ignores the author)
+jfreshc() { local d="$1" g="$2" n="$3" l="$4"; shift 4; show "$WORK/show-j.json" "$@"
+  jq '{key, updated, description: .body, comments}' "$WORK/show-j.json" > "$WORK/jira.json"
+  $SNAP snapshot --jira "$WORK/jira.json" ${l:+--limit "$l"} --out "$d/tracker-$g-$n.json" >/dev/null; }
+# jfresh <dir> <gate> <n> <description> — the same with an empty comment list
+jfresh() { jfreshc "$1" "$2" "$3" "" "$4"; }
+dec() {  # dec <id> <status> <stage> <source> <outcome|""> [created_at]
+  mkdir -p "$RD/decisions"
+  { printf -- '---\nid: %s\nstatus: %s\nstage: %s\nattempt: 1\nsource: %s\ncreated_at: %s\nnotify: human_decision\ntouch_reason: human-only\n' \
+      "$1" "$2" "$3" "$4" "${6:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+    [ -z "$5" ] || printf 'answer_outcome: %s\n' "$5"
+    printf -- '---\n## Question\nAccept the uncertain tracker read?\n'; } > "$RD/decisions/$1.md"
+}
+dstatus() { sed -n 's/^status: //p' "$RD/decisions/$1.md"; }
+# The baseline (the plan approved in (g)) holds 1001 and 1003, so the line carries "; missing 1001
+# 1003" between the read status and the tail: the two parts are asserted separately.
+jfresh "$RD" acceptance 3 "$D0"
+V acceptance accept --for qa-1-1.json --message ok; expect 10 "uncertain — unknown, 0 read" "(i) empty read"
+has "open a decision" "$WORK/out" || fail "(i) the refusal does not say to open a decision"
+dec d-1 pending qa tracker-acceptance-3.json ""
+V acceptance accept --for qa-1-1.json --decision d-1 --message ok; expect 10 "d-1 is pending, not answered" "(i) pending"
+dec d-1 answered qa tracker-acceptance-3.json close
+V acceptance accept --for qa-1-1.json --decision d-1 --message ok; expect 10 "answered close, not approve" "(i) close"
+dec d-1 answered qa tracker-acceptance-3.json ""
+V acceptance accept --for qa-1-1.json --decision d-1 --message ok; expect 10 "answered without --outcome" "(i) no outcome"
+dec d-1 answered qa tracker-acceptance-1.json approve
+V acceptance accept --for qa-1-1.json --decision d-1 --message ok
+expect 10 "d-1 is for tracker-acceptance-1.json, the gate compares tracker-acceptance-3.json" "(i) another read"
+dec d-1 answered qa tracker-acceptance-3.json approve 2026-01-01T00:00:00Z
+V acceptance accept --for qa-1-1.json --decision d-1 --message ok; expect 10 "before tracker-acceptance-3.json was read" "(i) opened before the read"
+# A confirmed change inside an uncertain read keeps its exit-3 handling; a refusal never consumes.
+jfresh "$RD" acceptance 4 "Export button and a print view."
+dec d-2 answered qa tracker-acceptance-4.json approve
+V acceptance accept --for qa-1-1.json --decision d-2 --message ok
+expect 10 "name description under '## Ordered vs delivered'" "(i) description changed in an uncertain read"
+[ "$(dstatus d-2)" = answered ] || fail "(i) a refused accept consumed d-2"
+jfreshc "$RD" acceptance 5 3 "$D0" "1001:CSV header row" "1003:after the spec" "1005:a footer"
+dec d-6 answered qa tracker-acceptance-5.json approve
+V acceptance accept --for qa-1-1.json --decision d-6 --message ok
+expect 10 "name 1005 under '## Ordered vs delivered'" "(i) a new id in a truncated read"
+abrief "- 1005 (tracker comment): a footer — in the order"
+V acceptance accept --for qa-1-1.json --decision d-6 --message ok; expect 0 "teamlead-acceptance-1.json" "(i) named id + decision"
+jq -e '.tracker | contains("new 1005") and contains("accepted by Operator decision d-6")' "$RD/teamlead-acceptance-1.json" >/dev/null \
+  || fail "(i) the named id or the decision is not in the tracker line"
+rm -f "$RD/teamlead-acceptance-1.json"; abrief
+# Success: the prefixed source form, the decision recorded and consumed.
+jfresh "$RD" acceptance 6 "$D0"
+dec d-3 answered qa ".agents/team/runs/$RUN_ID/tracker-acceptance-6.json" approve
+V acceptance accept --for qa-1-1.json --decision d-3 --message ok; expect 0 "teamlead-acceptance-1.json" "(i) answered approve"
+jq -e '.tracker | contains("uncertain — unknown, 0 read") and contains("accepted by Operator decision d-3")
+  and contains("baseline .agents/plans/active/p.md@")' "$RD/teamlead-acceptance-1.json" >/dev/null \
+  || fail "(i) the tracker line lacks the read, the decision or the baseline"
+[ "$(dstatus d-3)" = consumed ] && has "consumed_by: teamlead-acceptance-1.json" "$RD/decisions/d-3.md" \
+  || fail "(i) d-3 was not consumed by the verdict"
+# A consumed decision does not pass twice.
+rm -f "$RD/teamlead-acceptance-1.json"
+V acceptance accept --for qa-1-1.json --decision d-3 --message ok; expect 10 "d-3 is consumed, not answered" "(i) reuse"
+echo "team-smoke-26: (i) acceptance decision OK"
+
+# ---- (j) plan gate: the same rules; a revise renews the snapshot only from a complete read ----
+git -C "$CLONE" mv .agents/plans/done/p.md "$PLAN" && git -C "$CLONE" commit --quiet -m "plan back to active"
+session planner 1 "$(git -C "$CLONE" rev-parse HEAD)"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-9.json" "(j) done"
+jfresh "$RD" plan 9 "$D0"
+V plan approve --for planner-1-9.json --message ok; expect 10 "uncertain — unknown, 0 read" "(j) empty read"
+has "escalate with a decision" "$WORK/out" || fail "(j) the refusal does not say to escalate with a decision"
+jfresh "$RD" plan 10 "Export button and a print view."
+dec d-4 answered planner tracker-plan-10.json approve
+V plan approve --for planner-1-9.json --decision d-4 --message ok; expect 10 "revise with the list as findings" "(j) description changed"
+has "description changed" "$WORK/out" && has "only from a complete read" "$WORK/out" \
+  || fail "(j) the revise does not name the change or the complete-read rule"
+[ "$(dstatus d-4)" = answered ] || fail "(j) a refused approve consumed d-4"
+jfresh "$RD" plan 11 "$D0"
+dec d-5 answered planner tracker-plan-11.json approve
+V plan approve --for planner-1-9.json --decision d-5 --message ok; expect 0 "teamlead-plan-6.json" "(j) answered approve"
+jq -e '.tracker | contains("accepted by Operator decision d-5")' "$RD/teamlead-plan-6.json" >/dev/null \
+  || fail "(j) the decision is not in the tracker line"
+[ "$(dstatus d-5)" = consumed ] && has "consumed_by: teamlead-plan-6.json" "$RD/decisions/d-5.md" \
+  || fail "(j) d-5 was not consumed by the verdict"
+# A plan decision is not an acceptance decision.
+session qa 1 "$C1"
+rm -f "$RD"/teamlead-acceptance-*.json
+jfresh "$RD" acceptance 7 "$D0"
+V acceptance accept --for qa-1-1.json --decision d-5 --message ok; expect 10 "d-5 is consumed" "(j) plan decision at acceptance"
+dec d-7 answered planner tracker-plan-11.json approve
+V acceptance accept --for qa-1-1.json --decision d-7 --message ok
+expect 10 "d-7 is for tracker-plan-11.json, the gate compares tracker-acceptance-7.json" "(j) unconsumed plan decision at acceptance"
+jq '.tracker = "github"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+echo "team-smoke-26: (j) plan decision OK"
 
 echo "team-smoke-26: OK"

@@ -924,11 +924,21 @@ a run tracker other than `none`. With the switch off nothing below runs. The con
     record's `written_at`;
   - `compare <baseline> <fresh>`: the baseline is the plan's own snapshot, else its source spec's
     (contract §5.3). Plan: exit 3 → refused, "revise with the list as findings" (the planner
-    reconciles into the plan); exit 4
-    → refused, "escalate with a decision". Acceptance: the baseline is that of the planner record
+    reconciles into the plan). Acceptance: the baseline is that of the planner record
     the plan `approve` named; `--reconciled` is every `<id>@<sha>` in `runs/<run>/answers.md`;
     exit 3 passes only when every listed id (and `description`, when it changed) appears under
-    `## Ordered vs delivered` in the round's brief; exit 4 → refused.
+    `## Ordered vs delivered` in the round's brief.
+  - exit 4 (both gates) → refused unless `--decision d-<n>` names a decision `answered` with outcome
+    `approve`, whose `source` is the fresh read the gate compares and whose `created_at` is not
+    before its `read_at`; the confirmed part of an uncertain result keeps the exit-3 handling
+    (plan: revise, the planner renewing the snapshot only from a complete read). A passing check
+    appends `— accepted by Operator decision d-<n>` to the `tracker` field and the decision
+    becomes `consumed`. The lead opens that decision with
+    `--source .agents/team/runs/<run>/<the read> --options "approve|close"`, records the Operator's
+    answer with outcome `approve` or `close` (the dialog's label, or `--outcome approve|close` on a
+    typed reply), and on `close` writes `team-verdict.sh decision close --for <the acked record>
+    --decision d-<n> --message "<line>"` (tracker-comments.md §6). An empty MCP list is always
+    uncertain (tracker-comments.md §7).
 
   A passing check stores the comparator's line and the baseline (`<artifact>@<rev>`) in the
   verdict's `tracker` field. `revise`, `escalate`, `remode`, `rework` and the decision gate are

@@ -52,9 +52,9 @@ Read status:
 
 | Status | When |
 |---|---|
-| `complete` | github always (full pagination); Jira with paging metadata when the page holds every comment (`startAt` 0 and `total` = the count); Jira without it when 1 ≤ n < the read's limit |
+| `complete` | github always (full pagination); Jira with paging metadata when the page holds every comment (`startAt` 0 and `total` = the count); Jira without it when 1 ≤ n < the read's limit (a raw REST page with `total` 0 and no comments is complete) |
 | `possibly-truncated` | Jira: the page holds fewer than `total`, or n reached the limit |
-| `unknown` | Jira: an empty list — it proves nothing |
+| `unknown` | Jira: an empty MCP list without paging metadata — it proves nothing; `compare` keeps it uncertain even against an unchanged, comment-less baseline (§7) |
 
 The entry stage plans **from the same read** it snapshots: the description and comments it reconciles
 are the ones the snapshot hashes. The snapshot is stored with the spec or plan
@@ -150,17 +150,34 @@ approve or accept with **exit 10** (`tracker comments not current`).
 
 | Stage boundary | Changed | Uncertain |
 |---|---|---|
-| TeamLead `plan` gate | exit 10 → `revise` with the list as findings (the planner reconciles into the plan, new snapshot) | exit 10 → `escalate` with a decision |
+| TeamLead `plan` gate | exit 10 → `revise` with the list as findings (the planner reconciles into the plan, new snapshot); the planner renews the snapshot only from a complete read, else keeps the previous one (a renewal from an incomplete read would drop the ids the old baseline still holds) | exit 10 → an Operator decision bound to the read (**Uncertain at a TeamLead gate**, below); a confirmed change inside an uncertain read (new/edited ids, description) still needs `revise` |
 | coder (start of every round) | `blocked` "new tracker input after plan: <ids>" → the lead: informational → `say` with `<id>@<sha>` (`answers.md`); inside the AC → answered within the plan; a scope change → a decision recommending `close` (the ticket restarts with a fresh run) | `blocked` → a decision |
 | qa (before its gates) | `blocked` with the list → informational → `say`; inside the AC → `rework` from the qa `blocked` record; a scope change → a decision `close` | `blocked` → a decision |
-| TeamLead `acceptance` gate | exit 10 unless every id is named under `## Ordered vs delivered`; otherwise `rework` or a decision (`answers.md` `<id>@<sha>` count as reconciled) | exit 10 → a decision |
+| TeamLead `acceptance` gate | exit 10 unless every id is named under `## Ordered vs delivered`; otherwise `rework` or a decision (`answers.md` `<id>@<sha>` count as reconciled) | exit 10 → an Operator decision bound to the read (**Uncertain at a TeamLead gate**, below); confirmed ids inside an uncertain read are still named under `## Ordered vs delivered` |
 | Supervisor before `team-merge-check.sh` / `team-integrate.sh` / `/pr-merge --auto` | no merge; one Operator question — informational → a PR-description note, then merge; otherwise close/restart or a follow-up ticket ([team-pipeline.md](team-pipeline.md) §5a) | no merge until the Operator decides (its own decision, not QA's) |
 | cli (before `/commit`) | `blocked` with the list | `blocked` |
+
+**Uncertain at a TeamLead gate.** The lead opens a decision with
+`--source .agents/team/runs/<run>[/r<k>]/tracker-<gate>-<n>.json` — the read the gate compares
+(the spelling `decision open` accepts; a bare `runs/<run>/…` is resolved twice and its escalate
+verdict fails) — and `--options "approve|close"`, and records the answer with outcome `approve` or
+`close` (the dialog's label via `--from-ask`, or `--outcome approve|close` on a typed reply).
+Answered `approve` → `plan approve --decision d-<n>` / `acceptance accept --decision d-<n>` passes,
+the verdict's `tracker` field ends "accepted by Operator decision d-<n>", the decision is consumed;
+answered `close` → `decision close --for <the acked record> --decision d-<n> --message "<line>"`.
+The decision must be opened after the read; a re-read needs a new decision.
 
 ## 7. Limits
 
 - Jira: the MCP helper has no `startAt`/`total`; at the limit a read is `possibly-truncated`, so the
-  boundary decides (`uncertain`). A paginated reader is a separate task.
+  boundary decides (`uncertain`). An empty MCP read stays uncertain too, even when `updated` and the
+  description are unchanged: mcp-atlassian also returns `[]` when its comments API fails
+  ([token-usage.md](token-usage.md), the cost report step), and in a claimed run
+  (`team-claim.sh`) the ticket carries at least the claim comment, so an empty list there is a
+  failed read. The way through is an Operator decision at the boundary (§6; decided 2026-11-24,
+  #297). A gate judges only the read it compares: a change seen in an earlier incomplete read is not
+  carried forward — the lead names it in the decision question. A paginated reader is a separate
+  task.
 - A deleted comment is reported only on a complete read.
 - `/pr-merge` checks once, right before it completes the PR or arms auto-complete. A comment added
   while policies run under an armed auto-complete is not seen — an accepted gap (there is no

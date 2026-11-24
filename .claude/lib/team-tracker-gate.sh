@@ -1,8 +1,11 @@
 # Tracker comments at the per-run TeamLead's gates (.agents/reference/tracker-comments.md §5–§6,
 # team-lead.md §11). Sourced by team-verdict.sh for `plan approve` and `acceptance accept`; uses
-# its globals (TD RD RRD RUN MAIN MODE TICKET GATE last LIB, rec, bad).
+# its globals (TD RD RRD RUN MAIN MODE TICKET GATE DECISION last LIB, rec, bad, fm, decision_file).
 # Opt-in: nothing runs unless workflow.tracker_comments is true in the main checkout's profile and
 # the run's tracker is not none (trk_on). Every refusal exits 10.
+# Rule B (#297): an uncertain read (compare exit 4) passes only with --decision d-<n> answered
+# approve for that very read (trk_decision); the decision waives only the uncertainty — a confirmed
+# change inside the read keeps its exit-3 handling. team-verdict.sh consumes TRK_DECISION.
 # Bash 3.2 compatible.
 
 TRACKER_LINE=""   # the comparator's line, stored in the verdict as `tracker`
@@ -78,8 +81,47 @@ trk_compare() {
   case "$TRK_RC" in 0|3|4) ;; *) trk_fail "the comparator failed (exit $TRK_RC): ${TRACKER_LINE}" ;; esac
 }
 
+# trk_confirmed → 0 when the compare result carries a confirmed change (an id, the description),
+# which an uncertain read (exit 4) can carry too.
+trk_confirmed() {
+  jq -e '((.new + .edited + .removed) | length) > 0 or .description_changed' "$TRK_TMP/cmp.json" >/dev/null
+}
+
+# trk_named — every confirmed change must be named under `## Ordered vs delivered` in the round's
+# acceptance brief.
+trk_named() {
+  local sect ids id missing=""
+  sect="$(awk '/^## Ordered vs delivered$/ { f = 1; next } /^## / { f = 0 } f' "$RRD/acceptance-brief.md")"
+  ids="$(jq -r '(.new + .edited + .removed)[]' "$TRK_TMP/cmp.json")"
+  [ "$(jq -r .description_changed "$TRK_TMP/cmp.json")" != true ] || ids="$ids description"
+  for id in $ids; do printf '%s\n' "$sect" | grep -qwF -- "$id" || missing="$missing $id"; done
+  [ -z "$missing" ] || trk_fail "${TRACKER_LINE} — name${missing} under '## Ordered vs delivered' in acceptance-brief.md, or order a rework / open a decision"
+}
+
+# trk_decision <refusal> — rule B: the uncertainty of the read FRESH is accepted only by --decision
+# d-<n> answered approve, opened for that very read (source) no earlier than it was read. Sets
+# TRK_DECISION (the file team-verdict.sh consumes) and appends the decision to TRACKER_LINE.
+TRK_DECISION=""
+trk_decision() {
+  local df st oc s rel ca ra
+  [ -n "$DECISION" ] || trk_fail "$1"
+  df="$(decision_file "$DECISION")"
+  st="$(fm "$df" status)"
+  [ "$st" = answered ] || trk_fail "${TRACKER_LINE} — $DECISION is ${st:-?}, not answered"
+  oc="$(fm "$df" answer_outcome)"
+  [ -n "$oc" ] || trk_fail "${TRACKER_LINE} — $DECISION was answered without --outcome — open a new decision and record the Operator's answer with the --outcome it states (approve|close)"
+  [ "$oc" = approve ] || trk_fail "${TRACKER_LINE} — $DECISION was answered $oc, not approve"
+  rel="${FRESH#"$RD"/}"
+  s="$(fm "$df" source)"; s="${s#"$RD"/}"; s="${s#.agents/team/runs/"$RUN"/}"
+  [ "$s" = "$rel" ] || trk_fail "${TRACKER_LINE} — $DECISION is for $s, the gate compares $rel — open a decision with --source .agents/team/runs/$RUN/$rel"
+  ca="$(fm "$df" created_at)"; ra="$(jq -r '.read_at // empty' "$FRESH")"
+  [ -n "$ca" ] && ! [[ "${ca:0:19}" < "${ra:0:19}" ]] \
+    || trk_fail "${TRACKER_LINE} — $DECISION was opened at ${ca:-?}, before $rel was read (${ra}) — open a decision for this read"
+  TRACKER_LINE="$TRACKER_LINE — accepted by Operator decision $DECISION"; TRK_DECISION="$df"
+}
+
 trk_gate() {
-  local pr ids id sect missing="" recon=""
+  local pr recon=""
   if [ "$GATE" = acceptance ]; then
     pr=""
     for f in $(GATE=plan verdicts); do [ "$(rec "$RD/$f" verdict)" != approve ] || pr="$RD/$(rec "$RD/$f" for)"; done
@@ -91,12 +133,9 @@ trk_gate() {
     if [ -n "$recon" ]; then trk_compare --reconciled "$recon"; else trk_compare; fi
     case "$TRK_RC" in
       0) ;;
-      4) trk_fail "${TRACKER_LINE} — the read is not complete: open a decision, never accept on it" ;;
-      3) sect="$(awk '/^## Ordered vs delivered$/ { f = 1; next } /^## / { f = 0 } f' "$RRD/acceptance-brief.md")"
-         ids="$(jq -r '(.new + .edited + .removed)[]' "$TRK_TMP/cmp.json")"
-         [ "$(jq -r .description_changed "$TRK_TMP/cmp.json")" != true ] || ids="$ids description"
-         for id in $ids; do printf '%s\n' "$sect" | grep -qwF -- "$id" || missing="$missing $id"; done
-         [ -z "$missing" ] || trk_fail "${TRACKER_LINE} — name${missing} under '## Ordered vs delivered' in acceptance-brief.md, or order a rework / open a decision" ;;
+      4) ! trk_confirmed || trk_named
+         trk_decision "${TRACKER_LINE} — the read is not complete: open a decision (decision open --source .agents/team/runs/$RUN/${FRESH#"$RD"/}); accept with --decision d-<n> only once the Operator answers approve" ;;
+      3) trk_named ;;
     esac
   else
     trk_baseline "$last"
@@ -104,7 +143,8 @@ trk_gate() {
     trk_compare
     case "$TRK_RC" in
       3) trk_fail "${TRACKER_LINE} — revise with the list as findings (the planner reconciles, new snapshot)" ;;
-      4) trk_fail "${TRACKER_LINE} — escalate with a decision" ;;
+      4) ! trk_confirmed || trk_fail "${TRACKER_LINE} — revise with the list as findings (the planner reconciles; it renews the snapshot only from a complete read, else keeps the previous one)"
+         trk_decision "${TRACKER_LINE} — escalate with a decision (decision open --source .agents/team/runs/$RUN/${FRESH#"$RD"/}; once the Operator answers approve, approve with --decision d-<n>)" ;;
     esac
   fi
   TRACKER_LINE="$TRACKER_LINE · baseline $BASE_FROM"
