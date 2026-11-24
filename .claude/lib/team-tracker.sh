@@ -614,9 +614,8 @@ op_which() {
 # add-labels: `gh issue edit --add-label` is idempotent on GitHub's side; a label the repo lacks is exit 4.
 op_add_labels() {
   local l joined
-  [ $# -ge 1 ] || die 2 "add-labels needs a label"
   for l in "$@"; do
-    [ -n "$l" ] || die 2 "add-labels needs a label"
+    [ -n "$l" ] || die 2 "label '' is empty"
     case "$l" in *,*) die 2 "label '$l' contains a comma" ;; esac
   done
   joined="$(IFS=,; echo "$*")"

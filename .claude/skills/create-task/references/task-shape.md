@@ -8,6 +8,10 @@ follow-up tickets carry the same sections under their own first and last lines.
 - Imperative, English, ≤ 80 characters: `Add a retry to the issue sync`, not `Retry issue`.
 - No `#`, no ticket key, no backtick and no `$(` — commands and code go in the body (a backtick in
   an argument makes the egress guard rescan it as a command, and that prompts).
+- No secret-like token prefix and no `curl` data flag either — the shipped `deny` rules of
+  `.claude/settings.json` match those anywhere in a command, and a deny outranks the skill's
+  allowance; describe them in the body. A real credential value never goes into a task, title or
+  body — write `[REDACTED]` in its place.
 
 ## Body
 

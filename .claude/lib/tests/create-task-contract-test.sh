@@ -102,6 +102,27 @@ check $? "execution controls apply on a retry"
 has "$SK" '<!-- create-task-intent:' && has "$SK" 'a Jira draft is not replayable' \
   && has "$GHR" 'on `exists` no status is written' && has "$GHR" 'every `<!-- create-task:` line in it is removed'
 check $? "retry replays the saved intent"
+has "$SK" 'with `tracker=jira` is refused whatever its last line'
+check $? "a jira draft is refused without a marker"
+has "$SK" 'every `<!-- create-task-intent:` line from it first' && has "$GHR" '`<!-- create-task-intent:` line too'
+check $? "a new draft drops an old intent line"
+has "$SK" 'splits at `,` only'
+check $? "intent labels may hold spaces"
+ordered "$SK" 'TEAM_SESSION_ROLE=TeamLead' 'record it under `## Follow-ups`'
+check $? "a TeamLead is told apart before a stage"
+has "$SHAPE" 'No secret-like token prefix and no `curl` data flag'
+check $? "title stays clear of the shipped deny rules"
+has "$GHR" 'GitHub applied none of the labels of that call' && has "$GHR" 'leaves the labels unconfirmed'
+check $? "a refused label call is reported whole"
+has .claude/skills/jira/SKILL.md 'labels it hands over are kept' \
+  && has .claude/skills/jira/SKILL.md 'unless it hands them over as complete' && has "$JR" 'handed over as complete'
+check $? "jira keeps handed-over labels"
+has "$SHAPE" 'write `[REDACTED]` in its place'
+check $? "a credential value is never published"
+has "$SK" 'On github `--parent` must be an issue number'
+check $? "a github parent is checked before any write"
+has .claude/commands/brainstorm.md 'A split-off of a backlog Task (`.agents/backlog.md`) goes through `/update-backlog` instead'
+check $? "brainstorm sends a backlog split to /update-backlog"
 has "$SK" 'created via team-tracker.sh create-issue' && has "$SK" 'created via /jira Flow A'
 check $? "report is per tracker"
 has .claude/skills/jira/SKILL.md 'already rendered by `/create-task`' && has "$JR" 'verbatim'

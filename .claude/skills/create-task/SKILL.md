@@ -20,10 +20,11 @@ while it runs, so neither the egress guard nor Claude Code prompts. Jira goes th
 Each refusal ends the skill: no draft, no adapter call.
 
 - **A team clone** — `.agents/team/session.json` or `.agents/team/team.json` exists:
-  - a stage (a `session.json` is there): "record it under `## Follow-ups` in the run notes" — the
-    wrapup decides tickets;
-  - a TeamLead (`TEAM_SESSION_ROLE=TeamLead`, or no `session.json`):
-    "ask the Supervisor or the Advisor (`.agents/reference/team-decision-model.md` §3)".
+  - a TeamLead (`TEAM_SESSION_ROLE=TeamLead` — checked first, a running stage's `session.json` sits
+    in the same clone — or no `session.json`):
+    "ask the Supervisor or the Advisor (`.agents/reference/team-decision-model.md` §3)";
+  - a stage (any other session, a `session.json` is there): "record it under `## Follow-ups` in the
+    run notes" — the wrapup decides tickets.
 - **A backlog Task** — the input names an `E<n>-<m>` id, quotes a row of `.agents/backlog.md`, or
   holds a standalone `<!-- backlog:` correlation marker line (Epic or Task, e.g. copied from a
   synced issue): "a backlog Task is created by `/github-sync` (github) or `/jira sync` (jira), which
@@ -72,14 +73,17 @@ The marker is the last line, github only (`references/github.md` → Marker).
   intent wins over the ticket flags given now (`--type`, `--status`, `--label`, `--parent` — say
   so), while the execution controls of this invocation (`--dry-run`, `--review`) always apply; its
   `tracker`/`repo` must equal `which`'s, or the skill refuses ("this draft was written for <repo>");
-  its `# ` title is stripped and its marker kept. Retry is github only: an intent with
-  `tracker=jira` is refused — "a Jira draft is not replayable — finish the follow-up step on the key
-  the first run reported".
+  its `# ` title is stripped and its marker kept. Retry is github only: a draft file whose first
+  line is a valid intent line with `tracker=jira` is refused whatever its last line (a Jira draft
+  carries no marker) — "a Jira draft is not replayable — finish the follow-up step on the key the
+  first run reported".
 - **Any other draft file** is a new draft from that text — strip every `<!-- create-task:` line
-  from it first.
+  and every `<!-- create-task-intent:` line from it first.
 - **Labels are validated before any write**: a label containing `,` or starting with `-` is refused
   up front, so the intent's comma-separated `labels=` is lossless and no label reaches the adapter's
-  option parser.
+  option parser. A label may hold spaces (`good first issue`): the intent's `labels=` value runs up
+  to ` parent=` and splits at `,` only. On github `--parent` must be an issue number (an optional
+  leading `#`), checked before any write — also when it comes from a retried intent.
 
 ## 5. Print
 

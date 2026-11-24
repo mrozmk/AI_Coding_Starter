@@ -1,7 +1,8 @@
 # Shared gh stub for the tracker smokes: every call is logged to $GH_LOG, all state lives in
 # $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json,
 # pool-items.json for `gh api graphql`, timeline-<n>.json for an issue timeline, pr-<n>.json for
-# `gh pr view`, labels.json for the repo's labels in `gh issue edit --add-label`), 30 items per page, failures by env switch (STUB_GH_PAGE2_FAIL,
+# `gh pr view`, labels.json for the repo's labels in `gh issue edit --add-label`), 30 items per
+# page, failures by env switch (STUB_GH_PAGE2_FAIL,
 # STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY) and by
 # one-shot file: race-claim.txt (a comment POST first stores a foreign comment with that body — a
 # competing claim landing before ours), race-reread.txt (the SECOND comment read first stores a

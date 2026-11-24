@@ -12,7 +12,7 @@ tool, skill `jira`, args `create …`) and never calls an Atlassian MCP create t
 | `bug` | issue type `Bug` |
 | `enhancement` or `none` | issue type `Task` |
 | `--parent <KEY>` | the Epic (`parent_epic_key`) — verified and kept by `/jira`, also for a Bug |
-| `--label` values | `labels` |
+| `--label` values | `labels` — with `--type none` (a recommendation) handed over as complete, so `/jira` adds no `$JIRA_DEFAULT_LABELS` |
 
 Everything else stays `/jira`'s: the required fields (project, the Epic for a Task, a Bug's Epic
 resolution), components, attachments, the dry-run table with the whole description and the explicit

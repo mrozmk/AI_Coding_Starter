@@ -13,8 +13,9 @@ once, when the draft is written. Two drafts with the same title get two nonces, 
 **The one retry rule (same as SKILL.md):** a draft is a retry only when its first line is a valid
 `<!-- create-task-intent: … -->` line **and** its last line is a `<!-- create-task:` marker — then
 the marker is kept verbatim. Any other input (a published issue body copied back, a file without the
-intent line) is a new draft: every `<!-- create-task:` line in it is removed and a new marker is
-assigned, so an old issue is never matched and changed.
+intent line) is a new draft: every `<!-- create-task:` line in it is removed, every
+`<!-- create-task-intent:` line too, and a new marker is assigned, so an old issue is never matched
+and changed.
 
 ## 2. Body file
 
@@ -39,7 +40,8 @@ bash .claude/lib/team-tracker.sh create-issue --marker '<m>' --title '<t>' --bod
 - `created <n>` — a new issue; `exists <n>` — the retry of this draft found its issue by the marker.
 - Then `project: added|exists|skipped (no project)`, or a `warning: project add failed …` line
   (partial — keep going, report the rerun line it prints).
-- Exit 4 → stop, report stderr: an ambiguous marker names the issues to clean up; a client error
+- Exit 4 → stop, report stderr: an ambiguous marker says how many issues carry it (find them by the
+  marker text and clean up); a client error
   after the issue may exist says: retry `/create-task '<draft file>'`, which finds it by the marker.
   Nothing else runs.
 
@@ -62,8 +64,10 @@ bash .claude/lib/team-tracker.sh add-labels <n> '<type label>' ['<label>'…]
 ```
 
 The type label (`bug` | `enhancement`) is omitted when the intent says `type=none`; with no label at
-all the call is skipped. Prints `labeled …`; exit 4 → a warning (a label missing in the repo),
-continue.
+all the call is skipped. Prints `labeled …`; exit 4 → a warning carrying the adapter's stderr: when
+it names a missing label, GitHub applied none of the labels of that call, so the report names them
+all; any other cause leaves the labels unconfirmed — the retry `/create-task '<draft file>'` adds
+them again (idempotent); continue.
 
 ## 7. Parent
 
