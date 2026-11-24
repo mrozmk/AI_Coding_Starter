@@ -177,17 +177,13 @@ echo "team-smoke-26: (h) acceptance OK"
 # ---- (i) acceptance: an empty Jira read is uncertain; an answered decision bound to it accepts ----
 # The committed baselines stay github-shaped: the gate's comparison is provider-agnostic.
 jq '.tracker = "jira"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
-# jfresh <dir> <gate> <n> <description> — a Jira MCP read with an empty comment list, written now
-jfresh() { local d="$1" g="$2" n="$3" desc="$4"
-  jq -n --arg d "$desc" '{key: "AB-2600", description: $d, updated: "2026-11-16T09:00:00Z", comments: []}' > "$WORK/jira.json"
-  $SNAP snapshot --jira "$WORK/jira.json" --out "$d/tracker-$g-$n.json" >/dev/null; }
-# jfreshc <dir> <gate> <n> <limit> <id:body>... — a Jira MCP read with comments, description $D0
-jfreshc() { local d="$1" g="$2" n="$3" l="$4" c a=(); shift 4
-  for c in "$@"; do a+=("$(jq -cn --arg i "${c%%:*}" --arg b "${c#*:}" \
-    '{id: $i, created: "2026-11-16T09:00:00Z", updated: "2026-11-16T09:00:00Z", body: $b}')"); done
-  printf '%s\n' "${a[@]}" | jq -s --arg d "$D0" \
-    '{key: "AB-2600", description: $d, updated: "2026-11-16T09:00:00Z", comments: .}' > "$WORK/jira.json"
-  $SNAP snapshot --jira "$WORK/jira.json" --limit "$l" --out "$d/tracker-$g-$n.json" >/dev/null; }
+# jfreshc <dir> <gate> <n> <limit|""> <description> [id:body...] — a Jira MCP read written now:
+# show's comments, its body as the description (the Jira snapshot ignores the author)
+jfreshc() { local d="$1" g="$2" n="$3" l="$4"; shift 4; show "$WORK/show-j.json" "$@"
+  jq '{key, updated, description: .body, comments}' "$WORK/show-j.json" > "$WORK/jira.json"
+  $SNAP snapshot --jira "$WORK/jira.json" ${l:+--limit "$l"} --out "$d/tracker-$g-$n.json" >/dev/null; }
+# jfresh <dir> <gate> <n> <description> — the same with an empty comment list
+jfresh() { jfreshc "$1" "$2" "$3" "" "$4"; }
 dec() {  # dec <id> <status> <stage> <source> <outcome|""> [created_at]
   mkdir -p "$RD/decisions"
   { printf -- '---\nid: %s\nstatus: %s\nstage: %s\nattempt: 1\nsource: %s\ncreated_at: %s\nnotify: human_decision\ntouch_reason: human-only\n' \
@@ -218,7 +214,7 @@ dec d-2 answered qa tracker-acceptance-4.json approve
 V acceptance accept --for qa-1-1.json --decision d-2 --message ok
 expect 10 "name description under '## Ordered vs delivered'" "(i) description changed in an uncertain read"
 [ "$(dstatus d-2)" = answered ] || fail "(i) a refused accept consumed d-2"
-jfreshc "$RD" acceptance 5 3 "1001:CSV header row" "1003:after the spec" "1005:a footer"
+jfreshc "$RD" acceptance 5 3 "$D0" "1001:CSV header row" "1003:after the spec" "1005:a footer"
 dec d-6 answered qa tracker-acceptance-5.json approve
 V acceptance accept --for qa-1-1.json --decision d-6 --message ok
 expect 10 "name 1005 under '## Ordered vs delivered'" "(i) a new id in a truncated read"
@@ -266,6 +262,9 @@ session qa 1 "$C1"
 rm -f "$RD"/teamlead-acceptance-*.json
 jfresh "$RD" acceptance 7 "$D0"
 V acceptance accept --for qa-1-1.json --decision d-5 --message ok; expect 10 "d-5 is consumed" "(j) plan decision at acceptance"
+dec d-7 answered planner tracker-plan-11.json approve
+V acceptance accept --for qa-1-1.json --decision d-7 --message ok
+expect 10 "d-7 is for tracker-plan-11.json, the gate compares tracker-acceptance-7.json" "(j) unconsumed plan decision at acceptance"
 jq '.tracker = "github"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
 echo "team-smoke-26: (j) plan decision OK"
 

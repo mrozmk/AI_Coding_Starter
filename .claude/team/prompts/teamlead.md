@@ -389,10 +389,13 @@ your part of it `team-lead.md` §11.
      checkout, the gate from the clone's base): before relying on `--decision`, check the clone's
      gate: `grep -q trk_decision .claude/lib/team-tracker-gate.sh`. No match → the clone predates
      #297 and its gate refuses every uncertain read, with or without a decision. Recover with what
-     that base has: ask the Operator (in the decision) to add a comment to the ticket — the next
-     read then holds ≥1 comment and is complete below the limit, and the comment is handled as a
-     change (plan: revise, the planner marks it informational; acceptance: name it under
-     `## Ordered vs delivered`) — or, on an answered close, `decision close --for <the acked record> --decision d-<n> --message "<line>"`.
+     that base has: when the ticket truly has no comments (an unclaimed run), ask the Operator (in
+     the decision) to add a comment to the ticket — the next read then holds ≥1 comment and is
+     complete below the limit, and the comment is handled as a change (plan: revise, the planner
+     marks it informational; acceptance: name it under `## Ordered vs delivered`); in a claimed run
+     the ticket already carries the claim comment, so an empty list is a failed comments read
+     (tracker-comments.md §7) that another comment does not fix — read again once the comments API
+     answers; or, on an answered close, `decision close --for <the acked record> --decision d-<n> --message "<line>"`.
 2. **A coder or qa `blocked` "new tracker input after plan: <ids>"**: read those comments (id,
    created, first sentence) and decide. Informational → answer the stop's ask with `--text`
    carrying `<id>@<sha>` (the `sha` from your fresh snapshot): acceptance reads it from

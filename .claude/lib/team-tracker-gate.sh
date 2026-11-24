@@ -81,21 +81,21 @@ trk_compare() {
   case "$TRK_RC" in 0|3|4) ;; *) trk_fail "the comparator failed (exit $TRK_RC): ${TRACKER_LINE}" ;; esac
 }
 
-# trk_confirmed → "yes" when the compare result carries a confirmed change (an id, the description),
+# trk_confirmed → 0 when the compare result carries a confirmed change (an id, the description),
 # which an uncertain read (exit 4) can carry too.
 trk_confirmed() {
-  jq -r 'if ((.new + .edited + .removed) | length) > 0 or .description_changed then "yes" else "" end' "$TRK_TMP/cmp.json"
+  jq -e '((.new + .edited + .removed) | length) > 0 or .description_changed' "$TRK_TMP/cmp.json" >/dev/null
 }
 
-# trk_named <hint> — every confirmed change must be named under `## Ordered vs delivered` in the
-# round's acceptance brief.
+# trk_named — every confirmed change must be named under `## Ordered vs delivered` in the round's
+# acceptance brief.
 trk_named() {
   local sect ids id missing=""
   sect="$(awk '/^## Ordered vs delivered$/ { f = 1; next } /^## / { f = 0 } f' "$RRD/acceptance-brief.md")"
   ids="$(jq -r '(.new + .edited + .removed)[]' "$TRK_TMP/cmp.json")"
   [ "$(jq -r .description_changed "$TRK_TMP/cmp.json")" != true ] || ids="$ids description"
   for id in $ids; do printf '%s\n' "$sect" | grep -qwF -- "$id" || missing="$missing $id"; done
-  [ -z "$missing" ] || trk_fail "${TRACKER_LINE} — name${missing} under '## Ordered vs delivered' in acceptance-brief.md, $1"
+  [ -z "$missing" ] || trk_fail "${TRACKER_LINE} — name${missing} under '## Ordered vs delivered' in acceptance-brief.md, or order a rework / open a decision"
 }
 
 # trk_decision <refusal> — rule B: the uncertainty of the read FRESH is accepted only by --decision
@@ -133,9 +133,9 @@ trk_gate() {
     if [ -n "$recon" ]; then trk_compare --reconciled "$recon"; else trk_compare; fi
     case "$TRK_RC" in
       0) ;;
-      4) [ -z "$(trk_confirmed)" ] || trk_named "or order a rework / open a decision"
+      4) ! trk_confirmed || trk_named
          trk_decision "${TRACKER_LINE} — the read is not complete: open a decision (decision open --source .agents/team/runs/$RUN/${FRESH#"$RD"/}); accept with --decision d-<n> only once the Operator answers approve" ;;
-      3) trk_named "or order a rework / open a decision" ;;
+      3) trk_named ;;
     esac
   else
     trk_baseline "$last"
@@ -143,7 +143,7 @@ trk_gate() {
     trk_compare
     case "$TRK_RC" in
       3) trk_fail "${TRACKER_LINE} — revise with the list as findings (the planner reconciles, new snapshot)" ;;
-      4) [ -z "$(trk_confirmed)" ] || trk_fail "${TRACKER_LINE} — revise with the list as findings (the planner reconciles; it renews the snapshot only from a complete read, else keeps the previous one)"
+      4) ! trk_confirmed || trk_fail "${TRACKER_LINE} — revise with the list as findings (the planner reconciles; it renews the snapshot only from a complete read, else keeps the previous one)"
          trk_decision "${TRACKER_LINE} — escalate with a decision (decision open --source .agents/team/runs/$RUN/${FRESH#"$RD"/}; once the Operator answers approve, approve with --decision d-<n>)" ;;
     esac
   fi

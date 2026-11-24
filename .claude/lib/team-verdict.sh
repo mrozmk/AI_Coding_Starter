@@ -372,6 +372,7 @@ esac
 target="$(write_verdict)"
 # The grant, or the decision that accepted an uncertain tracker read, is spent by this verdict.
 if [ -n "$DECISION" ] && { [ "$VERDICT" = revise ] || [ -n "${TRK_DECISION:-}" ]; }; then
-  fm_set "${TRK_DECISION:-$df}" status consumed; fm_set "${TRK_DECISION:-$df}" consumed_by "$(basename "$target")"
+  spent="${TRK_DECISION:-$df}"
+  fm_set "$spent" status consumed; fm_set "$spent" consumed_by "$(basename "$target")"
 fi
 echo "$target"
