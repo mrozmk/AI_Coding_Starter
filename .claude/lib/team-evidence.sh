@@ -21,9 +21,10 @@
 #     entry under the same checks: one question → reply "<d-n> <answer>"; several → map keyed by the
 #     stage question texts, reply a display string only
 #   team_evidence_dialog_raised <transcript> <since> → the d-<n> ids any AskUserQuestion call named
-#   team_evidence_ask_hooks <main> <clone> <config dir> → "clean <digest>" (rc 0) or
+#   team_evidence_ask_hooks <main> <clone> <config dir> [lead-profile] → "clean <digest>" (rc 0) or
 #     "unclean <cause>" (rc 1): the effective AskUserQuestion hook registrations of a lead session,
-#     with the hooks of every enabled plugin (team_evidence_plugins) in the digest
+#     with the hooks of every enabled plugin (team_evidence_plugins) in the digest; `lead-profile`
+#     (team-lead.sh preflight only) takes the plugin directories materialize will write ("")
 #   team_evidence_fix <cause> → one line naming what makes that cause go away
 #   team_evidence_snapshot <ask hooks line> → {clean, digest, cause}: that line as a launch snapshot
 #   team_evidence_anchor <main> <clone> → the main checkout's anchor of that clone (by physical path)
@@ -314,7 +315,7 @@ team_evidence_inv() {
 }
 
 team_evidence_ask_hooks_in() {
-  local main="$1" clone="$2" cfg="${3:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs="" mods="" mset="" mval="" fset="" fval=""
+  local main="$1" clone="$2" cfg="${3:-}" proj="${4:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs="" mods="" mset="" mval="" fset="" fval=""
   [ -n "$cfg" ] || cfg="$HOME/.claude"
   # The process environment first: it reaches the lead through the runner's launch.
   [ -z "${CLAUDE_CODE_PLUGIN_CACHE_DIR:-}" ] \
@@ -393,9 +394,10 @@ team_evidence_ask_hooks_in() {
   # the lead's --settings file (teamlead.settings.json; it overrides the user/project/local `env`
   # and the inherited process environment — checked on Claude Code 2026-11-25), and only below
   # those the union of everything else (fails closed). materialize writes "" there, so the lead
-  # loads none of the Operator's plugin directories; TEAM_EVIDENCE_LEAD_PROFILE=1 (the preflight)
-  # takes that value before the launch has written the file.
-  [ "${TEAM_EVIDENCE_LEAD_PROFILE:-}" != 1 ] || { fset=1; fval=""; }
+  # loads none of the Operator's plugin directories. Only the preflight passes `lead-profile` (an
+  # argument, never the environment) to take that value before the launch has written the file;
+  # the launch and every answer check read the actual file.
+  [ "$proj" != lead-profile ] || { fset=1; fval=""; }
   if [ -n "$mset" ]; then dirs="managed settings env"$'\t'"$mval"$'\n'
   elif [ -n "$fset" ]; then dirs="teamlead.settings.json env"$'\t'"$fval"$'\n'; fi
   # Plugins the host loads with no enabledPlugins entry: each plugin directory named by

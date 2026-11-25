@@ -998,18 +998,23 @@ sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(h) restored: clean, the same dig
 # a mod the Operator loads through the user settings env never reaches the lead.
 LS="$CLONE/.agents/team/teamlead.settings.json"; mkdir -p "$CLONE/.agents/team"
 [ ! -f "$LS" ] || cp "$LS" "$T/ls.keep"
-jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$US"; jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: ""}}' > "$LS"; ahk
+jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$US"; jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: ""}}' > "$LS"; ahk; H1="$AH"
 sub '[ "$AHRC" = 0 ]' "(h2) a mod in the user settings env, the lead profile's \"\" drops it ($AH)"
-AH="$(CLAUDE_CODE_PLUGIN_DIRS="$T/pd2" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
-sub '[ "$AHRC" = 0 ]' "(h2) … and in the inherited environment ($AH)"
+AH="$(CLAUDE_CODE_PLUGIN_DIRS="$T/pd2" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?; H2="$AH"
+AH="$(CLAUDE_CODE_PLUGIN_DIRS="" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; H3="$AH"
+sub '[ "$AHRC" = 0 ] && [ "${H1%% *}" = clean ] && [ "$H1" = "$H2" ] && [ "$H2" = "$H3" ]' "(h2) runner (inherited dir), lead (env \"\") and hook give one digest ($H1 $H2 $H3)"
 jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$LS"; ahk
 sub '[ "$AHRC" = 1 ] && grep -q "plugin directory $T/pd2 (CLAUDE_CODE_PLUGIN_DIRS, teamlead.settings.json env): hooks/hooks.json registers hooks in code" <<<"$AH"' "(h2) a mod named by the lead profile itself ($AH)"
 jq -n --arg p "$T/pd1" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$LS"; ahk
 sub '[ "$AHRC" = 0 ] && [ "$AH" != "$CLEAN" ]' "(h2) the lead profile's hookless directory replaces the user's, in the digest ($AH)"
 rm -f "$LS"; ahk
 sub '[ "$AHRC" = 1 ] && grep -q "user settings.json env" <<<"$AH"' "(h2) no lead profile: the user settings env counts again ($AH)"
-AH="$(TEAM_EVIDENCE_LEAD_PROFILE=1 team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+AH="$(team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc" lead-profile)"; AHRC=$?
 sub '[ "$AHRC" = 0 ]' "(h2) the preflight takes the value the launch materializes ($AH)"
+jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$LS"
+AH="$(TEAM_EVIDENCE_LEAD_PROFILE=1 team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 1 ] && grep -q "teamlead.settings.json env" <<<"$AH"' "(h2) no ambient variable projects the override: the actual profile decides ($AH)"
+rm -f "$LS"
 rm -f "$US"; [ ! -f "$T/ls.keep" ] || cp "$T/ls.keep" "$LS"; ahk
 sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(h2) restored: clean, the same digest ($AH)"
 # A clone mod: one inventory of each tree decides the comparison and feeds the digest.

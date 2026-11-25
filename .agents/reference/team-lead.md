@@ -647,7 +647,8 @@ decision in plain text and the Operator types the reply.
   environment), and only below those the union of the rest (fails closed). `materialize` writes
   `CLAUDE_CODE_PLUGIN_DIRS = ""` there, so the lead loads none of the Operator's plugin directories:
   a mod in the user settings (a status band, `/hc`) keeps working in every other session and never
-  blocks a lead start. `preflight` takes that value before the launch has written the file (#316).
+  blocks a lead start. `preflight` (and only it, by an explicit argument) takes that value before the launch has written
+  the file; the launch and every answer check read the actual file (#316).
   A value that is no plain one-line string (a newline, a tab,
   another JSON type) is unclean: its directories cannot be established. Plugin content (a manifest, a hooks file, an `.md`) under
   `<config dir>/plugins/synced` is unclean, it has no inventory. Not read: a policy delivered

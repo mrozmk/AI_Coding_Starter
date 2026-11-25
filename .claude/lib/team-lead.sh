@@ -390,7 +390,7 @@ preflight() {
   cfg="$(team_claude_home "$r")" || { echo "$cfg" >&2; exit 1; }
   . "$LIB/team-evidence.sh"
   # The env the launch materializes (CLAUDE_CODE_PLUGIN_DIRS = ""), not a stale profile's.
-  if ah="$(TEAM_EVIDENCE_LEAD_PROFILE=1 team_evidence_ask_hooks "$r" "$clone" "$cfg")"; then echo "ask provenance: clean"; return 0; fi
+  if ah="$(team_evidence_ask_hooks "$r" "$clone" "$cfg" lead-profile)"; then echo "ask provenance: clean"; return 0; fi
   echo "error: ask provenance unclean — ${ah#unclean }" >&2
   echo "fix: $(team_evidence_fix "${ah#unclean }"), then start again" >&2
   exit 3
