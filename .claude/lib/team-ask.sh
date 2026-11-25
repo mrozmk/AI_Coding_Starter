@@ -323,16 +323,64 @@ ask_follow_up() {
   return 0
 }
 
+# Recommendation markers of an option label, shared by the Operator dialog (team-lead-decision.sh
+# d_dialog) and the reply parsers. unrec: a label without a leading or trailing "(Recommended)" /
+# "[recommended]" marker. stagelabel($ls; $multi): an answer read from the dialog, where only the
+# lead's option carries the marker, as the stage's own label (the answer is keyed by stage labels);
+# a multi-select answer as whole labels joined by ", " (the longest label first, so a comma inside a
+# label survives; a prefix that leads nowhere is retried with a shorter one); anything that is not
+# made of the question's labels unchanged. argues: a text recommends an option ("recommend(s|ed|
+# ing)", "I|we [would] suggest|propose|prefer|advise" — a heuristic, not a parse). pitchcut: {h, p}
+# — the text up to the last "?" before the first such phrase, and the rest (the stage's pitch).
+ASK_LABEL_JQ='def unrec: . as $o
+    | (sub("^\\s*[\\[(]\\s*recommended\\s*[\\])]\\s*[:—–-]?\\s*"; ""; "i") | sub("\\s*[\\[(]\\s*recommended\\s*[\\])]\\s*$"; ""; "i")) as $c
+    | if $c == "" then $o else $c end;
+  def stagego($cs; $multi): . as $s
+    | first($cs[] | select(.t as $t | $s == $t or ($multi and ($s | startswith($t + ", ")))) | . as $m
+        | if $s == $m.t then [$m.l]
+          else ($s[(($m.t | length) + 2):] | stagego($cs; $multi)) | select(. != null) | [$m.l] + . end) // null;
+  def argre: "\\b(?:recommend(?:s|ed|ing)?|(?:i|we)(?: would|.d)? (?:suggest|propose|prefer|advise))\\b";
+  def argues: test(argre; "i");
+  def pitchcut: . as $t | (capture("^(?<h>(?:(?!" + argre + ")[\\s\\S])*\\?)\\s+(?<p>[\\s\\S]*" + argre + "[\\s\\S]*)$"; "i")
+    // {h: $t, p: ""});
+  def stagelabel($ls; $multi): . as $a
+    | ([$ls[] as $l | ($l | unrec) as $c | ($l, $c, $c + " (Recommended)") | {t: ., l: $l}]
+        | unique_by(.t) | sort_by(-(.t | length))) as $cs
+    | (stagego($cs; $multi)) as $r | if $r == null then $a else ($r | join(", ")) end;'
+
+# ask_dialog_map <id> <d-id> <dialog json> <map json> — the answer map of a multi-question dialog
+# (keyed by the dialog's question texts, its labels) as the stage reads it: re-keyed by position to
+# the ask's question texts, each label read back (stagelabel). One reader for decision answer and
+# the stage hook's re-verification. A position is trusted only while the dialog question still is
+# that stage question — the same count, header, label set (markers aside) and question text up to
+# its attributed line; nothing is printed
+# otherwise, or when a question has no entry.
+ask_dialog_map() {
+  jq -cS --arg d "$2 " --argjson dlg "$3" --slurpfile a "$ASK_D/$1.json" "$ASK_LABEL_JQ"'
+    select(type == "object") as $m | $a[0].payload.tool_input.questions as $sq
+    | if ($dlg.questions | length) != ($sq | length) or any(range(0; $sq | length); . as $i
+        | ($sq[$i].header != null and $sq[$i].header != $dlg.questions[$i].header)
+          or ([($sq[$i].options // [])[].label | unrec] | sort) != ([($dlg.questions[$i].options // [])[].label | unrec] | sort)
+          or (($sq[$i].question | pitchcut.h) as $h | ($dlg.questions[$i].question | ltrimstr($d)) as $dq
+            | ($dq == $h or ($dq | startswith($h + "\n\n"))) | not))
+      then error("dialog") else . end
+    | [range(0; $sq | length) as $i | $sq[$i] as $q | {key: $q.question,
+        value: ($m[$dlg.questions[$i].question | ltrimstr($d)]
+          | if type == "string" then stagelabel([($q.options // [])[].label]; ($q.multiSelect // false)) else . end)}]
+    | from_entries' <<<"$4" 2>/dev/null
+}
+
 # ask_reply_map <id> <reply> — a multi-question reply `<header>: <label>; …` → the canonical
 # {question: label} map, or rc≠0: a fragment that is no `<header>: <label>`, an unknown or repeated
 # header, or a key set other than the ask's questions — what the sender would refuse anyway.
 ask_reply_map() {
-  jq -cS --arg r "$2" '[.payload.tool_input.questions[] | {k: (.header // .question), q: .question}] as $qs
+  jq -cS --arg r "$2" "$ASK_LABEL_JQ"'[.payload.tool_input.questions[] | {k: (.header // .question), q: .question,
+        ls: [(.options // [])[].label], ms: (.multiSelect // false)}] as $qs
     | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$") // error("fragment"))) as $ps
     | if ($ps | map(.h) | unique | length) != ($ps | length) then error("duplicate") else . end
     | if ($ps | length) != ($qs | length) then error("count") else . end
     | [$ps[] | . as $p | ($qs | map(select(.k == $p.h)) | .[0]) as $m
-        | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries
+        | if $m == null then error("header") else {key: $m.q, value: ($p.l | stagelabel($m.ls; $m.ms))} end] | from_entries
     | if (keys | sort) != ($qs | map(.q) | sort) then error("keys") else . end' \
     "$ASK_D/$1.json" 2>/dev/null
 }
@@ -341,7 +389,8 @@ ask_reply_map() {
 # <id> → {"outcome","value","map"} (compact), or rc≠0. One parser for decision answer (the lead's
 # call) and the stage hook's re-verification (main checkout): the message, trimmed, must start
 # with "<d-id> "; permission|plan read `allow` | `deny[: <what instead>]`; several questions read
-# `<header>: <label>; …` (ask_reply_map); anything else is the answer text.
+# `<header>: <label>; …` (ask_reply_map); anything else is the answer text. A label answer is
+# returned as the stage's own label, whatever recommendation marker the dialog showed on it.
 ask_parse_reply() {
   local id="$1" did="$2" m rest out="" val="" map=null
   m="$(jq -rn --arg m "$3" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')" || return 1
@@ -358,7 +407,11 @@ ask_parse_reply() {
       esac ;;
     *) if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$id.json")" -gt 1 ]; then
          map="$(ask_reply_map "$id" "$rest")" || return 1
-       else val="$rest"; fi ;;
+       else
+         # A label as the dialog showed it reads as the stage's own label; free text is kept.
+         val="$(jq -r --arg v "$rest" "$ASK_LABEL_JQ"'(.payload.tool_input.questions // [])[0] as $q
+           | $v | stagelabel([($q.options // [])[].label]; ($q.multiSelect // false))' "$ASK_D/$id.json")" || return 1
+       fi ;;
   esac
   jq -cn --arg o "$out" --arg v "$val" --argjson m "$map" '{outcome: $o, value: $v, map: $m}'
 }

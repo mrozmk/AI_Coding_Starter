@@ -1,0 +1,26 @@
+{
+  "session_id": "sid-1",
+  "hook_event_name": "PreToolUse",
+  "cwd": "__CWD__",
+  "permission_mode": "auto",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "#309 /wcag-audit, preliminary spec Q-1: should v1 include the engine-B spike (try Alfa and IBM on the fixture, adopt one only if it adds confirmed barriers)? I recommend deferring it: v1 ships with axe-core only, and the spike becomes a follow-up ticket that uses v1's fixture as its benchmark. Running it inside v1 means two more network npm installs in the coder session (each an Operator approval), IBM's rule archive pinned and served locally, and a plan whose size depends on how the spike turns out. Axe-only v1 already satisfies the ticket's acceptance, because the spec allows 'v1 ships with axe alone if neither earns it'.",
+        "header": "Engine B",
+        "options": [
+          {
+            "label": "Defer spike (Recommended)",
+            "description": "v1 = axe-core + our own Playwright checks. The Alfa/IBM spike goes to the run notes as a follow-up ticket, benchmarked on v1's fixture. The runner keeps an engine-adapter seam so engine B can be added later without reshaping the report."
+          },
+          {
+            "label": "Spike inside v1",
+            "description": "Last plan task, time-boxed: install Alfa + IBM into a scratch cache (needs Operator approval for network), run them on the fixture and write the result. Adopting one adds a dependency, adapter code and tests to v1, so the plan has a conditional branch."
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  }
+}

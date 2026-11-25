@@ -41,6 +41,17 @@ destructive SQL and an unreadable prompt are refused for everyone, the Operator 
 human-only item becomes `runs/<run>/decisions/d-<n>.md` (pending), and the Operator's answer is
 recorded in their own words ([team-lead.md](team-lead.md) §7).
 
+**The order brief decides first.** A stage question the order brief already settles (a `[D]` line,
+a decision-log row, an ordered or `Not ordered` item) is answered by the lead with the brief's
+option (`authority: teamlead`, `why: brief: <line>`), also when the stage recommends otherwise. It
+reaches the Operator only when the lead itself finds a material conflict, a constraint that changed
+since the brief was written, or a requested scope change.
+
+**Human-only is the act, not the plan.** The classes above gate the request when a stage makes it
+(the settings edit, the network or install command). Planning a step that will need such an
+approval is the lead's to answer: a planned future egress is not human-only, including the step
+grants nothing, and a prerequisite denied later means a blocked stage or a replan.
+
 **Where the trust ends.** These limits matter when you decide how far to rely on the lead; each is
 stated in full in one place:
 - an Operator answer is bound to a terminal or a typed message in the lead's window, but that

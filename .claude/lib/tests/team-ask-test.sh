@@ -553,8 +553,8 @@ ok '[ -z "$SUBF" ]' "dialog answer: a permission decision resolved and relayed v
 # 3. a two-question multi-select ask
 newrun dlg3; SUBF=""; new_path; pl question-two; TO=40 HB dl3; wf "$AD/a-1.json"
 TL decision open beta --ask a-1 --recommend SQLite; DJ="$(dlg d-1)"
-sub 'jq -e "(.questions | length) == 2 and ([.questions[].header] == [\"Storage\", \"Outputs\"]) and ([.questions[].multiSelect] == [false, true]) and .questions[0].options[0].label == \"SQLite\"" <<<"$DJ" >/dev/null' "the dialog keeps both questions, headers and multiSelect ($DJ)"
-ask_op 3 "$DJ" "$(jq -c '{(.questions[0].question): "SQLite", (.questions[1].question): "JSON, HTML"}' <<<"$DJ")"
+sub 'jq -e "(.questions | length) == 2 and ([.questions[].header] == [\"Storage\", \"Outputs\"]) and ([.questions[].multiSelect] == [false, true]) and .questions[0].options[0].label == \"SQLite (Recommended)\"" <<<"$DJ" >/dev/null' "the dialog keeps both questions, headers and multiSelect ($DJ)"
+ask_op 3 "$DJ" "$(jq -c '{(.questions[0].question): "SQLite (Recommended)", (.questions[1].question): "JSON, HTML"}' <<<"$DJ")"
 TL decision answer beta d-1 --from-ask --tuning none --why w
 sub '[ "$TLRC" = 0 ] && [ "$(sed -n "s/^answer_map: //p" "$RD/decisions/d-1.md" | jq -cS .)" = "{\"Which outputs?\":\"JSON, HTML\",\"Which storage?\":\"SQLite\"}" ]' "answer_map keyed by the stage questions ($(cat "$T/tl.out"))"
 L a-1 --answers '{"Which storage?":"SQLite","Which outputs?":"JSON, HTML"}' --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
@@ -575,6 +575,76 @@ TL decision answer beta d-1 --from-ask --tuning none --why w; cp "$T/tl.out" "$T
 L a-1 --pick "JSON, HTML" --authority operator --decision "$RD/decisions/d-1.md" --why w; PRC=$LRC
 L a-1 --text "JSON, HTML" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
 ok '[ "$TLRC" = 0 ] && grep -qx "answer_value: JSON, HTML" "$RD/decisions/d-1.md" && [ "$PRC" = 7 ] && [ "$LRC" = 0 ] && j "$T/dl4.out" .hookSpecificOutput.permissionDecisionReason | grep -qF "JSON, HTML"' "dialog answer: a one-question multi-select ask relayed as text ($(cat "$T/tl4.out") | $(cat "$T/l.out"))"
+
+# 4b. one recommendation in a stage question's dialog (the 2026-11-24 a-1 of #309: the planner
+# marked and argued for one option, the lead recommended the other)
+planner() { jq '.role = "planner"' "$TD/session.json" > "$T/s" && mv "$T/s" "$TD/session.json"; }
+BQ="$(jq -r '.tool_input.questions[0].question' "$FX/question-brief.json")"
+newrun dlg4b; SUBF=""; new_path; planner; pl question-brief; TO=40 HB dl4b; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Spike inside v1"; DJ="$(dlg d-1)"; D1="$RD/decisions/d-1.md"
+sub '[ "$TLRC" = 0 ] && [ "$(jq -c "[.questions[0].options[].label]" <<<"$DJ")" = "[\"Spike inside v1 (Recommended)\",\"Defer spike\"]" ]' "one recommended option, first, the stage marker stripped ($(cat "$T/tl.out"))"
+sub '[ "$(sed -n "/^## Recommendation\$/{n;p;q;}" "$D1")" = "Spike inside v1" ]' "## Recommendation names the same option"
+sub 'jq -e "(.questions[0].question | split(\"\n\nplanner recommends: \")) as \$p | (\$p | length) == 2 and (\$p[0] | test(\"recommend\"; \"i\") | not) and (\$p[0] | endswith(\"confirmed barriers)?\")) and (\$p[1] | startswith(\"Defer spike — I recommend deferring it\"))" <<<"$DJ" >/dev/null' "the stage's recommendation only as its attributed line ($DJ)"
+sub 'jq -e "all(.questions[0].options[]; .description | test(\"Recommended\") | not) and (.questions[0].options[0].description | startswith(\"Last plan task\"))" <<<"$DJ" >/dev/null' "descriptions kept as the stage wrote them"
+sub '[ "$(j "$AD/a-1.json" ".payload.tool_input.questions[0].options[0].label")" = "Defer spike (Recommended)" ] && [ "$(j "$AD/a-1.json" ".payload.tool_input.questions[0].question")" = "$BQ" ]' "the filed ask is untouched"
+ask_op 4b "$DJ" "$(a1 "$DJ" "Spike inside v1 (Recommended)")"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_value: Spike inside v1" "$D1"' "the dialog label is recorded as the stage's label ($(cat "$T/tl.out"))"
+L a-1 --pick "Spike inside v1" --authority operator --decision "$D1" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(jq -r --arg q "$BQ" ".hookSpecificOutput.updatedInput.answers[\$q]" "$T/dl4b.out")" = "Spike inside v1" ]' "relayed to the stage by its own label ($(cat "$T/l.out"))"
+ok '[ -z "$SUBF" ]' "dialog: a stage question carries one recommendation, the lead's$SUBF"
+newrun dlg4c; SUBF=""; new_path; planner; pl question-brief; TO=40 HB dl4c; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Spike inside v1"; DJ="$(dlg d-1)"; D1="$RD/decisions/d-1.md"
+ask_op 4c "$DJ" "$(a1 "$DJ" "Defer spike")"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_value: Defer spike (Recommended)" "$D1"' "the stripped label maps back to the stage's marked label ($(cat "$T/tl.out"))"
+L a-1 --pick "Defer spike (Recommended)" --authority operator --decision "$D1" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(jq -r --arg q "$BQ" ".hookSpecificOutput.updatedInput.answers[\$q]" "$T/dl4c.out")" = "Defer spike (Recommended)" ]' "relayed ($(cat "$T/l.out"))"
+hk; newrun dlg4d; new_path; planner; pl question-brief; TO=40 HB dl4d; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Defer spike (Recommended)"
+sub '[ "$TLRC" = 0 ] && [ "$(jq -c "[.questions[0].options[].label]" <<<"$(dlg d-1)")" = "[\"Defer spike (Recommended)\",\"Spike inside v1\"]" ] && [ "$(sed -n "/^## Recommendation\$/{n;p;q;}" "$RD/decisions/d-1.md")" = "Defer spike" ]' "--recommend by the stage's marked label: still one marker ($(cat "$T/tl.out"))"
+hk; newrun dlg4e; new_path
+jq '.tool_input.questions[0].question = "I recommend keeping it. Keep the old endpoint?" | .tool_input.questions[0].options[0].label = "Keep it (Recommended)"' \
+  "$FX/question-one.json" | sed "s|__CWD__|$CLONE|" > "$T/p.json"
+TO=40 HB dl4e; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Remove it"
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ] && grep -q "argues for an option" "$T/tl.out"' "a question text that argues for an option is refused, nothing written ($(cat "$T/tl.out"))"
+TL decision open beta --ask a-1 --recommend "Remove it" --question "Keep the old endpoint?"; DJ="$(dlg d-1)"
+sub '[ "$TLRC" = 0 ] && [ "$(jq -r ".questions[0].question" <<<"$DJ")" = "d-1 coder: Keep the old endpoint?
+
+coder recommends: Keep it — I recommend keeping it. Keep the old endpoint?" ] && [ "$(jq -c "[.questions[0].options[].label]" <<<"$DJ")" = "[\"Remove it (Recommended)\",\"Keep it\"]" ]' "the lead's neutral --question, the stage's text attributed ($DJ)"
+hk; newrun dlg4f; new_path
+jq '.tool_input.questions[0].options[0].label = "Keep (recommended) it"' "$FX/question-one.json" | sed "s|__CWD__|$CLONE|" > "$T/p.json"
+TO=40 HB dl4f; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Remove it"
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ] && grep -q "exactly one recommended option" "$T/tl.out"' "a second marker left in a label is refused ($(cat "$T/tl.out"))"
+hk; newrun dlg4h; new_path
+jq '.tool_input.questions[1].question = "I recommend JSON. Which outputs?"' "$FX/question-two.json" | sed "s|__CWD__|$CLONE|" > "$T/p.json"
+TO=40 HB dl4h; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend SQLite
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ] && grep -q "several questions take no --question" "$T/tl.out"' "any question text of a several-question ask that argues for an option is refused ($(cat "$T/tl.out"))"
+hk; newrun dlg4i; new_path; pl question-two; TO=40 HB dl4i; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend SQLite; DJ="$(dlg d-1)"
+ask_op 4i "$DJ" "$(jq -c '{(.questions[0].question): "Files", (.questions[1].question): "JSON"}' <<<"$DJ")"
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_lock && ask_set a-1 '.payload.tool_input.questions |= reverse'; ask_unlock)
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-1.md"' "a dialog whose questions no longer sit at the ask's positions gives no answer ($(cat "$T/tl.out"))"
+sub '[ "$(. "$MAIN/.claude/lib/team-ask.sh"; jq -rn "$ASK_LABEL_JQ"'"'"'"CSV, UTF-8 (Recommended), HTML" | stagelabel(["CSV, UTF-8", "HTML (Recommended)"]; true)'"'"')" = "CSV, UTF-8, HTML (Recommended)" ]' "a multi-select answer is read as whole labels, a comma inside a label kept"
+sub '[ "$(. "$MAIN/.claude/lib/team-ask.sh"; jq -rn "$ASK_LABEL_JQ"'"'"'("JSON, CSV, UTF-8" | stagelabel(["JSON", "JSON, CSV", "CSV, UTF-8 (Recommended)", "HTML"]; true)), ("Which format? I suggest JSON." | pitchcut.p), ("Which recommendation engine should ship?" | argues)'"'"' | tr "\n" "|")" = "JSON, CSV, UTF-8 (Recommended)|I suggest JSON.|false|" ]' "a dead-end label prefix is retried; a suggestion is cut; the noun recommendation is no argument"
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_lock && ask_set a-1 '.payload.tool_input.questions |= [.[0] + (.[1] | {header, options, multiSelect}), .[1] + (.[0] | {header, options, multiSelect})]'; ask_unlock)
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-1.md"' "swapped question texts under the same headers and labels give no answer either ($(cat "$T/tl.out"))"
+hk
+ok '[ -z "$SUBF" ]' "dialog: label mapping and the validation of the rendered dialog$SUBF"
+
+# 4g. a stage proposal against a brief decision: the lead answers with the brief's option itself
+newrun dlg4g; SUBF=""; new_path; planner; pl question-brief; TO=40 HB dl4g; wf "$AD/a-1.json"
+L a-1 --pick "Spike inside v1" --authority teamlead --why "brief: Q-1 — the engine-B spike stays in the plan"; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(jq -r --arg q "$BQ" ".hookSpecificOutput.updatedInput.answers[\$q]" "$T/dl4g.out")" = "Spike inside v1" ]' "the brief's option reaches the stage ($(cat "$T/l.out"))"
+sub '[ "$(j "$AD/a-1.answer.json" .authority)" = teamlead ] && j "$AD/a-1.answer.json" .why | grep -q "^brief: "' "authority teamlead, the brief line as the reason"
+sub '[ -z "$(ls "$RD/decisions" 2>/dev/null)" ] && [ "$(j "$AD/a-1.json" ".requires_decision // \"\"")" = "" ]' "no decision file"
+sub 'grep -q -- "--why \"brief: <line>\"" "$MAIN/.claude/team/prompts/teamlead.md"' "the lead prompt carries the brief-decided class"
+ok '[ -z "$SUBF" ]' "brief-decided: the lead answers a proposal against the brief, no decision opened$SUBF"
 
 # 5. unbound decisions: the outcome comes from the label
 newrun dlg5; SUBF=""; new_path; rrec

@@ -369,11 +369,24 @@ Operator's relay answers it).
   `--authority teamlead --why "verification-only: <reason>"`. The record is the answer file's
   structured fields (`authority: teamlead` and a `why` starting `verification-only:`); the
   acceptance brief lists every such answer (§8).
+- **brief-decided** — the order brief already decides the point (a `[D]` line, a decision-log row,
+  an ordered or `Not ordered` item) and the asking role asks it again or proposes otherwise. The
+  lead answers with the brief's option itself, with no decision and no Codex opinion:
+  `--authority teamlead --why "brief: <line>"`. A stage's argument against the brief (cost, size,
+  convenience, a step that will need an approval later) never reaches the Operator. The lead opens
+  a decision only when it finds a material conflict itself (two brief lines that cannot both hold,
+  a brief line against a later Operator decision), a constraint that changed since the brief was
+  written, or the stage requests a scope change (next class).
 - **escalated** — the lead opens a decision with `--ask a-<n>`: scope beyond the ticket; dropping or
-  weakening a criterion (a re-wording that weakens it included); contradicting an Operator decision
-  (an answered decision, an order-brief line, a CLAUDE.md or `decisions.md` Operator decision); an
-  irreversible or outward-facing action; a product-fit hit; a `/quick-change` Phase 0 override
-  other than size.
+  weakening a criterion (a re-wording that weakens it included); an answer that would have the
+  lead contradict an Operator decision (an answered decision, a CLAUDE.md or `decisions.md`
+  Operator decision; an order-brief line only on the conflict or changed constraint named under
+  brief-decided); an irreversible or outward-facing action; a product-fit hit; a `/quick-change`
+  Phase 0 override other than size.
+- **a planned step is not the act** — a plan that includes a step needing an Operator approval
+  later (a network install, a settings edit) grants nothing and is no Operator question: the
+  operator tier above gates the request when a stage makes it. A prerequisite denied then means a
+  blocked stage or a replan, never a failed trial.
 - any other change of criteria, contract or a sensitive class: a Codex second opinion first
   (`teamlead.md` → Answering, rule 7), then the lead decides.
 
@@ -469,7 +482,9 @@ decision in plain text and the Operator types the reply.
   [--gate plan] [--reason human-only|no-rule|lead-unsure|channel-failed|guard]`, or `--ask a-<n>` (an open ask: source `asks/a-<n>.json`, the binding `bind_ask,
   bind_session_id, bind_attempt, ask_kind`; a question or stop ask gets `requires_decision: d-<n>`).
   `--reason` (default: `human-only` for an operator-tier ask, a `--gate plan` or an
-  `abandon_decision`, else `no-rule`) is stored as `touch_reason`.
+  `abandon_decision`, else `no-rule`) is stored as `touch_reason`. `human-only` names the act
+  itself (the settings edit, the network or install command a stage requests), never a question
+  about planning a step that will need it: a planned future egress is not human-only.
   It prints the decision with its reply format and writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
   notify, touch_reason`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
@@ -486,9 +501,27 @@ decision in plain text and the Operator types the reply.
   never cut (Bash the whole command, a file tool the path, WebFetch the url, ExitPlanMode the plan's
   first line plus `(full plan: asks/a-<n>.json)`, any other tool its whole `tool_input` as JSON);
   an unbound decision `d-<n> <question>`. The recommended option goes first, its description
-  `Recommended — <label>. <its own description>`. Validated before anything is written (exit 2,
-  nothing written), stored as one line under `## Dialog`, printed as `ask-operator: <json>` after
-  the existing lines. The lead calls `AskUserQuestion` with that input verbatim (several pending
+  `Recommended — <label>. <its own description>` (permission, plan, text and unbound decisions,
+  labels untouched). **A stage question carries exactly one recommendation, the lead's:** the
+  stage's own markers (a leading or trailing `(Recommended)` / `[recommended]`) are stripped from
+  the labels; the lead's option goes first with the label suffix ` (Recommended)`, descriptions
+  as the stage wrote them; `--recommend` names the label with or without a marker and
+  `## Recommendation` stores it without. The text after the question that argues for an option
+  (everything behind the last `?` before the first recommending phrase — "recommend(s|ed|ing)",
+  "I|we [would] suggest|propose|prefer|advise"; a heuristic) — or, when the lead passes a
+  neutral one-line `--question` for a single-question ask, the stage's whole text — moves to a
+  line `<stage> recommends: <its marked labels> — <its text>` (`<stage> adds: …` when it
+  recommends nothing) after a blank line. The filed ask is never changed, and the answer is read
+  back to the stage's own labels and question texts (`answer_value`, `answer_map`, the typed
+  reply and the dialog alike; a several-question dialog answer by position, only while each
+  dialog question still has its stage question's header, label set and text; a multi-select answer as
+  whole labels). Refused (exit 2, nothing written, no notification): no or several recommended
+  options, a recommended option that is not first or not `--recommend`, a marker left inside a
+  label, and a question whose text still argues for an option (a single question: pass
+  `--question`; several: the lead answers the ask with `--text`, asking the stage to ask again
+  with a question text free of a recommendation).
+  Validated before anything is written (exit 2, nothing written), stored as one line under
+  `## Dialog`, printed as `ask-operator: <json>` after the existing lines. The lead calls `AskUserQuestion` with that input verbatim (several pending
   decisions may share one call).
 - **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
   <event>` (an extra channel to the Operator; the dialog is the primary one). The event id
