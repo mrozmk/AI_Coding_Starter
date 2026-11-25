@@ -42,30 +42,33 @@ destructive SQL and an unreadable prompt are refused for everyone, the Operator 
 human-only item becomes `runs/<run>/decisions/d-<n>.md` (pending), and the Operator's answer is
 recorded in their own words ([team-lead.md](team-lead.md) §7).
 
-**Mandate — the Operator delegates a class to the Supervisor.** Off by default. The Operator
-grants it in their own words (`team-mandate.sh grant`: their message starts with `mandate
-<class>[,<class>…] for <N>h|<N>d`, at most 7 days; a terminal, or their typed message in the
-Supervisor window, read back from that message whenever the mandate is acted on), and it is
-one local file in the main checkout, `.agents/team/mandate.json` — outside every clone and outside
-git. A pending decision bound to an ask whose class the mandate names goes to the Supervisor's
+**Mandate — the Operator delegates a class to the Supervisor.** Off by default. The mandate is the
+Operator's typed message in the Supervisor window, the whole message exactly `mandate
+<class>[,<class>…] for <N>h|<N>d team <name>[,<name>…]` (at most 7 days); `team-mandate.sh grant`
+records it in one local file in the main checkout, `.agents/team/mandate.json` — outside every
+clone and outside git, a record and a cache: every use derives the mandate again from the message.
+The latest instruction governs (a later grant replaces, the typed `revoke mandate` cancels), a
+grant covers each named team for the run it is on when typed, and a new Supervisor session ends
+it. A pending decision bound to an ask whose class the mandate names goes to the Supervisor's
 inbox instead of notifying the Operator; the Supervisor answers it as a delegate, never as the
 Operator, or hands it back.
 
 | Class | Covers | Delegable |
 |---|---|---|
-| `no-rule`, `lead-unsure` | a question, stop or lead-tier prompt the lead escalated with that reason | when named |
-| `settings`, `prod-ask`, `delete`, `egress` | the human-only acts above, by every cause the checker finds in the request — all of them must be named | only when named explicitly |
-| — | a deny rule, destructive SQL, a path outside the clone, the clone root or its `.git`; a plan gate, an abandon decision, any decision bound to no ask; an escalation with another reason | never |
+| `no-rule`, `lead-unsure` | a question, a plan or a lead-tier prompt the lead escalated with that reason | when named |
+| — | every operator-tier request (a settings or profile edit, a production ask, an irreversible delete, egress), a deny rule, destructive SQL, a path outside the clone; a plan gate, an abandon decision, a stop, any decision bound to no ask; an escalation with another reason | never — a human-only gate is not overridden |
 
 A delegated answer is refused wherever a binding cannot be established — the sender (the registered
-Supervisor session and its own call, which must be exactly the answer command), the run it names,
-the decision, the ask's active session and attempt, the classes, the very mandate the decision was
-routed under and its expiry — and it is checked again when the stage consumes it, against the
-mandate in force then: an expired, revoked or replaced mandate, a replayed or stale answer, an
-answer for another run are refused and the decision returns to the Operator. A decision with a
-delegated answer on record is never delivered as the Operator's, whatever its file says. It is logged apart from the Operator's
-answers (`answers.md` `[authority supervisor (delegated)]`, the decision's `answered_via:
-supervisor-delegated`, `team-mandate.sh answers`) and is no Operator touch
+Supervisor session and its own standalone call, whose argv names the run, the decision, the ask,
+the stage's attempt and session, the request's digest and the reply), the mandate the decision was
+routed under, its class, team and run — and it is checked again when the stage consumes it,
+against the live input of that very event and the mandate in force then: an expired, revoked or
+replaced mandate, a rotated Supervisor session, a replayed or stale answer, a changed request, an
+answer for another run are refused and the decision returns to the Operator. It is logged apart
+from the Operator's answers (`answers.md` `[authority supervisor (delegated)]`, the decision's
+`answered_via: supervisor-delegated`, `team-mandate.sh answers`) and is no Operator touch. In a run
+the mandate covers, an answer counts as the Operator's only on positive human evidence (their typed
+message or their dialog answer), never because delegation markers are absent
 ([team-lead.md](team-lead.md) §7, [roles/supervisor.md](roles/supervisor.md) → Mandate).
 
 **The order brief decides first.** A stage question the order brief already settles (a `[D]` line,
@@ -89,10 +92,11 @@ stated in full in one place:
   still recorded. None of these bindings is proof that a human answered —
   [team-lead.md](team-lead.md) §7, "Provenance guard", "Plugin inventory" and "Limit of the human
   binding";
-- the mandate and a delegated answer are files and transcripts of one user account: the grant's
-  binding to the Operator's words and the answer's binding to the Supervisor session raise the bar,
-  they are not proof; a deny rule and a human-only class the mandate does not name stay out of
-  reach either way ([roles/supervisor.md](roles/supervisor.md) → Mandate);
+- the mandate and a delegated answer rest on transcripts and files of one user account (the
+  same-account model, the Operator's decision 2026-11-25): the checks are aimed at clone-side roles
+  and a drifting Supervisor model, a same-account process that forges a transcript is out of
+  scope; every operator-tier request stays out of a mandate's reach either way
+  ([roles/supervisor.md](roles/supervisor.md) → Mandate, with the controls and the gaps);
 - the verdict guard (`guard-team-verdict.sh`) sees the command text only — a write of a verdict file
   by other means is not caught ([team-lead.md](team-lead.md) §4);
 - the rework budget counts verdict and decision files the lead itself can write
@@ -142,5 +146,6 @@ stage, the lead and the Supervisor's inbox.
 
 **With a mandate in force** a `human_decision` whose class the mandate names is held: the decision
 goes to the Supervisor's inbox (`delegated`) and the Operator is told nothing while the mandate
-still covers it. The notification goes out as usual once the Supervisor hands the decision back,
-or the mandate expires, is revoked or no longer names the class (§3 → Mandate).
+still covers it. The notification goes out as usual once the mandate expires, is revoked or
+replaced, or the Supervisor session rotates; a decision the Supervisor hands back is withdrawn and
+the lead opens a new one, which notifies the Operator (§3 → Mandate).

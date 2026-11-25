@@ -16,7 +16,7 @@
 # decisions/ is the lead's too; a stage may only run `bash <abs>/.claude/lib/team-ask.sh wait a-<n>`.
 # `team-lead.sh decision relay` and a command naming the relay ledger (.agents/team/relays/) are the
 # Supervisor's, from the main checkout: refused for every session in a clone, the lead included.
-# So are the Operator's mandate (team-mandate.sh grant|revoke, .agents/team/mandate.json), the
+# So are the Operator's mandate (team-mandate.sh grant|pause, .agents/team/mandate.json), the
 # Supervisor's delegated answer (decision answer --delegated, decision handback) and its ledger
 # (.agents/team/delegated/). An answer relayed with `team-answer.sh --authority delegated` stays
 # the lead's.
@@ -77,11 +77,11 @@ RELAYS='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/relays|[^[:space:]]*/\.agents/te
 if [[ "$CMD" =~ $RELAY ]] || [[ "$CMD" =~ $RELAYS ]]; then
   refuse "team-lead.sh decision relay and the relay ledger (.agents/team/relays/) are the Supervisor's, from the main checkout — never from a team clone (refused)"
 fi
-# The Operator's mandate (team-mandate.sh grant|revoke, its file and log), the Supervisor's delegated
+# The Operator's mandate (team-mandate.sh grant|pause and its file), the Supervisor's delegated
 # answer and handback, and the delegation ledger: the main checkout's, never a clone's — a stage or
 # a lead must not grant itself a mandate or mint a delegated answer.
-MANDATE='team-mandate\.sh["'"'"']?[[:space:]]+["'"'"']?(grant|revoke)|team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?handback|team-lead\.sh.*[[:space:]]--delegated([[:space:]]|$)'
-MANDATES='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/|[^[:space:]]*/\.agents/team/)(delegated(/|[[:space:]]|$)|mandate(\.json|-log\.jsonl))'
+MANDATE='team-mandate\.sh["'"'"']?[[:space:]]+["'"'"']?(grant|pause)|team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?handback|team-lead\.sh.*[[:space:]]--delegated([[:space:]]|$)'
+MANDATES='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/|[^[:space:]]*/\.agents/team/)(delegated(/|[[:space:]]|$)|mandate\.json)'
 if [[ "$CMD" =~ $MANDATE ]] || [[ "$CMD" =~ $MANDATES ]]; then
   refuse "the Operator's mandate, the Supervisor's delegated answer and the delegation ledger (.agents/team/mandate.json, .agents/team/delegated/) belong to the main checkout — never from a team clone (refused)"
 fi

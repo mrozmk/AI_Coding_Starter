@@ -55,7 +55,7 @@ if [ "$EV" = PreToolUse ]; then
       exit 0 ;;
     esac
     # The Operator's mandate and the delegation ledger (team-mandate.sh, decision answer --delegated).
-    case "$P" in */.agents/team/delegated|*/.agents/team/delegated/*|*/.agents/team/mandate.json*|*/.agents/team/mandate-log.jsonl*)
+    case "$P" in */.agents/team/delegated|*/.agents/team/delegated/*|*/.agents/team/mandate.json*)
       jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
         permissionDecisionReason: "the Operator'"'"'s mandate and the delegation ledger are written by team-mandate.sh and the Supervisor'"'"'s delegated answer only"}}'
       exit 0 ;;
@@ -154,15 +154,20 @@ verify_operator() {
   # A delegated answer is delivered only as one, and nothing else is delivered as delegated: the
   # sender's authority and the decision's evidence must name the same thing.
   case "$(jq -r '.authority // ""' <<<"$a"):$via" in
-    "supervisor (delegated):supervisor-delegated "*) verify_delegated "$id" "$did" "${via#supervisor-delegated }" "$form" "$val" "$a"; return ;;
+    "supervisor (delegated):supervisor-delegated "*) verify_delegated "$id" "$did" "$form" "$val" "$a"; return ;;
     "supervisor (delegated):"*|*":supervisor-delegated"*) return 1 ;;
   esac
-  # … whatever the clone's decision file says now: a decision whose delegated answer is pinned in
-  # the main checkout is never delivered as the Operator's (answered_via rewritten to `terminal`).
-  # By the run id alone (it names its team and start), so a missing anchor skips nothing.
+  # A decision with a delegated answer pinned in the main checkout is never delivered as the
+  # Operator's, whatever its file says now (matched by the run id: a missing anchor skips nothing).
   for x in "$MAIN"/.agents/team/delegated/*-"$RUN-$did.json"; do [ ! -e "$x" ] || return 1; done
   case "$via" in
-    terminal) return 0 ;;  # the same-uid limit of team-lead.md §7: not re-verifiable from a file
+    terminal)
+      # Not re-verifiable from a file (team-lead.md §7). In a run the Operator's mandate covers
+      # that is not enough: Operator authority needs positive human evidence (the cases below).
+      x="$(team_anchor_team "$MAIN" "$CLONE")" || x=""
+      if [ -n "$x" ] && . "$LIB/team-mandate.sh" 2>/dev/null \
+          && mandate_run_capable "$MAIN" "$(cut -f1 <<<"$x")" "$RUN"; then return 1; fi
+      return 0 ;;
     "teamlead-window "*) uuid="${via#teamlead-window }" ;;
     "supervisor-window "*) verify_relay "$id" "$did" "${via#supervisor-window }" "$form" "$val" "$a"; return ;;
     "teamlead-ask "*)
@@ -246,55 +251,54 @@ verify_relay() {
   reply_matches "$1" "$2" "$msg" "$4" "$5" "$6"
 }
 
-# verify_delegated <id> <did> <uuid> <form> <val> <answer json> — a decision the Supervisor answered
-# as a delegate (team-lead-decision.sh decision_delegated). Everything is read from the main
-# checkout, now: the team and its active run from the anchor; the ledger the answer pinned there
-# for this run, decision, ask and call, with the ask's own session and attempt; the Operator's
-# mandate in force — the same one, still naming the decision's class, which for a permission is
-# the class of the cause this hook computed for the call; the Supervisor session's own tool call at
-# that uuid in its transcript under the declared profile, made no earlier than the decision opened
-# nor before the run started; and the pinned reply, parsed by the writer's parser, is this answer.
-# An expired or revoked mandate, another run, a replayed or stale ledger → refused.
+# verify_delegated <id> <did> <form> <val> <answer json> — a decision the Supervisor answered as a
+# delegate (team-lead-decision.sh decision_delegated). Nothing is taken from the clone or from the
+# ledger as proof; every binding is rebuilt from what this hook holds now and looked up in the
+# Supervisor's own call:
+# - the team and its active run from the main checkout's anchor;
+# - the live input of this very event (handle's payload: the question, the plan, the permission
+#   request) — an event with none refuses delegation — and its canonical digest;
+# - the stage's active session and attempt (session.json, as this hook read them at entry), which
+#   must be the ask's;
+# - the mandate in force now, derived from the Operator's message in the registered Supervisor
+#   session: it names the decision's class, this team and this run;
+# - the registered Supervisor session's transcript (registry + declared profile, never the
+#   ledger) holds a standalone call whose argv is exactly run, decision, ask, attempt, session,
+#   request digest and reply, made no earlier than the decision opened nor before the run started;
+# - that reply, parsed by the writer's parser, is this answer.
+# The ledger only says which reply and class to look for and stops a second, different answer.
 verify_delegated() {
-  local x team lf cfg t floor m cls reply af
-  [ -n "$3" ] || return 1
-  . "$LIB/team-mandate.sh" 2>/dev/null && command -v mandate_current >/dev/null 2>&1 || return 1
+  local x team lf cfg t floor cls reply sid cwd dig args
+  . "$LIB/team-mandate.sh" 2>/dev/null && command -v mandate_covers >/dev/null 2>&1 || return 1
   x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
   team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
+  # Live input, for every event kind: the payload this hook process was given (handle's local).
+  [ -n "${LIVEP:-}" ] && jq -e 'type == "object"' <<<"$LIVEP" >/dev/null 2>&1 || return 1
+  dig="$(jq -cS . <<<"$LIVEP" 2>/dev/null | team_evidence_sha)" && [ -n "$dig" ] || return 1
+  [ "$dig" = "$(jq -cS .payload "$ASK_D/$1.json" 2>/dev/null | team_evidence_sha)" ] || return 1
+  # The stage's active session and attempt are the ask's.
+  [ -n "$STAGE_SID" ] && [ -n "$ATTEMPT" ] && [ "$(ask_get "$1" session_id)" = "$STAGE_SID" ] \
+    && [ "$(ask_get "$1" attempt)" = "$ATTEMPT" ] || return 1
   lf="$MAIN/.agents/team/delegated/$team-$RUN-$2.json"
-  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" "$3" || return 1
-  [ "$(jq -r '.attempt // ""' "$lf")" = "$(ask_get "$1" attempt)" ] \
-    && [ "$(jq -r '.ask_session // ""' "$lf")" = "$(ask_get "$1" session_id)" ] || return 1
-  # … still the stage's active session and attempt (the runner may not have withdrawn a replaced
-  # one yet).
-  [ -n "$(jq -r '.ask_session // ""' "$lf")" ] \
-    && [ "$(jq -r '.ask_session // ""' "$lf")" = "$(jq -r '.session_id // ""' "$TD/session.json" 2>/dev/null)" ] \
-    && [ "$(jq -r '.attempt // ""' "$lf")" = "$(jq -r '.attempt // "" | tostring' "$TD/session.json" 2>/dev/null)" ] || return 1
-  # The mandate the answer was given under, in force now (not expired, not revoked), read back
-  # from the Operator's message when it was granted in the Supervisor window, naming every class.
-  cls="$(jq -r '.class // ""' "$lf")"
-  [ -n "$cls" ] && m="$(mandate_covers "$MAIN" "$cls" "$(jq -r '.mandate // "-"' "$lf")" verified)" && [ -n "$m" ] || return 1
-  # The class again, from the checker run now: for a permission on the very call this hook is
-  # deciding ($TMP.in, every cause), else on the filed ask; a question or stop ask is lead tier,
-  # its class the escalation reason the answer pinned.
-  af="$ASK_D/$1.json"
-  if [ "$(ask_get "$1" kind)" = permission ] && [ "$EV" = PermissionRequest ] && [ -s "$TMP.in" ]; then
-    jq -n --slurpfile p "$TMP.in" '{kind: "permission", payload: $p[0]}' > "$TMP.mand" 2>/dev/null || return 1
-    af="$TMP.mand"
-  fi
-  [ "$(mandate_ask_classes "$MAIN" "$CLONE" "$af" "$cls")" = "$cls" ] || return 1
-  # The request itself is the one the Supervisor answered: the ledger pinned it, and it is compared
-  # with what is decided now (the live call for a permission, else the filed ask).
-  [ "$(jq -cS '.request // null' "$lf" 2>/dev/null)" = "$(jq -cS .payload "$af" 2>/dev/null)" ] || return 1
+  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" || return 1
+  reply="$(jq -r '.reply // ""' "$lf")"; cls="$(jq -r '.class // ""' "$lf")"
+  [ -n "$reply" ] && [ -n "$cls" ] || return 1
+  # The class from the main checkout's checker on the live input, and the mandate in force now.
+  jq -n --arg k "$(ask_get "$1" kind)" --argjson p "$LIVEP" '{kind: $k, payload: $p}' > "$TMP.mand" 2>/dev/null || return 1
+  [ "$(mandate_ask_class "$MAIN" "$CLONE" "$TMP.mand" "$cls")" = "$cls" ] || return 1
+  mandate_covers "$MAIN" "$cls" "$team" "$RUN" >/dev/null || return 1
+  # The Supervisor's own call, from the registered session.
+  sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"
+  cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"; cwd="${cwd:-$MAIN}"
+  [ -n "$sid" ] || return 1
   cfg="$(team_supervisor_home "$MAIN")" || return 1
-  t="$(team_role_transcript "$(jq -r '.cwd // ""' "$lf")" "$(jq -r '.session_id // ""' "$lf")" "$cfg")"
+  t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
   [ -f "$t" ] || return 1
-  floor="$(team_run_floor "$RUN" "$(jq -r '.created_at // ""' "$lf")")"
+  floor="$(team_run_floor "$RUN" "$(dfm_h created_at)")"
   [ -n "$floor" ] || return 1
-  reply="$(jq -r '.reply // ""' "$lf")"
-  # The Supervisor session's own call at the pinned uuid is exactly this answer, for this run.
-  [ "$(team_evidence_tool_call "$t" "$floor" team-lead.sh "$(team_delegate_args "$team" "$2" "$RUN" "$reply")" "$3")" = "$3" ] || return 1
-  reply_matches "$1" "$2" "$reply" "$4" "$5" "$6"
+  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$ATTEMPT" "$STAGE_SID" "$dig" "$reply")"
+  [ -n "$(team_evidence_tool_call "$t" "$floor" "$MAIN" "$args")" ] || return 1
+  reply_matches "$1" "$2" "$reply" "$3" "$4" "$5"
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
@@ -309,6 +313,7 @@ deliver() {
       || [ "$(jq -r .authority <<<"$a")" = "supervisor (delegated)" ] \
       || [ "${tier:-}" = operator ] \
       || [ -n "$(ask_get "$id" requires_decision)" ]; then
+    LIVEP="${p:-}"  # this event's live input (handle's payload); verify_operator has its own `p`
     if ! verify_operator "$id" "$a"; then
       ask_reject "$id" >/dev/null 2>&1 || true
       out_refuse "Operator approval could not be verified for $id"

@@ -402,11 +402,10 @@ def retry_key(tool, inp, cwd):
         return None
 
 
-def input_tier(c, root, main, extra, path, causes=False):
+def input_tier(c, root, main, extra, path):
     """team_prompt_check.py --input-json: the tier line of one structured permission
     ({tool_name, tool_input, cwd}) and a second line `retry: <key>|none` (retry_key, operator tier
-    only), or None when the file cannot be read. With <causes> (--causes) an operator tier adds a
-    third line `causes: <JSON list>` — every cause (all_causes), for the Operator's mandate."""
+    only), or None when the file cannot be read."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -430,38 +429,4 @@ def input_tier(c, root, main, extra, path, causes=False):
         key = retry_key(tool, raw, cwd)
     line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
         else "tier: operator — %s" % why
-    out = "%s\nretry: %s" % (line, key or "none")
-    if causes and kind == "operator":
-        # Every cause, not only the first one the tier names: a mandate must cover them all.
-        out += "\ncauses: %s" % json.dumps(all_causes(
-            c, root, main, extra, tool, HEADERS.get(tool), [cmd] if tool == "Bash" else [],
-            inp, text, cwd))
-    return out
-
-
-def all_causes(c, root, main, extra, tool, header, cmds, inp, text, cwd):
-    """Every operator-tier cause of one structured permission, in tier()'s order: the egress
-    reason, then each human-only cause, or the never-waived refusal that ends the evaluation.
-    tier() names the first one only; the Operator's mandate (team-mandate.sh) needs them all."""
-    out = []
-    try:
-        if tool == "Bash":
-            for cmd in cmds:
-                r = c.guard_team_egress.bash_reason(cmd, root)
-                if r:
-                    out.append("egress: %s" % r)
-        elif tool == "WebFetch":
-            r = c.guard_team_egress.webfetch_reason((inp or {}).get("url"), root)
-            if r:
-                out.append("egress: %s" % r)
-    except Exception as e:  # noqa: BLE001 — as in tier(): a failing guard is the Operator's
-        out.append("egress: guard failed (%s)" % e.__class__.__name__)
-    if header is None:
-        kind, why = tool_rule_tier(c, root, extra, tool, inp)
-        return out + ([why] if kind == "operator" else [])
-    try:
-        human, _ = human_causes(c, root, main, extra, header, cmds, inp, text, cwd)
-        out += human
-    except c.Refuse as e:
-        out.append(str(e))
-    return out
+    return "%s\nretry: %s" % (line, key or "none")

@@ -7,12 +7,12 @@ Newest first.
 
 **Before:** every decision the TeamLead escalated reached the Operator.
 
-**Now:** off by default, nothing changes until a mandate is granted. The Operator types a message
-starting with `mandate <class>[,<class>…] for <N>h|<N>d` (a terminal, or the Supervisor window) and
-`bash .claude/lib/team-mandate.sh grant --text "<their words>"` writes
-`.agents/team/mandate.json` in the main checkout (git-ignored, per machine). A pending decision
-bound to an ask whose class the mandate names goes to the Supervisor's inbox (`delegated`); the
-Supervisor answers with `team-lead.sh decision answer <team> d-<n> --delegated --run <run> …` or hands it back
+**Now:** off by default, nothing changes until a mandate is granted. The Operator types, as a
+whole message in the Supervisor window, `mandate <class>[,<class>…] for <N>h|<N>d team
+<name>[,<name>…]` (classes `no-rule`, `lead-unsure`) and `bash .claude/lib/team-mandate.sh grant`
+records it in `.agents/team/mandate.json` in the main checkout (git-ignored, per machine). A
+pending decision bound to an ask whose class the mandate names goes to the Supervisor's inbox
+(`delegated`, with the whole answer command); the Supervisor runs that command or hands it back
 (`decision handback`). The answer is recorded as `supervisor (delegated)` and re-verified by the
 stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.md` → Mandate).
 
@@ -24,7 +24,11 @@ stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.m
   the three new commands; add them by hand if the Supervisor should run them without a prompt:
   `Bash(bash .claude/lib/team-mandate.sh *)`,
   `Bash(bash .claude/lib/team-lead.sh decision answer * --delegated *)`,
-  `Bash(bash .claude/lib/team-lead.sh decision handback *)`.
+  `Bash(bash .claude/lib/team-lead.sh decision handback *)`. A deny rule there for writes to
+  `.agents/team/mandate.json`, `.agents/team/delegated/**` and `.agents/team/registry/**` closes
+  the gap the same-account model leaves (`roles/supervisor.md` → Mandate).
+- In a run the mandate covers, an Operator answer needs evidence: the lead's dialog or window, or
+  the Supervisor's relay. `decision answer` from a terminal is refused there.
 
 ## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
 

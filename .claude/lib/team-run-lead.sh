@@ -239,7 +239,7 @@ lead_notify() {
       command -v mandate_covers >/dev/null 2>&1 || . "$root/.claude/lib/team-mandate.sh" 2>/dev/null || true
       if command -v mandate_covers >/dev/null 2>&1 \
           && [ -n "$(lfm "$d" delegate_mandate)" ] \
-          && mandate_covers "$root" "$(lfm "$d" delegate_class)" "$(lfm "$d" delegate_mandate)" >/dev/null 2>&1; then continue; fi
+          && mandate_covers "$root" "$(lfm "$d" delegate_class)" "$TEAM" "$RUN" "$(lfm "$d" delegate_mandate)" >/dev/null 2>&1; then continue; fi
       if ask_init "$TD" 2>/dev/null && ask_lock; then
         [ "$(lfm "$d" status)" != pending ] || [ "$(lfm "$d" delegate)" != supervisor ] || lfm_set "$d" delegate lapsed
         ask_unlock

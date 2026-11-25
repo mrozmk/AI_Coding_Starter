@@ -10,8 +10,8 @@
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh decision relay <team> d-<n> --text "<team> d-<n> <reply>"
 #          (the Supervisor, main checkout)
-#        bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run>
-#          --text "d-<n> <reply>" --why "<line>" | decision handback <team> d-<n> --why "<line>"
+#        bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --ask a-<n>
+#          … --text "d-<n> <reply>" --why "<line>" | decision handback <team> d-<n> --why "<line>"
 #          (the Supervisor under the Operator's mandate, main checkout — team-mandate.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
 #   pending lists the lead's open items — pending decisions first, then mode (team.json mode

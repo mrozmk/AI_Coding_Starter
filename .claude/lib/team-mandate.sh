@@ -1,274 +1,232 @@
 #!/usr/bin/env bash
-# The Operator's mandate to the Supervisor: which classes of a team's pending decisions the
-# Supervisor may answer as a delegate, and until when. One file per machine in the main checkout,
-# <main>/.agents/team/mandate.json (git-ignored, mode 600) — never in a team clone.
-# Usage: bash .claude/lib/team-mandate.sh grant --text "<the Operator's words>"
-#        bash .claude/lib/team-mandate.sh show | revoke | answers
-#        bash .claude/lib/team-mandate.sh covers <class>[,<class>…]
-#   grant: the Operator's message must START with `mandate <class>[,<class>…] for <N>h|<N>d` (any
-#   case; at most 7 days); whatever follows is kept as their words. Classes and expiry are read
-#   from that message only — there is no flag for them, so the caller cannot widen what the
-#   Operator said. Two bindings, as for team-lineage.sh consent: a terminal (the class list typed
-#   back; --text is the message), or the Operator's own typed message in the Supervisor window
-#   that holds --text (never a doorbell, runner, [peer] or <hc from=…> line; one message grants
-#   once, and never one typed before the last grant or revoke). From the window the whole message
-#   is parsed and stored, and the expiry counts from the message's time, not from now.
-#   Classes: no-rule, lead-unsure (a question the TeamLead escalated) and, only when named,
-#   the human-only acts settings, prod-ask, delete, egress. Deny rules, destructive SQL and
-#   anything outside these names are never delegable.
-#   show: the mandate in force, or `no mandate in force`. revoke: ends it now (anyone may narrow).
-#   covers: exit 0 and the mandate id when the mandate in force names every <class>, else 1.
+# The Operator's mandate to the Supervisor: which classes of which teams' pending decisions the
+# Supervisor may answer as a delegate, and until when.
+# Usage: bash .claude/lib/team-mandate.sh grant | show | pause | answers
+#        bash .claude/lib/team-mandate.sh covers <class> <team> <run>
+#   The mandate IS the Operator's typed message in the registered Supervisor window — the whole
+#   message, exactly:
+#       mandate <class>[,<class>…] for <N>h|<N>d team <name>[,<name>…]
+#   (any case; at most 7 days; only trailing whitespace or one final period may follow — a
+#   qualifier, a condition or any other word refuses, nothing is silently dropped). Classes:
+#   no-rule, lead-unsure — a question the TeamLead escalated because no rule answers it or it will
+#   not decide. An operator-tier request (settings, production ask, delete, egress), a deny rule
+#   and anything else are never delegable. Each named team is covered for the run it is on when
+#   the message is typed; its next run is not.
+#   The latest instruction in that transcript governs: a later `mandate …` replaces an earlier
+#   one, the typed message `revoke mandate` cancels it for good, and any other message that
+#   starts with `mandate` or `revoke mandate` cancels it too (an unclear instruction grants
+#   nothing). A replaced Supervisor session, or a history that cannot be read, means no mandate.
+#   grant: reads that governing message, binds each team to its current run (an absent run
+#   refuses), shows the result and writes <main>/.agents/team/mandate.json (git-ignored, mode
+#   600, never in a clone). That file is the local record and a cache: every use of the mandate
+#   derives it again from the transcript and needs the file to name the same message.
+#   show: the mandate in force, or why there is none. pause: removes the file — reversible (grant
+#   records the same message again); the durable cancel is the Operator's typed `revoke mandate`.
+#   covers: exit 0 and the mandate id when the mandate in force names that class and team and the
+#   run had started when it was typed, else 1.
 #   answers: every answer the Supervisor gave as a delegate (<main>/.agents/team/delegated/).
-# Sourced by team-lead.sh, the runner and team-ask-hook.sh for mandate_current, mandate_verified,
-# mandate_covers, mandate_class and mandate_ask_classes.
+# Sourced by team-lead.sh, the runner, team-answer.sh and team-ask-hook.sh (after team-lib.sh and
+# team-lead-lib.sh) for mandate_verified, mandate_covers and mandate_ask_class.
 # Exit 0 ok · 1 no mandate / not covered · 2 usage · 4 state · 7 the Operator's binding is missing
-# Contract: .agents/reference/roles/supervisor.md → Mandate
-MANDATE_CLASSES="no-rule lead-unsure settings prod-ask delete egress"
+# Limit: the same-account model (.agents/reference/roles/supervisor.md → Mandate).
+MANDATE_CLASSES="no-rule lead-unsure"
 MANDATE_MAX_HOURS=168
 MANDATE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mandate_file() { printf '%s/.agents/team/mandate.json' "$1"; }
 
-# mandate_parse <message> → "<classes, sorted, comma-joined>\t<hours>"; rc 1 unless the message,
-# trimmed, starts with the phrase, every class is a delegable one and the term is within the cap.
-# One parser for the grant and for the re-check of a window grant.
+# mandate_parse <message> → "<classes>\t<hours>\t<teams>" (comma lists, sorted); rc 1 unless the
+# WHOLE message, trimmed, is the grant phrase — a known class list, a term within the cap, a team
+# list, at most one final period.
 mandate_parse() {
-  local lt re list n c hours
-  lt="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"; lt="${lt#"${lt%%[![:space:]]*}"}"
-  re='^mandate[[:space:]]+([a-z-]+(,[a-z-]+)*)[[:space:]]+for[[:space:]]+([1-9][0-9]{0,3})(h|d)([^a-z0-9]|$)'
+  local lt re c hours
+  case "$1" in *$'\n'*) return 1 ;; esac
+  lt="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  lt="${lt#"${lt%%[![:space:]]*}"}"; lt="${lt%"${lt##*[![:space:]]}"}"
+  re='^mandate[[:space:]]+([a-z-]+(,[a-z-]+)*)[[:space:]]+for[[:space:]]+([1-9][0-9]{0,3})(h|d)[[:space:]]+team[[:space:]]+([a-z0-9-]+(,[a-z0-9-]+)*)\.?$'
   [[ "$lt" =~ $re ]] || return 1
-  list="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[3]}"
-  hours="$n"; [ "${BASH_REMATCH[4]}" = h ] || hours=$(( n * 24 ))
+  local list="${BASH_REMATCH[1]}" n="${BASH_REMATCH[3]}" unit="${BASH_REMATCH[4]}" teams="${BASH_REMATCH[5]}"
+  hours="$n"; [ "$unit" = h ] || hours=$(( n * 24 ))
   [ "$hours" -le "$MANDATE_MAX_HOURS" ] || return 1
   for c in ${list//,/ }; do
     case " $MANDATE_CLASSES " in *" $c "*) ;; *) return 1 ;; esac
   done
-  printf '%s\t%s\n' "$(printf '%s\n' ${list//,/ } | sort -u | paste -sd, -)" "$hours"
+  printf '%s\t%s\t%s\n' "$(printf '%s\n' ${list//,/ } | sort -u | paste -sd, -)" "$hours" \
+    "$(printf '%s\n' ${teams//,/ } | sort -u | paste -sd, -)"
 }
 
-# mandate_words <message> → the message as the file keeps it (the Operator's words, bounded).
-mandate_words() { printf '%s' "$1" | tr -d '\r' | cut -c1-2000 | head -n 40; }
-
-# mandate_current <main> → the mandate in force as compact JSON; rc 1 when there is none: no file,
-# a clone, a malformed file, an unknown class, revoked, or past its expiry.
-mandate_current() {
-  local f; f="$(mandate_file "$1")"
-  [ -f "$f" ] && [ ! -L "$f" ] && [ ! -f "$1/.agents/team/team.json" ] || return 1
-  jq -ce --arg known "$MANDATE_CLASSES" '
-    ($known | split(" ")) as $k
-    | select(type == "object" and ((.id // "") | test("^m-[0-9TZ]+(-[0-9]+)?$"))
-        and (.classes | type) == "array" and (.classes | length) > 0
-        and all(.classes[]; . as $c | $k | index($c) != null)
-        and (.revoked_at // null) == null and ((.words // "") | type) == "string"
-        and (((.expires_at // "") | try fromdateiso8601 catch 0) > now)
-        and (((.granted_at // "") | try fromdateiso8601 catch (now + 1)) <= now))' "$f" 2>/dev/null \
-    || return 1
+# mandate_instruction <message> → 0 when the message is an instruction about the mandate at all
+# (it starts with `mandate` or `revoke mandate`), whether or not it is a valid grant.
+mandate_instruction() {
+  local lt
+  lt="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"; lt="${lt#"${lt%%[![:space:]]*}"}"
+  case "$lt" in mandate|mandate[[:space:]]*|"revoke mandate"*) return 0 ;; esac
+  return 1
 }
 
-# mandate_verified <main> → as mandate_current, and a grant made from the Supervisor window is
-# read back from the Operator's message itself: the typed message at the recorded uuid in that
-# session's transcript (the declared Claude profile) must still parse to exactly the file's classes
-# and expiry — so an edit of the file cannot widen or extend what the Operator typed. A terminal
-# grant has no message to read back (the same-account limit of team-lead.md §7). The two points
-# that act on the mandate use this one: the Supervisor's delegated answer and the stage hook.
-# Needs team-lib.sh and team-lead-lib.sh (the callers have them).
+# mandate_run_start <run id> → the run's start as ISO UTC, from <team>-<YYYYMMDD>-<HHMMSS>; rc 1
+# for an id without it (the run cannot be bound to a grant).
+mandate_run_start() {
+  [[ "$1" =~ -([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$ ]] || return 1
+  printf '%s-%s-%sT%s:%s:%sZ\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" \
+    "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}"
+}
+
+# mandate_derive <main> → the governing instruction of the registered Supervisor session as
+# compact JSON {id, uuid, session_id, classes, teams, granted_at, expires_at, words}; rc 1 with
+# the reason on stderr when there is none. The transcript comes from the registration
+# (<main>/.agents/team/registry/Supervisor.json) and the declared Claude profile — never from
+# mandate.json. Typed user messages only (no machine line: a doorbell, runner, [peer] or
+# <hc from=…> line), in transcript order; the last instruction wins.
+mandate_derive() {
+  local sid cwd cfg t rows row m last="" why="no mandate message in the Supervisor window"
+  command -v team_evidence_machine_line >/dev/null 2>&1 || . "$MANDATE_LIB/team-evidence.sh" 2>/dev/null || true
+  command -v team_supervisor_home >/dev/null 2>&1 && command -v team_role_transcript >/dev/null 2>&1 \
+    && command -v team_evidence_machine_line >/dev/null 2>&1 \
+    || { echo "team-lib.sh, team-lead-lib.sh or team-evidence.sh not loaded" >&2; return 1; }
+  [ ! -f "$1/.agents/team/team.json" ] || { echo "a team clone holds no mandate" >&2; return 1; }
+  sid="$(jq -r '.session_id // empty' "$1/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"
+  cwd="$(jq -r '.cwd // empty' "$1/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"; cwd="${cwd:-$1}"
+  [ -n "$sid" ] || { echo "no Supervisor session is registered" >&2; return 1; }
+  cfg="$(team_supervisor_home "$1")" || { echo "the Supervisor's Claude profile cannot be resolved" >&2; return 1; }
+  t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
+  [ -f "$t" ] || { echo "the registered Supervisor session has no transcript" >&2; return 1; }
+  # Lines naming the word at all, then the typed ones among them (a half-written last line and a
+  # tool result are dropped by the filter).
+  rows="$(grep -i 'mandate' "$t" 2>/dev/null | jq -c '
+    select(type == "object" and .type == "user" and ((.isMeta // false) | not)
+      and ((.toolUseResult // null) == null))
+    | {uuid: (.uuid // ""), ts: ((.timestamp // "") | sub("\\.[0-9]+Z$"; "Z")),
+       m: (.message.content | if type == "string" then . elif type == "array"
+         then (map(select(.type == "text") | .text) | join(" ")) else "" end)}
+    | select(.uuid != "" and .m != "")' 2>/dev/null || true)"
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    m="$(jq -r .m <<<"$row")"
+    ! team_evidence_machine_line "$m" || continue
+    mandate_instruction "$m" || continue
+    last="$row"
+  done <<<"$rows"
+  [ -n "$last" ] || { echo "$why" >&2; return 1; }
+  m="$(jq -r .m <<<"$last")"
+  local p
+  p="$(mandate_parse "$m")" || { echo "the Operator's latest mandate instruction is no grant: $(printf '%s' "$m" | head -n 1 | cut -c1-120)" >&2; return 1; }
+  jq -cen --argjson r "$last" --arg s "$sid" --arg c "$(cut -f1 <<<"$p")" --argjson h "$(cut -f2 <<<"$p")" \
+    --arg t "$(cut -f3 <<<"$p")" '
+    (($r.ts | fromdateiso8601) + $h * 3600) as $e
+    | select($e > now)
+    | {id: ("m-" + $r.uuid), uuid: $r.uuid, session_id: $s, classes: ($c | split(",")),
+       teams: ($t | split(",")), granted_at: $r.ts, expires_at: ($e | todateiso8601), words: $r.m}' 2>/dev/null \
+    || { echo "the Operator's latest mandate has expired" >&2; return 1; }
+}
+
+# mandate_verified <main> → the mandate in force: the governing instruction (mandate_derive), and
+# the local record names the very same message (grant was run for it, and it is not paused).
 mandate_verified() {
-  local m via cfg t row msg ts p
-  m="$(mandate_current "$1")" || return 1
-  via="$(jq -r '.granted_via // ""' <<<"$m")"
-  case "$via" in
-    terminal) ;;
-    "supervisor-window "?*)
-      command -v team_supervisor_home >/dev/null 2>&1 && command -v team_role_transcript >/dev/null 2>&1 || return 1
-      cfg="$(team_supervisor_home "$1")" || return 1
-      t="$(team_role_transcript "$(jq -r '.cwd // ""' <<<"$m")" "$(jq -r '.session_id // ""' <<<"$m")" "$cfg")"
-      [ -f "$t" ] || return 1
-      row="$(jq -c --arg u "${via#supervisor-window }" '
-        select(type == "object" and .type == "user" and (.uuid // "") == $u and ((.isMeta // false) | not))
-        | {ts: ((.timestamp // "") | sub("\\.[0-9]+Z$"; "Z")),
-           m: (.message.content | if type == "string" then . elif type == "array"
-             then (map(select(.type == "text") | .text) | join(" ")) else "" end)}' "$t" 2>/dev/null | head -n 1)"
-      [ -n "$row" ] || return 1
-      msg="$(jq -r .m <<<"$row")"; ts="$(jq -r .ts <<<"$row")"
-      p="$(mandate_parse "$msg")" || return 1
-      jq -e --arg c "${p%%$'\t'*}" --arg ts "$ts" --argjson h "${p#*$'\t'}" --arg w "$(mandate_words "$msg")" '
-        (.classes | sort | join(",")) == $c and .words == $w
-        and .expires_at == ((($ts | fromdateiso8601) + $h * 3600) | todateiso8601)' <<<"$m" >/dev/null 2>&1 \
-        || return 1 ;;
-    *) return 1 ;;
-  esac
-  printf '%s\n' "$m"
+  local d f; f="$(mandate_file "$1")"
+  d="$(mandate_derive "$1")" || return 1
+  [ -f "$f" ] && [ ! -L "$f" ] && [ "$(jq -r '.id // ""' "$f" 2>/dev/null)" = "$(jq -r .id <<<"$d")" ] \
+    || { echo "the mandate is not recorded (bash .claude/lib/team-mandate.sh grant) or is paused" >&2; return 1; }
+  printf '%s\n' "$d"
 }
 
-# mandate_covers <main> <class>[,<class>…] [<mandate id>] [verified] → the id of the mandate in
-# force when it names every class (and is that mandate, when an id is given); rc 1 otherwise.
-# `verified` reads a window grant back from the Operator's message (mandate_verified).
+# mandate_covers <main> <class> <team> <run> [<mandate id>] → the id of the mandate in force when
+# it names that class and that team, and the run had already started when the Operator typed it
+# (the next run of the team is not covered); with an id, only that mandate. rc 1 otherwise.
 mandate_covers() {
-  local m
-  if [ "${4:-}" = verified ]; then m="$(mandate_verified "$1")" || return 1
-  else m="$(mandate_current "$1")" || return 1; fi
-  [ -n "$2" ] && jq -er --arg c "$2" --arg i "${3:-}" '
-    select(($i == "" or .id == $i) and (.classes as $k | all($c | split(",")[]; . as $x | $k | index($x) != null)))
-    | .id' <<<"$m" 2>/dev/null || return 1
+  local m start
+  [ -n "$2" ] && [ -n "$3" ] && start="$(mandate_run_start "$4")" || return 1
+  m="$(mandate_verified "$1" 2>/dev/null)" || return 1
+  jq -er --arg c "$2" --arg t "$3" --arg s "$start" --arg i "${5:-}" '
+    select(($i == "" or .id == $i) and (.classes | index($c) != null) and (.teams | index($t) != null)
+      and $s <= .granted_at) | .id' <<<"$m" 2>/dev/null || return 1
 }
 
-# mandate_class <ask tier> <causes, one per line> <touch reason> → the mandate classes of a
-# decision bound to an ask, sorted and comma-joined, or nothing when no mandate can cover it: an
-# operator-tier ask by EVERY cause the checker found (a never-waived refusal, a failed guard or an
-# unknown cause among them → nothing); a lead-tier ask by the lead's escalation reason.
-mandate_class() {
-  local out="" c l
-  case "$1" in
-    operator)
-      [ -n "$2" ] || return 0
-      while IFS= read -r l; do
-        [ -n "$l" ] || continue
-        case "$l" in
-          "egress: guard failed"*|"refuse"*) return 0 ;;
-          "egress: "*) c=egress ;;
-          "settings edit: "*) c=settings ;;
-          "production ask: "*) c=prod-ask ;;
-          "irreversible delete "*) c=delete ;;
-          *) return 0 ;;
-        esac
-        out="$out$c"$'\n'
-      done <<<"$2"
-      [ -z "$out" ] || printf '%s' "$out" | sort -u | paste -sd, - ;;
-    lead) case "$3" in no-rule|lead-unsure) echo "$3" ;; esac ;;
-  esac
+# mandate_run_capable <main> <team> <run> → 0 when the mandate in force names that team and run,
+# whatever the class: a run in which a delegated answer can exist. There the Operator's authority
+# is taken only on positive human evidence (a typed message or a dialog answer), never from a
+# marker a file carries — team-lead.md §7.
+mandate_run_capable() {
+  local m start
+  start="$(mandate_run_start "$3")" || return 1
+  m="$(mandate_verified "$1" 2>/dev/null)" || return 1
+  jq -e --arg t "$2" --arg s "$start" '(.teams | index($t) != null) and $s <= .granted_at' <<<"$m" >/dev/null 2>&1
 }
 
-# mandate_ask_classes <main> <clone> <ask file> <touch reason> → mandate_class of that ask, from
-# the main checkout's checker run now on the filed request (never from the ask file's own tier): a
-# permission by its tier line and its full `causes:` list, a question, plan or stop as lead tier.
-mandate_ask_classes() {
-  local tmp out tier="" causes=""
-  if [ "$(jq -r '.kind // ""' "$3" 2>/dev/null)" != permission ]; then mandate_class lead "" "$4"; return 0; fi
-  tmp="$(mktemp "${TMPDIR:-/tmp}/mandate-ask.XXXXXX")" || return 0
-  jq -c .payload "$3" > "$tmp" 2>/dev/null \
-    && out="$(python3 -I "$1/.claude/lib/team_prompt_check.py" "$2" --input-json "$tmp" --main "$1" --causes 2>/dev/null)" || out=""
-  rm -f "$tmp"
-  case "$(sed -n 1p <<<"$out")" in
-    "tier: operator — "*) tier=operator
-      causes="$(sed -n 's/^causes: //p' <<<"$out" | jq -r 'if type == "array" then .[] else empty end' 2>/dev/null)" ;;
-    "tier: lead") tier=lead ;;
+# mandate_ask_class <main> <clone> <ask file> <touch reason> → the mandate class of a decision
+# bound to that ask, or nothing when no mandate can cover it. Only a lead-tier ask is delegable,
+# by the lead's escalation reason (no-rule, lead-unsure): a question or a plan; a permission only
+# when the main checkout's checker, run now on the filed request, says `tier: lead` (never the ask
+# file's own tier). An operator-tier request and a stop (text) ask — which has no live input to
+# verify at delivery — are never delegable.
+mandate_ask_class() {
+  local tmp out kind
+  kind="$(jq -r '.kind // ""' "$3" 2>/dev/null)"
+  case "$kind" in
+    question|plan) ;;
+    permission)
+      tmp="$(mktemp "${TMPDIR:-/tmp}/mandate-ask.XXXXXX")" || return 0
+      jq -c .payload "$3" > "$tmp" 2>/dev/null \
+        && out="$(python3 -I "$1/.claude/lib/team_prompt_check.py" "$2" --input-json "$tmp" --main "$1" 2>/dev/null)" || out=""
+      rm -f "$tmp"
+      [ "$(sed -n 1p <<<"$out")" = "tier: lead" ] || return 0 ;;
+    *) return 0 ;;
   esac
-  mandate_class "$tier" "$causes" "$4"
+  case "$4" in no-rule|lead-unsure) echo "$4" ;; esac
 }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 set -euo pipefail
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 [ $# -ge 1 ] || usage
-LIB="$MANDATE_LIB"
 MAIN="$(git rev-parse --show-toplevel 2>/dev/null)" || die 2 "not inside a git checkout"
 [ ! -f "$MAIN/.agents/team/team.json" ] || die 2 "team clone — the mandate lives in the main checkout"
-F="$(mandate_file "$MAIN")"; LOG="$MAIN/.agents/team/mandate-log.jsonl"
-utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-log() {  # log <event> <id> <via> — one append-only line per grant and revoke
-  ( umask 077; jq -cn --arg e "$1" --arg i "$2" --arg v "$3" --arg at "$(utc)" \
-      '{event: $e, id: $i, at: $at, via: $v}' >> "$LOG" )
-}
-
-# The Operator's typed message in the Supervisor window that holds $TEXT →
-# {uuid, ts, m, session_id, cwd} (the whole message, its time). The Supervisor's registered
-# session, under the declared Claude profile (never the caller's environment).
-grant_window() {
-  local sid cwd cfg t uuid floor
-  sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"
-  cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"; cwd="${cwd:-$MAIN}"
-  [ -n "$sid" ] || return 0
-  cfg="$(team_supervisor_home "$MAIN")" || return 0
-  t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
-  [ -f "$t" ] || return 0
-  # Never a message from before the last grant or revoke: a revoked mandate is not typed back in.
-  floor="$(jq -rs 'map(.at // "") | max // ""' "$LOG" 2>/dev/null || true)"
-  uuid="$(team_evidence_match "$t" "$TEXT" "$floor" "mandate" "")"
-  [ -n "$uuid" ] || return 0
-  ! grep -qF "supervisor-window $uuid\"" "$LOG" 2>/dev/null || return 0
-  jq -c --arg u "$uuid" --arg s "$sid" --arg c "$cwd" '
-    select(type == "object" and .type == "user" and (.uuid // "") == $u)
-    | {uuid: $u, session_id: $s, cwd: $c, ts: ((.timestamp // "") | sub("\\.[0-9]+Z$"; "Z")),
-       m: (.message.content | if type == "string" then . elif type == "array"
-         then (map(select(.type == "text") | .text) | join(" ")) else "" end)}' "$t" 2>/dev/null | head -n 1
-}
-
-# One writer at a time: a grant reads the history, publishes the file and logs as one step, so a
-# revoke never lands between them and gets undone. A mkdir lock, waited on for 10 s.
-LOCKD=""
-lock() {
-  local l="$MAIN/.agents/team/mandate.lock" n=0
-  ( umask 077; mkdir -p "$MAIN/.agents/team" )
-  until mkdir "$l" 2>/dev/null; do
-    [ "$n" -lt 50 ] || die 4 "the mandate is locked ($l) — another grant or revoke is running; remove the directory if none is"
-    sleep 0.2; n=$((n + 1))
-  done
-  LOCKD="$l"
-}
-trap '[ -z "$LOCKD" ] || rmdir "$LOCKD" 2>/dev/null' EXIT
+. "$MANDATE_LIB/team-lib.sh" && . "$MANDATE_LIB/team-lead-lib.sh" && . "$MANDATE_LIB/team-evidence.sh" \
+  || die 4 "team-lib.sh, team-lead-lib.sh or team-evidence.sh missing"
+F="$(mandate_file "$MAIN")"
+NEED="the Operator types, as a whole message in the Supervisor window: mandate <class>[,<class>…] for <N>h|<N>d team <name>[,<name>…] (classes: $MANDATE_CLASSES; at most $(( MANDATE_MAX_HOURS / 24 )) days)"
 
 cmd="$1"; shift
 case "$cmd" in
   grant)
-    [ $# -eq 2 ] && [ "$1" = --text ] && [ -n "$2" ] || usage
-    TEXT="$2"; sid=""; cwd=""; lock
-    need="the Operator's message must start with: mandate <class>[,<class>…] for <N>h|<N>d (classes: $MANDATE_CLASSES; at most $(( MANDATE_MAX_HOURS / 24 )) days)"
-    if [ -t 0 ]; then
-      words="$TEXT"
-      p="$(mandate_parse "$words")" || die 7 "$need — no mandate written"
-      list="${p%%$'\t'*}"; hours="${p#*$'\t'}"
-      printf 'Operator mandate to the Supervisor: %s for %sh — type the class list to confirm: ' "$list" "$hours" >&2
-      IFS= read -r typed || typed=""
-      [ "$typed" = "$list" ] || die 7 "the list typed ('$typed') is not $list — no mandate written"
-      via=terminal; from="$(utc)"
-    else
-      . "$LIB/team-lib.sh" && . "$LIB/team-lead-lib.sh" && . "$LIB/team-evidence.sh" \
-        || die 4 "team-lib.sh, team-lead-lib.sh or team-evidence.sh missing"
-      ev="$(grant_window)"
-      [ -n "$ev" ] || die 7 \
-        "a mandate is the Operator's: run it in a terminal (stdin is not a TTY) — no new message typed in the Supervisor window holds that text"
-      # The whole message is what was granted: it must itself start with the phrase, so a quoted
-      # example, a refusal or a condition around it never turns into a grant.
-      words="$(jq -r .m <<<"$ev")"
-      p="$(mandate_parse "$words")" || die 7 "$need — no mandate written"
-      list="${p%%$'\t'*}"; hours="${p#*$'\t'}"
-      via="supervisor-window $(jq -r .uuid <<<"$ev")"; from="$(jq -r .ts <<<"$ev")"
-      sid="$(jq -r .session_id <<<"$ev")"; cwd="$(jq -r .cwd <<<"$ev")"
-    fi
-    exp="$(jq -rn --arg t "$from" --argjson h "$hours" '($t | fromdateiso8601) + $h * 3600 | todateiso8601' 2>/dev/null)" \
-      || die 7 "the grant's time ($from) cannot be read — no mandate written"
-    jq -en --arg e "$exp" '($e | fromdateiso8601) > now' >/dev/null 2>&1 \
-      || die 7 "that mandate already expired at $exp — no mandate written"
-    id="m-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    [ $# -eq 0 ] || usage
+    d="$(mandate_derive "$MAIN" 2> "${TMPDIR:-/tmp}/mandate-why.$$")" || {
+      why="$(cat "${TMPDIR:-/tmp}/mandate-why.$$" 2>/dev/null)"; rm -f "${TMPDIR:-/tmp}/mandate-why.$$"
+      die 7 "no mandate written — $why. $NEED"; }
+    rm -f "${TMPDIR:-/tmp}/mandate-why.$$"
+    # Each team is bound to the run it is on now, which must have started before the message.
+    runs='{}'
+    for t in $(jq -r '.teams[]' <<<"$d"); do
+      r="$(jq -r '.run // empty' "$MAIN/.agents/team/anchors/$t.json" 2>/dev/null || true)"
+      [ -n "$r" ] && s="$(mandate_run_start "$r")" && [[ ! "$s" > "$(jq -r .granted_at <<<"$d")" ]] \
+        || die 7 "no mandate written — team $t has no run that was going when the Operator typed the mandate (run: ${r:-none}); the Operator types it again once the run is on"
+      runs="$(jq -c --arg t "$t" --arg r "$r" '. + {($t): $r}' <<<"$runs")"
+    done
     ( umask 077; mkdir -p "$(dirname "$F")"
-      jq -n --arg id "$id" --arg list "$list" --arg at "$(utc)" --arg exp "$exp" --arg via "$via" \
-        --arg s "$sid" --arg c "$cwd" --arg w "$(mandate_words "$words")" \
-        '{id: $id, classes: ($list | split(",")), granted_at: $at, expires_at: $exp, granted_via: $via,
-          session_id: $s, cwd: $c, words: $w, revoked_at: null}' > "$F.tmp.$$" && mv "$F.tmp.$$" "$F" )
-    log grant "$id" "$via"
-    echo "mandate $id: $list until $exp ($via)" ;;
+      jq --argjson runs "$runs" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {runs: $runs, recorded_at: $at}' \
+        <<<"$d" > "$F.tmp.$$" && mv "$F.tmp.$$" "$F" )
+    jq -r '"mandate \(.id): \(.classes | join(",")) until \(.expires_at)\n"
+      + (.runs | to_entries | map("  team \(.key) → run \(.value) (this run only)") | join("\n"))
+      + "\nwords: \(.words)"' "$F" ;;
   show)
     [ $# -eq 0 ] || usage
-    if m="$(mandate_current "$MAIN")"; then
-      jq -r '"mandate \(.id): \(.classes | join(",")) until \(.expires_at) (\(.granted_via))\nwords: \(.words)"' <<<"$m"
+    if m="$(mandate_verified "$MAIN" 2> "${TMPDIR:-/tmp}/mandate-why.$$")"; then
+      jq -r --slurpfile f "$F" '"mandate \(.id): \(.classes | join(",")) until \(.expires_at)\n"
+        + (($f[0].runs // {}) | to_entries | map("  team \(.key) → run \(.value) (this run only)") | join("\n"))
+        + "\nwords: \(.words)"' <<<"$m"
     else
-      echo "no mandate in force"
-      [ ! -f "$F" ] || jq -r '"last: \(.id // "?") — \(if .revoked_at then "revoked \(.revoked_at)" else "expired \(.expires_at // "?")" end)"' "$F" 2>/dev/null || true
-    fi ;;
-  revoke)
+      echo "no mandate in force — $(cat "${TMPDIR:-/tmp}/mandate-why.$$" 2>/dev/null)"
+    fi
+    rm -f "${TMPDIR:-/tmp}/mandate-why.$$" ;;
+  pause)
     [ $# -eq 0 ] || usage
-    lock
-    [ -f "$F" ] || { echo "no mandate to revoke"; exit 0; }
-    id="$(jq -r '.id // "?"' "$F" 2>/dev/null || echo "?")"
-    ( umask 077; jq --arg at "$(utc)" '.revoked_at = (.revoked_at // $at)' "$F" > "$F.tmp.$$" && mv "$F.tmp.$$" "$F" ) \
-      || die 4 "$F is unreadable — delete it by hand to end the mandate"
-    log revoke "$id" "${TEAM_SESSION_ROLE:-operator}"
-    echo "mandate $id revoked" ;;
+    rm -f "$F"
+    echo "mandate paused — the local record is removed; grant records the Operator's message again. Only the Operator's typed \"revoke mandate\" cancels it for good." ;;
   covers)
-    [ $# -eq 1 ] || usage
-    mandate_covers "$MAIN" "$1" ;;
+    [ $# -eq 3 ] || usage
+    mandate_covers "$MAIN" "$1" "$2" "$3" ;;
   answers)
     [ $# -eq 0 ] || usage
     for f in "$MAIN"/.agents/team/delegated/*.json; do

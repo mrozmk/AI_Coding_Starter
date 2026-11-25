@@ -12,7 +12,8 @@
 #     [--outcome continue|close|more-revise|approve|allow|deny]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
 #   decision relay <team> d-<n> --text "<team> d-<n> <reply>"   (the Supervisor, main checkout)
-#   decision answer <team> d-<n> --delegated --run <run> --text "d-<n> <reply>" --why "<line>"
+#   decision answer <team> d-<n> --delegated --run <run> --ask a-<n> --attempt <n> --session <sid>
+#     --request <digest> --text "d-<n> <reply>" --why "<line>"
 #   decision handback <team> d-<n> --why "<line>"     (both: the Supervisor, main checkout)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # Delegation (team-mandate.sh, team-lead.md §7): open marks an ask-bound decision whose class the
@@ -274,11 +275,13 @@ d_lead_knows() {
 # decision then goes to the Operator as before.
 d_route() {
   local c m
-  [ -n "$1" ] && [ -n "${MAIN:-}" ] && command -v mandate_class >/dev/null 2>&1 || return 1
+  [ -n "$1" ] && [ -n "${MAIN:-}" ] && command -v mandate_ask_class >/dev/null 2>&1 || return 1
   d_lead_knows 'Delegated to the Supervisor' || return 1
-  c="$(mandate_ask_classes "$MAIN" "${TD%/.agents/team}" "$ASK_D/$1.json" "$2")"
+  # An ask the Supervisor handed back is the Operator's for good.
+  [ -z "$(ask_get "$1" no_delegate)" ] || return 1
+  c="$(mandate_ask_class "$MAIN" "${TD%/.agents/team}" "$ASK_D/$1.json" "$2")"
   [ -n "$c" ] || return 1
-  m="$(mandate_covers "$MAIN" "$c")" && [ -n "$m" ] || return 1
+  m="$(mandate_covers "$MAIN" "$c" "$(jq -r .team "$TD/team.json")" "$RUN")" && [ -n "$m" ] || return 1
   printf '%s\t%s\n' "$c" "$m"
 }
 
@@ -377,7 +380,7 @@ ask_kind: $kind"
   if [ -n "$dcls" ]; then
     if ! bash "$MAIN/.claude/lib/team-inbox.sh" --main "$MAIN" write Supervisor delegated \
         --from "$(jq -r .team "$TD/team.json")" --ticket "$(jq -r '.ticket // ""' "$TD/team.json")" \
-        --run "$RUN" --ref "$f" --message "d-$n [$dcls, mandate $dman]: ${q:0:120} — answer: bash .claude/lib/team-lead.sh decision answer $(jq -r .team "$TD/team.json") d-$n --delegated --run $RUN --text \"d-$n <reply>\" --why \"<line>\"" >/dev/null 2>&1; then
+        --run "$RUN" --ref "$f" --message "d-$n [$dcls, mandate $dman]: ${q:0:120} — answer, from the main checkout, as one standalone command: bash .claude/lib/team-lead.sh $(team_delegate_args "$(jq -r .team "$TD/team.json")" "d-$n" "$RUN" "$ask" "$(ask_get "$ask" attempt)" "$(ask_get "$ask" session_id)" "$(d_request_digest "$ASK_D/$ask.json")" "d-$n <reply>")<line>\"" >/dev/null 2>&1; then
       dfm_set "$f" delegate lapsed; dcls=""
     fi
   fi
@@ -443,23 +446,24 @@ d_from_ask() {
 
 decision_answer() {
   local id="${1:-}" text="" outcome="" tuning="" why="" f how ev c fromask="" uuid="" r esid=""
-  local delegated="" drun=""
+  local delegated="" drun="" dask="" datt="" dsess="" dreq=""
   [ -n "$id" ] || usage; shift
   while [ $# -gt 0 ]; do
     [ "$1" != --from-ask ] || { fromask=1; shift; continue; }
     [ "$1" != --delegated ] || { delegated=1; shift; continue; }
     [ $# -ge 2 ] || usage
     case "$1" in --text) text="$2" ;; --outcome) outcome="$2" ;; --tuning) tuning="$2" ;;
-      --why) why="$2" ;; --run) drun="$2" ;; *) usage ;; esac
+      --why) why="$2" ;; --run) drun="$2" ;; --ask) dask="$2" ;; --attempt) datt="$2" ;;
+      --session) dsess="$2" ;; --request) dreq="$2" ;; *) usage ;; esac
     shift 2
   done
   if [ -n "$delegated" ]; then
     # The Supervisor's own answer under the Operator's mandate: its own path, none of the
     # Operator's evidence forms.
-    [ -z "$fromask$outcome$tuning" ] || d_bad 2 "decision answer --delegated takes only --run, --text and --why"
-    decision_delegated "$id" "$text" "$why" "$drun"; return
+    [ -z "$fromask$outcome$tuning" ] || d_bad 2 "decision answer --delegated takes only its bindings, --text and --why"
+    decision_delegated "$id" "$text" "$why" "$drun" "$dask" "$datt" "$dsess" "$dreq"; return
   fi
-  [ -z "$drun" ] || d_bad 2 "--run goes with --delegated"
+  [ -z "$drun$dask$datt$dsess$dreq" ] || d_bad 2 "--run, --ask, --attempt, --session and --request go with --delegated"
   if [ -n "$fromask" ]; then
     [ -z "$text" ] || d_bad 2 "decision answer takes --text or --from-ask, not both"
   else
@@ -544,6 +548,11 @@ decision_answer() {
   if [ -n "$fromask" ]; then
     how="teamlead-ask $uuid"
   elif [ -t 0 ] && [ -r /dev/tty ]; then
+    # A run the Operator's mandate covers can hold delegated answers: there a terminal answer,
+    # which leaves no evidence a hook can read back, is not taken as the Operator's.
+    ! { command -v mandate_run_capable >/dev/null 2>&1 \
+        && mandate_run_capable "$MAIN" "$(jq -r .team "$TD/team.json")" "$RUN"; } \
+      || d_bad 7 "run $RUN is under the Operator's mandate — an Operator answer needs evidence here: answer in the TeamLead's dialog or window, or relay it through the Supervisor (a terminal answer is refused)"
     printf 'Operator answer to %s: %s\nconfirm by typing %s: ' "$id" "$text" "$id" > /dev/tty
     IFS= read -r c < /dev/tty || c=""
     [ "$c" = "$id" ] || d_bad 7 "not confirmed — nothing applied"
@@ -686,24 +695,38 @@ d_supervisor_caller() {
   [ "${TEAM_SESSION_ROLE:-}" = Supervisor ] && [ ! -f "$(team_root)/.agents/team/team.json" ]
 }
 
-# decision_delegated <d-n> <text> <why> — the Supervisor answers a decision the Operator's mandate
-# covers, as a delegate. Every binding is checked or the answer is refused: the caller is the
-# registered Supervisor session and its own transcript holds this very call; the team is on this
-# run; the decision is pending, routed to the Supervisor and bound to an open ask of the same
-# session and attempt; the mandate in force covers the decision's class; the reply is one the
-# ask's parser accepts. Pinned once in <main>/.agents/team/delegated/ (never replaced), so a
-# replayed, stale or conflicting answer is refused here and by the stage hook.
+# d_request_digest <ask file> → the sha256 of the ask's filed request, canonical (sorted keys): what
+# a delegated answer names in its own argv and the stage hook recomputes from its live input.
+d_request_digest() {
+  . "$LIB/team-evidence.sh" 2>/dev/null || return 1
+  jq -cS .payload "$1" 2>/dev/null | team_evidence_sha
+}
+
+# decision_delegated <d-n> <text> <why> <run> <ask> <attempt> <stage session> <request digest> —
+# the Supervisor answers a decision the Operator's mandate covers, as a delegate. Its own call
+# carries every binding in its argv, and each is checked or the answer is refused: the caller is
+# the registered Supervisor session and its transcript holds this very call, standalone; the team
+# is on the run named; the decision is pending, routed to the Supervisor and bound to the ask
+# named, an open ask of the stage's active session and attempt, whose filed request has the digest
+# named; the mandate the decision was routed under is in force (derived from the Operator's
+# message now) and names the class, the team and this run; the reply is one the ask's parser
+# accepts. Pinned once in <main>/.agents/team/delegated/ (never replaced), so a replayed, stale
+# or conflicting answer is refused here and by the stage hook.
 decision_delegated() {
-  local id="$1" text="$2" why="$3" run="$4" f team ask kind lf u sid cwd cfg tx floor uuid="" p cls m x i=0 tmp
+  local id="$1" text="$2" why="$3" run="$4" aask="$5" aatt="$6" asess="$7" areq="$8"
+  local f team ask kind lf u sid cwd cfg tx floor uuid="" p cls m x i=0 tmp args mainp
   local outcome="" aval="" amap="" wait="${TEAM_DELEGATE_WAIT_SECS:-6}"
   d_supervisor_caller || d_bad 3 "a delegated answer is the Supervisor's, from the main checkout"
   one_line "$text" && one_line "$why" || d_bad 2 "decision answer --delegated needs a one-line --text and --why"
-  # The call's own text is the evidence, so the reply is passed exactly as typed: nothing a shell
-  # would rewrite, no padding.
-  case "$text" in *'"'*|*'$'*|*'`'*|*'\'*|" "*|*" ") d_bad 2 "the --text of a delegated answer takes no quotes, \$, backticks or backslashes and no padding" ;; esac
+  # The call's own text is the evidence, so every value is passed exactly as typed: nothing a
+  # shell would rewrite, no padding.
+  for x in "$text" "$why"; do
+    case "$x" in *'"'*|*'$'*|*'`'*|*'\'*|" "*|*" ") d_bad 2 "--text and --why of a delegated answer take no quotes, \$, backticks or backslashes and no padding" ;; esac
+  done
+  [ -n "$run" ] && [ -n "$aask" ] && [ -n "$aatt" ] && [ -n "$asess" ] && [ -n "$areq" ] \
+    || d_bad 2 "decision answer --delegated needs --run, --ask, --attempt, --session and --request (the delegated inbox message prints the command)"
   # The run the inbox message named: a d-<n> of the team's next run is never answered by an
   # answer meant for the last one.
-  [ -n "$run" ] || d_bad 2 "decision answer --delegated needs --run <the run the delegated message names>"
   [ "$run" = "$RUN" ] || d_bad 4 "team $(jq -r .team "$TD/team.json") is on run $RUN, not $run — nothing applied"
   f="$(d_file "$id")"
   team="$(jq -r .team "$TD/team.json")"
@@ -714,6 +737,7 @@ decision_delegated() {
   ask="$(dfm "$f" bind_ask)"; kind="$(dfm "$f" ask_kind)"
   [ -n "$ask" ] && [ -f "$ASK_D/$ask.json" ] \
     || d_bad 7 "$id is bound to no ask — only the Operator answers it"
+  [ "$aask" = "$ask" ] || d_bad 7 "$id is bound to ask $ask, not $aask — nothing applied"
   lf="$MAIN/.agents/team/delegated/$team-$RUN-$id.json"
   # A committed answer retried (a lost ring): no new evidence, the same text only.
   u="$(dfm "$f" answered_via)"
@@ -730,24 +754,25 @@ decision_delegated() {
     || d_bad 7 "$id is not delegated to the Supervisor — the Operator answers it"
   d_lead_knows 'Delegated to the Supervisor' \
     || d_bad 4 "team $team's TeamLead was launched before delegation existed — hand $id back: bash .claude/lib/team-lead.sh decision handback $team $id --why \"<line>\""
-  # The binding to the ask's session and attempt: as the decision recorded it at open, and still
-  # the stage's active session and attempt (a replaced one is not answered).
-  [ -n "$(ask_get "$ask" attempt)" ] && [ -n "$(ask_get "$ask" session_id)" ] \
-    && [ "$(ask_get "$ask" attempt)" = "$(dfm "$f" bind_attempt)" ] \
-    && [ "$(ask_get "$ask" session_id)" = "$(dfm "$f" bind_session_id)" ] \
-    || d_bad 7 "$id is not bound to ask $ask's session and attempt — nothing applied"
-  [ "$(ask_get "$ask" session_id)" = "$(jq -r '.session_id // ""' "$TD/session.json" 2>/dev/null)" ] \
-    && [ "$(ask_get "$ask" attempt)" = "$(jq -r '.attempt // "" | tostring' "$TD/session.json" 2>/dev/null)" ] \
+  # The ask's session and attempt: the ones the call names, the ones the decision recorded at
+  # open, and still the stage's active ones (a replaced attempt is not answered).
+  [ "$aatt" = "$(ask_get "$ask" attempt)" ] && [ "$asess" = "$(ask_get "$ask" session_id)" ] \
+    && [ "$aatt" = "$(dfm "$f" bind_attempt)" ] && [ "$asess" = "$(dfm "$f" bind_session_id)" ] \
+    || d_bad 7 "$id is not bound to session $asess, attempt $aatt of ask $ask — nothing applied"
+  [ "$asess" = "$(jq -r '.session_id // ""' "$TD/session.json" 2>/dev/null)" ] \
+    && [ "$aatt" = "$(jq -r '.attempt // "" | tostring' "$TD/session.json" 2>/dev/null)" ] \
     || d_bad 4 "ask $ask belongs to a replaced session or attempt — nothing applied"
-  # The class, from the main checkout's checker run now on the filed request (every cause), and the
-  # mandate: the very one the decision was routed under, still in force, read back from the
-  # Operator's message, naming every class.
-  cls="$(mandate_ask_classes "$MAIN" "${TD%/.agents/team}" "$ASK_D/$ask.json" "$(d_touch_reason "$f")")"
+  # The request the answer is for: the digest the call names is the filed request's.
+  [ "$areq" = "$(d_request_digest "$ASK_D/$ask.json")" ] \
+    || d_bad 7 "--request is not the digest of ask $ask's request — nothing applied"
+  # The class (the main checkout's checker, now) and the mandate: the very one the decision was
+  # routed under, derived again from the Operator's message, naming the class, the team and this run.
+  cls="$(mandate_ask_class "$MAIN" "${TD%/.agents/team}" "$ASK_D/$ask.json" "$(d_touch_reason "$f")")"
   [ -n "$cls" ] || d_bad 7 "no mandate can cover $id — hand it back to the Operator"
   [ "$cls" = "$(dfm "$f" delegate_class)" ] \
-    || d_bad 7 "$id was routed as class $(dfm "$f" delegate_class) but the request now reads $cls — hand it back"
-  m="$(mandate_covers "$MAIN" "$cls" "$(dfm "$f" delegate_mandate)" verified)" && [ -n "$m" ] \
-    || d_bad 7 "the mandate $id was routed under ($(dfm "$f" delegate_mandate)) is no longer in force, cannot be read back from the Operator's message, or does not cover class $cls (bash .claude/lib/team-mandate.sh show) — hand $id back"
+    || d_bad 7 "$id was routed as class $(dfm "$f" delegate_class) but now reads $cls — hand it back"
+  m="$(mandate_covers "$MAIN" "$cls" "$team" "$RUN" "$(dfm "$f" delegate_mandate)")" && [ -n "$m" ] \
+    || d_bad 7 "the mandate $id was routed under ($(dfm "$f" delegate_mandate)) is no longer in force for class $cls, team $team, run $RUN (bash .claude/lib/team-mandate.sh show) — hand $id back"
   # The permitted resolution: only a reply the ask's own parser accepts.
   if ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
     case "$kind" in
@@ -769,20 +794,19 @@ decision_delegated() {
   [ -n "$floor" ] || d_bad 7 "$id has no creation time to bind the answer to — nothing applied"
   . "$LIB/team-evidence.sh" && command -v team_evidence_tool_call >/dev/null 2>&1 \
     || d_bad 7 "no evidence matcher (team-evidence.sh)"
+  args="$(team_delegate_args "$team" "$id" "$RUN" "$ask" "$aatt" "$asess" "$areq" "$text")"
   # The call is written to the transcript as it starts; a short wait covers a late flush.
   while :; do
-    uuid="$(team_evidence_tool_call "$tx" "$floor" team-lead.sh "$(team_delegate_args "$team" "$id" "$RUN" "$text")")"
+    uuid="$(team_evidence_tool_call "$tx" "$floor" "$MAIN" "$args")"
     [ -z "$uuid" ] && [ "$i" -lt $(( wait * 5 )) ] || break
     sleep 0.2; i=$((i + 1))
   done
-  [ -n "$uuid" ] || d_bad 7 "the Supervisor session's transcript holds no call that reads exactly: bash .claude/lib/team-lead.sh $(team_delegate_args "$team" "$id" "$RUN" "$text")<line>\" — run it as one command, in this order — nothing applied"
+  [ -n "$uuid" ] || d_bad 7 "the Supervisor session's transcript holds no standalone call that reads exactly: bash .claude/lib/team-lead.sh $args<line>\" — run it from the main checkout as one command, nothing before or after it — nothing applied"
   d_lock
   [ "$(dfm "$f" status)" = pending ] && [ "$(dfm "$f" delegate)" = supervisor ] \
     || { ask_unlock; d_bad 4 "$id is $(dfm "$f" status), no longer delegated — nothing applied"; }
   case "$(d_ask_state "$ask")" in waiting|timed-out) ;;
     *) ask_unlock; d_bad 4 "ask $ask is $(ask_get "$ask" state), not open — nothing applied" ;; esac
-  mandate_covers "$MAIN" "$cls" "$m" >/dev/null \
-    || { ask_unlock; d_bad 7 "the Operator's mandate $m no longer covers class $cls — nothing applied"; }
   for x in "$MAIN"/.agents/team/delegated/*.json; do
     [ -f "$x" ] && [ "$x" != "$lf" ] || continue
     ! jq -e --arg u "$uuid" '.uuid == $u' "$x" >/dev/null 2>&1 \
@@ -791,19 +815,18 @@ decision_delegated() {
   if [ -e "$lf" ]; then
     # An interrupted attempt is completed only with its own pinned answer.
     team_relay_pins "$lf" "$team" "$RUN" "$id" "$ask" && [ "$(jq -r .reply "$lf")" = "$text" ] \
-      && [ "$(jq -r .mandate "$lf")" = "$m" ] \
+      && [ "$(jq -r .mandate "$lf")" = "$m" ] && [ "$(jq -r .request "$lf")" = "$areq" ] \
       || { ask_unlock; d_bad 4 "the delegation ledger already holds $id with another answer — a different answer needs a new decision"; }
     uuid="$(jq -r .uuid "$lf")"
   else
     ( umask 077; mkdir -p "$(dirname "$lf")" ); tmp="$lf.tmp.$$"
     ( umask 077
-      jq -n --arg t "$team" --arg r "$RUN" --arg d "$id" --arg a "$ask" --arg at "$(ask_get "$ask" attempt)" \
-        --arg as "$(ask_get "$ask" session_id)" --arg c "$cls" --arg m "$m" --arg s "$sid" --arg cw "$cwd" \
-        --arg cf "$cfg" --arg u "$uuid" --arg p "$text" --arg w "$why" --arg fl "$floor" --arg now "$(team_utc)" \
-        --slurpfile q "$ASK_D/$ask.json" \
+      jq -n --arg t "$team" --arg r "$RUN" --arg d "$id" --arg a "$ask" --arg at "$aatt" --arg as "$asess" \
+        --arg c "$cls" --arg m "$m" --arg s "$sid" --arg u "$uuid" --arg p "$text" --arg w "$why" \
+        --arg q "$areq" --arg now "$(team_utc)" \
         '{team: $t, run: $r, decision: $d, ask: $a, attempt: $at, ask_session: $as, class: $c, mandate: $m,
-          session_id: $s, cwd: $cw, config_dir: $cf, uuid: $u, reply: $p, why: $w, created_at: $fl,
-          answered_at: $now, request: $q[0].payload}' > "$tmp" ) && ln "$tmp" "$lf" 2>/dev/null
+          session_id: $s, uuid: $u, reply: $p, why: $w, request: $q, answered_at: $now}' > "$tmp" ) \
+      && ln "$tmp" "$lf" 2>/dev/null
     x=$?; rm -f "$tmp"
     [ "$x" = 0 ] || { ask_unlock; d_bad 4 "delegation ledger $lf could not be written once"; }
   fi
@@ -824,9 +847,11 @@ d_delegated_ring() {
 }
 
 # decision_handback <d-n> --why <line> — the Supervisor returns a delegated decision to the
-# Operator: the runner then sends its held notification and reminds the lead to raise the dialog.
+# Operator. The delegated decision is withdrawn for good and its ask is marked never to be
+# delegated again: the lead opens a fresh decision on that ask, with a new id, which only human
+# evidence answers.
 decision_handback() {
-  local id="${1:-}" why="" f
+  local id="${1:-}" why="" f ask
   [ -n "$id" ] || usage; shift
   [ $# -eq 2 ] && [ "$1" = --why ] && one_line "$2" || usage; why="$2"
   d_supervisor_caller || d_bad 3 "decision handback is the Supervisor's, from the main checkout"
@@ -834,10 +859,14 @@ decision_handback() {
   d_lock
   [ "$(dfm "$f" status)" = pending ] && [ "$(dfm "$f" delegate)" = supervisor ] \
     || { ask_unlock; d_bad 4 "$id is not a pending decision delegated to the Supervisor"; }
-  dfm_set "$f" delegate handed-back; dfm_set "$f" handed_back_at "$(team_utc)"
+  ask="$(dfm "$f" bind_ask)"
+  [ -z "$ask" ] || [ ! -f "$ASK_D/$ask.json" ] || ask_set "$ask" '.no_delegate = $d' --arg d "$id"
+  dfm_set "$f" status withdrawn; dfm_set "$f" withdrawn_at "$(team_utc)"; dfm_set "$f" delegate handed-back
   printf '\n## Handed back\n%s\n' "$why" >> "$f"
   ask_unlock
-  echo "handed back: $id — the Operator answers it"
+  d_resolve "$f"
+  team_session_doorbell "$TD" lead "handed back: $id — the Supervisor returns it to the Operator; open a new decision on ${ask:-its source} and raise its dialog"
+  echo "handed back: $id — withdrawn; the lead opens a new decision for the Operator"
 }
 
 decision_withdraw() {
