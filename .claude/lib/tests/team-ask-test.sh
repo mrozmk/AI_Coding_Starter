@@ -17,7 +17,7 @@ cleanup() { pkill -9 -f "$T/main/.claude/hooks/team-ask-hook.sh" 2>/dev/null; ki
 trap cleanup EXIT
 die() { echo "team-ask-test: FAIL — fixture setup: $1"; exit 1; }
 unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
-  CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN TMUX TMUX_PANE
+  CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_PLUGIN_DIRS CLAUDE_CODE_PLUGIN_CACHE_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN TMUX TMUX_PANE
 export HOME="$T/home" GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$HOME" "$T/bin" || die "dirs"
 printf '[user]\n  name = t\n  email = t@example.invalid\n[init]\n  defaultBranch = main\n[url "%s"]\n  insteadOf = https://github.com/acme/widgets\n' \
@@ -836,6 +836,107 @@ sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl10c.out" .hookSpecificOutput.decision.behavi
 ok '[ -z "$SUBF" ]' "dialog answer: a rejected relay recovers through a new decision$SUBF"
 cp "$T/local.keep" "$CLONE/.claude/settings.local.json"; : > "$LT"
 
+# 11. enabled plugins: their hooks are resolved as the host loads them (a fixture config dir only)
+PLG="$T/cc/plugins"
+plug() {  # plug <name> [marketplace entry fields] — the enabled plugin <name>@mk, installed empty at $PD
+  local x="${2:-}"; [ -n "$x" ] || x='{}'
+  rm -rf "$PLG"; PD="$PLG/cache/mk/$1/1"; mkdir -p "$PD" "$PLG/marketplaces/mk/.claude-plugin"
+  jq -n --arg n "$1" --arg p "$PD" '{version: 2, plugins: {"\($n)@mk": [{scope: "user", installPath: $p, version: "1"}]}}' > "$PLG/installed_plugins.json"
+  jq -n --arg l "$PLG/marketplaces/mk" '{mk: {installLocation: $l}}' > "$PLG/known_marketplaces.json"
+  jq -n --arg n "$1" --argjson x "$x" '{name: "mk", plugins: [{name: "other"}, ({name: $n, source: "./x"} + $x)]}' > "$PLG/marketplaces/mk/.claude-plugin/marketplace.json"
+  jq -n --arg n "$1" '{enabledPlugins: {"\($n)@mk": true, "off@mk": false}}' > "$T/cc/settings.json"
+}
+manifest() { mkdir -p "$PD/.claude-plugin"; printf '%s\n' "$1" > "$PD/.claude-plugin/plugin.json"; }
+hooksf() { mkdir -p "$PD/hooks"; printf '%s\n' "$1" > "$PD/hooks/hooks.json"; }
+ahk() { AH="$(team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?; }
+PRE='{"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo e"}]}]}}'
+OTHER='{"description": "d", "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "echo s"}]}]}}'
+SUBF=""; newrun plg; new_path
+plug mcp; manifest '{"name": "mcp"}'; echo '{"mcpServers": {}}' > "$PD/.mcp.json"; ahk
+sub '[ "$AHRC" = 0 ] && [ "${AH%% *}" = clean ]' "(a) an mcp-only plugin is clean ($AH)"
+plug lsp '{"strict": false, "lspServers": {"ts": {"command": "x"}}}'; ahk; D0="$AH"
+sub '[ "$AHRC" = 0 ] && [ "${AH%% *}" = clean ]' "(b) a marketplace-defined plugin without a manifest or hooks is clean ($AH)"
+plug pre; manifest '{"name": "pre"}'; hooksf "$PRE"; ahk
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean enabled plugin pre@mk: hooks/hooks.json has a PreToolUse hook" ]' "(c) a plugin with a PreToolUse hook ($AH)"
+sub 'team_evidence_fix "${AH#unclean }" | grep -q "disable that plugin"' "(c) the fix names the plugin route"
+plug ups; hooksf '{"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "echo u"}]}]}}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "UserPromptSubmit hook" <<<"$AH"' "(d) a UserPromptSubmit hook, no manifest ($AH)"
+plug bare; hooksf '{"PermissionRequest": []}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "PermissionRequest hook" <<<"$AH"' "(e) a hooks file without the wrapper still counts ($AH)"
+plug ent '{"hooks": {"PermissionRequest": [{"hooks": [{"type": "command", "command": "echo p"}]}]}}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "marketplace entry.s hooks has a PermissionRequest hook" <<<"$AH"' "(f) inline hooks of the marketplace entry ($AH)"
+plug entp '{"hooks": "./hooks.json"}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "marketplace entry" <<<"$AH"' "(f2) a marketplace entry hooks value that is no event map ($AH)"
+plug inl; manifest '{"name": "inl", "hooks": {"PreToolUse": []}}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "plugin.json hooks has a PreToolUse hook" <<<"$AH"' "(g) inline hooks of the manifest ($AH)"
+plug pth; manifest '{"name": "pth", "hooks": ["./cfg/extra.json"]}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "cfg/extra.json is missing" <<<"$AH"' "(h) a manifest hooks path that does not resolve ($AH)"
+mkdir -p "$PD/cfg"; printf '%s\n' "$PRE" > "$PD/cfg/extra.json"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "cfg/extra.json has a PreToolUse hook" <<<"$AH"' "(h) … and one that does ($AH)"
+printf '%s\n' "$OTHER" > "$PD/cfg/extra.json"; ahk
+sub '[ "$AHRC" = 0 ]' "(h) a manifest hooks file on another event is clean ($AH)"
+manifest '{"name": "pth", "hooks": "../../x.json"}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "leaves the plugin" <<<"$AH"' "(h) a hooks path outside the plugin ($AH)"
+plug mod; hooksf '{"modules": ["./m.js"], "hooks": {}}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "registers hooks in code" <<<"$AH"' "(i) hooks registered in code ($AH)"
+plug skl; mkdir -p "$PD/skills/s"; printf -- '---\nname: s\nhooks:\n  PreToolUse: []\n---\nbody\n' > "$PD/skills/s/SKILL.md"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "frontmatter hooks in skills/s/SKILL.md" <<<"$AH"' "(j) frontmatter hooks of a plugin skill ($AH)"
+printf -- '---\nname: s\n---\nhooks:\n' > "$PD/skills/s/SKILL.md"; mkdir -p "$PD/skills/s/hooks"; printf '%s\n' "$PRE" > "$PD/skills/s/hooks/hooks.json"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "skills/s/hooks/hooks.json has a PreToolUse hook" <<<"$AH"' "(j) a hooks.json anywhere in the install tree ($AH)"
+printf -- '---\nname: s\n"hooks" :\n  PreToolUse: []\n---\n' > "$PD/skills/s/SKILL.md"; rm -rf "$PD/skills/s/hooks"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "frontmatter hooks in skills/s/SKILL.md" <<<"$AH"' "(j) a quoted frontmatter hooks key ($AH)"
+printf -- '---\r\nname: s\r\nhooks:\r\n  PreToolUse: []\r\n---\r\n' > "$PD/skills/s/SKILL.md"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "frontmatter hooks in skills/s/SKILL.md" <<<"$AH"' "(j) frontmatter hooks in a CRLF file ($AH)"
+plug post; hooksf '{"hooks": {"PostToolUse": [{"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "echo o"}]}]}}'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "PostToolUse hook" <<<"$AH"' "(j1) a PostToolUse hook can replace the answer ($AH)"
+plug cas; mkdir -p "$PD/Hooks"; printf '%s\n' "$PRE" > "$PD/Hooks/Hooks.JSON"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "has a PreToolUse hook" <<<"$AH"' "(j2) the hooks file under another spelling ($AH)"
+plug lsp '{"strict": false}'
+pdir() { AH="$(HOME="$T" CLAUDE_CODE_PLUGIN_DIRS="$1" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?; }
+pdir "$T/elsewhere"
+sub '[ "$AHRC" = 1 ] && grep -q "CLAUDE_CODE_PLUGIN_DIRS.: no .claude-plugin/plugin.json" <<<"$AH"' "(j3) a plugin directory from the environment that is no plugin ($AH)"
+mkdir -p "$T/pd1/.claude-plugin" "$T/pd2/.claude-plugin" "$T/pd2/hooks"; echo '{"name": "a"}' > "$T/pd1/.claude-plugin/plugin.json"
+echo '{"name": "b"}' > "$T/pd2/.claude-plugin/plugin.json"; echo '{"modules": ["./r.js"]}' > "$T/pd2/hooks/hooks.json"
+pdir "$T/pd1"; D1="$AH"
+sub '[ "$AHRC" = 0 ] && [ "$AH" != "$D0" ]' "(j3) a hookless plugin directory is clean and in the digest ($AH)"
+pdir "$T/pd1:~/pd2"
+sub '[ "$AHRC" = 1 ] && grep -q "plugin directory $T/pd2 (CLAUDE_CODE_PLUGIN_DIRS): hooks/hooks.json registers hooks in code" <<<"$AH"' "(j3) a mod among the plugin directories, ~ expanded ($AH)"
+sub 'team_evidence_fix "${AH#unclean }" | grep -q "unset CLAUDE_CODE_PLUGIN_DIRS"' "(j3) the fix names the variable"
+mkdir -p "$PLG/synced/acc/p/.claude-plugin"; echo '{}' > "$PLG/synced/acc/p/.claude-plugin/plugin.json"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "account-synced plugin content" <<<"$AH"' "(j4) plugin content synced from the account ($AH)"
+rm -rf "$PLG/synced/acc/p"; echo '{}' > "$PLG/synced/acc/.marketplaces.json"; ahk
+sub '[ "$AHRC" = 0 ]' "(j4) … its bookkeeping alone is clean ($AH)"
+plug bad; hooksf '{not json'; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "hooks/hooks.json is unreadable" <<<"$AH"' "(k) an unparseable hooks file ($AH)"
+plug nomk; rm "$PLG/known_marketplaces.json"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "no single entry in the marketplace manifest" <<<"$AH"' "(l) no marketplace record ($AH)"
+plug noins; echo '{"version": 2, "plugins": {}}' > "$PLG/installed_plugins.json"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "no usable install record" <<<"$AH"' "(m) no install record ($AH)"
+plug gone; mv "$PD" "$PD.away"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "is not a readable directory" <<<"$AH"' "(n) an install path that is gone ($AH)"
+plug ver; jq '.enabledPlugins["ver@mk"] = "^1.0"' "$T/cc/settings.json" > "$T/sj" && mv "$T/sj" "$T/cc/settings.json"; hooksf "$PRE"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "ver@mk" <<<"$AH"' "(o) an id enabled by a value other than true is inventoried too ($AH)"
+plug lsp '{"strict": false, "lspServers": {"ts": {"command": "x"}}}'
+AH="$(CLAUDE_CODE_PLUGIN_CACHE_DIR="$T/elsewhere" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 1 ] && grep -q "CLAUDE_CODE_PLUGIN_CACHE_DIR" <<<"$AH"' "(p) a moved plugin root ($AH)"
+rm -rf "$PLG"; rm -f "$T/cc/settings.json"; ahk
+sub '[ "$AHRC" = 0 ] && [ "$AH" != "$D0" ]' "(q) the plugin's inventory is part of the digest"
+ok '[ -z "$SUBF" ]' "plugin inventory: hookless is clean, a guarded hook or anything unresolved is not$SUBF"
+
+# … and through the answer: a clean plugin keeps the dialog, a change after launch loses it
+SUBF=""
+plug evt; manifest '{"name": "evt"}'; hooksf "$OTHER"; p9 pa; a9
+sub '[ "$TLRC" = 0 ] && grep -q "^answered_via: teamlead-ask " "$RD/decisions/d-1.md"' "(a) a valid dialog answer with a hookless-on-guarded-events plugin enabled is accepted ($(cat "$T/tl.out"))"
+p9 pb; hooksf "${OTHER/echo s/echo t}"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "changed since launch" "$T/tl.out" && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(b) a plugin hook altered after launch → the answer is rejected ($(cat "$T/tl.out"))"
+sub 'grep -q "Ask for no typed reply" "$T/tl.out" && grep -q "bash .claude/lib/team-lead.sh decision answer beta d-1 --text \"d-1 <answer>\" --outcome " "$T/tl.out"' "(b) the refusal carries the terminal line (an unbound decision: with --outcome), no typed-reply request"
+printf -- '---\nbind_ask: a-1\n---\n' > "$T/bound.md"
+sub '[ "$(team_evidence_terminal beta "$T/bound.md" d-2)" = "bash .claude/lib/team-lead.sh decision answer beta d-2 --text \"d-2 <answer>\"" ]' "(b) an ask-bound decision's terminal line has no --outcome"
+hooksf "$OTHER"; p9 pc; hooksf "$PRE"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "PreToolUse hook" "$T/tl.out"' "(c) a guarded plugin hook added after launch ($(cat "$T/tl.out"))"
+ok '[ -z "$SUBF" ]' "dialog answer: plugin hooks are bound into the launch snapshot$SUBF"
+cp "$T/local.keep" "$CLONE/.claude/settings.local.json"; : > "$LT"
+
 # ================================================================================================
 # the runner: lead_asks, lead_attention, lead_close, the base refusal
 # ================================================================================================
@@ -1288,6 +1389,19 @@ ok '[ "$R1" = 2 ] && [ "$(j "$T/g7.out" .hookSpecificOutput.permissionDecision)"
 vg "bash $MAIN/.claude/lib/team-lead.sh decision relay beta d-1 --text x"
 ok '[ "$VRC" = 2 ]' "the verdict guard refuses decision relay in a clone"
 pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
+
+# … and before a start: team-lead.sh preflight refuses an unclean profile with the cause and the fix
+# (the main checkout's profiles above name the clone and the fixture config dir)
+SUBF=""; jq 'del(.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion"))' "$T/local.keep" > "$CLONE/.claude/settings.local.json"
+pf() { (cd "$MAIN" && bash .claude/lib/team-lead.sh preflight beta) > "$T/pf.out" 2>&1; PFRC=$?; }
+plug evt; hooksf "$OTHER"; pf
+sub '[ "$PFRC" = 0 ] && grep -qx "ask provenance: clean" "$T/pf.out"' "(a) a clean profile ($(cat "$T/pf.out"))"
+hooksf "$PRE"; pf
+sub '[ "$PFRC" = 3 ] && grep -q "^error: ask provenance unclean — enabled plugin evt@mk: hooks/hooks.json has a PreToolUse hook" "$T/pf.out" && grep -q "^fix: disable that plugin" "$T/pf.out"' "(b) an unclean profile → 3, the cause and the fix ($(cat "$T/pf.out"))"
+(cd "$CLONE" && bash "$MAIN/.claude/lib/team-lead.sh" preflight beta) > "$T/pf.out" 2>&1; PFRC=$?
+sub '[ "$PFRC" = 2 ] && grep -q "main checkout" "$T/pf.out"' "(c) not from a clone ($(cat "$T/pf.out"))"
+rm -rf "$PLG"; rm -f "$T/cc/settings.json"; cp "$T/local.keep" "$CLONE/.claude/settings.local.json"
+ok '[ -z "$SUBF" ]' "preflight: a start is refused while the ask provenance is unclean$SUBF"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "team-ask-test: OK ($n checks)"

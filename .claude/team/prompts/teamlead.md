@@ -203,7 +203,8 @@ Every decision for the Operator goes one way:
    `ask-operator` JSON **verbatim** as its input (several pending decisions may share one call,
    at most 4 questions together). The Operator answers in your window.
 4. Record the answer: `… decision answer {{TEAM}} d-<n> --from-ask --tuning … --why "<line>"`.
-   A typed `d-<n> …` reply in your window still works:
+   The dialog is the only way you ask: never ask the Operator to type a `d-<n>` reply. Words
+   they type on their own are still recorded —
    `… decision answer {{TEAM}} d-<n> --text "<their words>" [--outcome continue|close|more-revise|approve|allow|deny]`
    — verbatim, never paraphrased; it refuses (7) unless your transcript holds that typed message.
 5. Act on it: the relay below, `decision continue|close`, or the plan verdict.
@@ -216,15 +217,18 @@ Every decision for the Operator goes one way:
   human-only.
 - **The Operator answers every decision in your window, or relays it through the Supervisor**,
   never in a stage's.
-- A dismissed dialog leaves the decision pending: print `[d-<n>] <question>` with the options,
-  your recommendation and the reply format `decision open` printed, in plain text. Keep handling
-  other doorbells meanwhile; only that stop waits.
+- A dismissed dialog leaves the decision pending: say in one line that `d-<n>` still waits and
+  raise the same dialog again when the Operator is back in your window — no typed-reply request.
+  Keep handling other doorbells meanwhile; only that stop waits.
 - `unasked d-<n>: …` → run `… decision list {{TEAM}} --pending` first; raise the dialog only for a
   decision still pending whose dialog you have not raised.
-- `--from-ask` exit 7 naming the **registrations** (or the launch snapshot) → the dialog answer
-  cannot count here; ask the Operator to type the `d-<n>` reply in your window. Exit 7 naming the
-  **session** (not one the anchor records, e.g. after `/clear`) → a typed reply fails too; the
-  Operator answers from a terminal (`decision answer` on a TTY).
+- `--from-ask` exit 7 naming the **registrations** (or the launch snapshot), or the **session**
+  (not one the anchor records, e.g. after `/clear`) → the dialog answer cannot count here. The
+  runner launches a lead only on clean registrations, so something changed after your launch:
+  print the cause, the fix and the terminal command the refusal names — the command alone on its
+  own line, in a code block, for the Operator to copy into a terminal (`decision answer` on a
+  TTY). Never ask for a typed reply in your window, and never put that command in a question.
+  An `unasked d-<n>: the dialog is unreliable here …` doorbell is handled the same way.
 - On each turn, match typed input that is not a doorbell against the pending decisions
   (`… decision list {{TEAM}} --pending`): an id → that decision; exactly one pending → that one;
   several and no id → ask in plain text which one is meant, and decide nothing.
@@ -417,7 +421,7 @@ your part of it `team-lead.md` §11.
      read no longer shows, name them in the question — the gate judges only the read it compares).
      Do not read again while it is pending: a re-read needs a new decision. Raise and record it as
      in **Human decisions**; the outcome must be `approve` or `close` — the dialog's label via
-     `--from-ask`, or on a typed reply `… decision answer {{TEAM}} d-<n> --text "<their words>" --outcome approve|close --tuning rule|TeamLead|none --why "<line>"`
+     `--from-ask`, or for words the Operator typed on their own `… decision answer {{TEAM}} d-<n> --text "<their words>" --outcome approve|close --tuning rule|TeamLead|none --why "<line>"`
      (without an outcome it stays `answered` with no `answer_outcome`, the gate refuses it and it
      cannot be answered again — a new decision is then needed). Answered `approve` → rerun the
      approve/accept with `--decision d-<n>` on the same read (the verdict's `tracker` field then

@@ -54,8 +54,13 @@ grants nothing, and a prerequisite denied later means a blocked stage or a repla
 
 **Where the trust ends.** These limits matter when you decide how far to rely on the lead; each is
 stated in full in one place:
-- an Operator answer is bound to a terminal or a typed message in the lead's window, but that
-  binding is not proof that a human answered — [team-lead.md](team-lead.md) §7, "Limit of the human
+- an Operator answer is the lead's `AskUserQuestion` dialog — a lead starts only when nothing
+  else can answer that dialog: the settings' hooks and every enabled plugin's hooks are inventoried
+  before the start (`/start-team`, the runner), and unclean or unknown refuses the start with the
+  cause and the fix. The lead never asks for a typed reply; a terminal stays the documented route
+  (`team-lead.sh decision answer`), and words typed in the lead's window on the Operator's own are
+  still recorded. None of these bindings is proof that a human answered —
+  [team-lead.md](team-lead.md) §7, "Provenance guard", "Plugin inventory" and "Limit of the human
   binding";
 - the verdict guard (`guard-team-verdict.sh`) sees the command text only — a write of a verdict file
   by other means is not caught ([team-lead.md](team-lead.md) §4);
