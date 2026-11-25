@@ -68,6 +68,7 @@ own .agents/reference/team-mode.md
 own .agents/reference/team-pipeline.md
 own .agents/reference/session-host.md
 own .agents/reference/worker-clone.md
+own .agents/reference/permission-probes.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
 own .claude/hooks/guard-team-memory.sh
@@ -118,6 +119,10 @@ own .claude/lib/team-tracker-render.sh
 own .claude/lib/team-validate.sh
 own .claude/lib/team-warn.sh
 own .claude/lib/team_prompt_check.py
+own .claude/lib/prompt-replay.sh
+own .claude/lib/prompt_replay.py
+own .claude/lib/prompt_replay_build.py
+own .claude/lib/permission_probe.py
 own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
 own .claude/project-profile.json.example

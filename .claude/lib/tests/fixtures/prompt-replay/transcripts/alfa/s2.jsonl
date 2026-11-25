@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2026-11-01T00:00:10.000Z","sessionId":"S2","cwd":"${FIXTURE}/alfa","message":{"role":"assistant","content":[{"type":"tool_use","id":"tv1","name":"Bash","input":{"command":"git status","description":"d"}}]}}
+{"type":"assistant","timestamp":"2026-11-01T00:00:20.000Z","sessionId":"S2","cwd":"${FIXTURE}/alfa","message":{"role":"assistant","content":[{"type":"tool_use","id":"tv2","name":"Bash","input":{"command":"make test","description":"d"}}]}}
+{"type":"assistant","timestamp":"2026-11-01T00:00:25.000Z","sessionId":"S2","cwd":"${FIXTURE}/alfa/src","message":{"role":"assistant","content":[{"type":"tool_use","id":"tv3","name":"Bash","input":{"command":"make test","description":"d"}}]}}
+{"type":"assistant","timestamp":"2026-11-01T00:00:30.000Z","sessionId":"S2","cwd":"${FIXTURE}/alfa","message":{"role":"assistant","content":[{"type":"tool_use","id":"tv4","name":"Bash","input":{"command":"rm scratch.txt","description":"d"}}]}}

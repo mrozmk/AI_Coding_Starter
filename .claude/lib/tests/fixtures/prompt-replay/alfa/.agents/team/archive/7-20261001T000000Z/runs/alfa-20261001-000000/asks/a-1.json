@@ -1,0 +1,22 @@
+{
+  "id": "a-1",
+  "kind": "question",
+  "role": "planner",
+  "attempt": 1,
+  "round": 1,
+  "session_id": "S0",
+  "payload": {
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which layout?"
+        }
+      ]
+    }
+  },
+  "tier": "",
+  "tier_cause": "",
+  "state": "answered",
+  "filed_at": "2026-10-01T00:00:10Z"
+}

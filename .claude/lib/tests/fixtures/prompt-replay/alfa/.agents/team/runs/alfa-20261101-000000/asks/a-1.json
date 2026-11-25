@@ -1,0 +1,22 @@
+{
+  "id": "a-1",
+  "kind": "permission",
+  "role": "coder",
+  "attempt": 1,
+  "round": 1,
+  "session_id": "S2",
+  "agent_id": "",
+  "agent_type": "",
+  "payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "rm scratch.txt",
+      "description": "d"
+    },
+    "cwd": "${FIXTURE}/alfa"
+  },
+  "tier": "lead",
+  "tier_cause": "",
+  "state": "answered",
+  "filed_at": "2026-11-01T00:00:31Z"
+}

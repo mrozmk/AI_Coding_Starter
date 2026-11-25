@@ -1,0 +1,6 @@
+{"at":"2026-11-01T00:02:01Z","machine":"m","who":"u","where":"team alfa / 8 / coder","kind":"permission","what":"coder: Bash rm scratch.txt","reason":"lead-unsure","answer":"allow","wait_s":null}
+{"at":"2026-11-10T10:00:02Z","machine":"m","who":"u","where":"solo .","kind":"permission","what":"curl in command position","reason":"guard","answer":"","wait_s":null}
+{"at":"2026-11-10T10:05:01Z","machine":"m","who":"u","where":"solo .","kind":"permission","what":"unlisted.example not in WebFetch allowlist","reason":"guard","answer":"","wait_s":null}
+{"at":"2026-11-10T10:10:03Z","machine":"m","who":"u","where":"solo .","kind":"permission","what":"Bash: echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","reason":"direct","answer":"","wait_s":null}
+{"at":"2026-11-10T10:20:02Z","machine":"m","who":"u","where":"solo .","kind":"permission","what":"Bash: curl -s 'https://h.example/x?token=***'","reason":"direct","answer":"","wait_s":null}
+{"at":"2026-11-10T10:40:00Z","machine":"m","who":"u","where":"solo .","kind":"block","what":"guard-push: refused","reason":"hook","answer":"","wait_s":null}
