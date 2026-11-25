@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard trap</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Keyboard trap</h1>
+  <div id="box">
+    <button id="a" type="button">First</button>
+    <button id="b" type="button">Second</button>
+  </div>
+  <p><a href="trap.html">After the trap</a></p>
+</main>
+<script>
+  const a = document.getElementById('a');
+  const b = document.getElementById('b');
+  for (const el of [a, b]) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' || e.key === 'Escape') {
+        e.preventDefault();
+        (document.activeElement === a ? b : a).focus();
+      }
+    });
+  }
+</script>
+</body>
+</html>

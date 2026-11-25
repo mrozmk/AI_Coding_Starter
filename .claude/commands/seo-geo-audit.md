@@ -83,6 +83,7 @@ Walk `checklist.md` sections A → H for the primary page, then the extra pages 
 - **llms.txt, Content-Signal, Link headers, OKF** are cheap hygiene with **no confirmed ranking effect** — recommend, but label them that way.
 - **No numbers you did not measure.** TTFB, counts, lengths and header values from the probe are fine; "+40% visibility" style claims are not.
 - **Protocols go last.** WebMCP, MCP server card, A2A, agents.json, OpenAPI, NLWeb, DNS-AID, commerce protocols live only in the final "Do rozważenia później" block — never in blockers, never in quick wins, even when the engine marks them `fail`.
+- **Landmarks, alt and `lang` (checklist section D)** are three SEO-side hints, not an accessibility audit — run `/wcag-audit <url>` for WCAG 2.2 AA.
 
 Then assign priorities (P1 blokery → P4 do rozważenia) per the checklist and rank inside each bucket by impact, then by fix cost.
 

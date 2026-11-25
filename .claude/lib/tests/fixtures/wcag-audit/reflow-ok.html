@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reflow</title>
+<link rel="stylesheet" href="site.css">
+<style>
+  .wrap { overflow-x: auto; max-width: 100%; }
+  table { width: 900px; border-collapse: collapse; }
+  td, th { border: 1px solid #333; padding: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Reflow</h1>
+  <p>A wide data table scrolls inside its own container.</p>
+  <div class="wrap" tabindex="0" role="region" aria-label="Prices">
+    <table>
+      <caption>Prices</caption>
+      <tr><th scope="col">Item</th><th scope="col">Q1</th><th scope="col">Q2</th><th scope="col">Q3</th><th scope="col">Q4</th></tr>
+      <tr><td>Tea</td><td>1</td><td>2</td><td>3</td><td>4</td></tr>
+    </table>
+  </div>
+</main>
+</body>
+</html>

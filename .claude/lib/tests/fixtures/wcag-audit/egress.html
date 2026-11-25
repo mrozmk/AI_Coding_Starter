@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Egress</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Egress</h1>
+  <p>This page tries to reach destinations outside the policy.</p>
+  <img src="http://169.254.169.254/latest/meta-data" alt="" width="1" height="1">
+  <img src="http://10.0.0.1/x.png" alt="" width="1" height="1">
+  <img src="http://127.0.0.1:{CANARY}/img" alt="" width="1" height="1">
+  <img src="/redirect-to-canary" alt="" width="1" height="1">
+</main>
+<script>
+  fetch('/post-sink', { method: 'POST', body: 'x' }).catch(() => {});
+  fetch('http://127.0.0.1:{CANARY}/fetch').catch(() => {});
+</script>
+</body>
+</html>

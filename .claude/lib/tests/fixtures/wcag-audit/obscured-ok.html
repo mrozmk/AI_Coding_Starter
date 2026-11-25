@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus obscured</title>
+<link rel="stylesheet" href="site.css">
+<style>
+  .bar { position: fixed; top: 0; left: 0; right: 0; height: 140px; background: transparent; opacity: 0; z-index: 10; }
+  main { padding-top: 40px; }
+</style>
+</head>
+<body>
+<div class="bar"><p>Site header</p></div>
+<main>
+  <a id="hidden-link" href="obscured-ok.html">Account</a>
+  <h1 style="margin-top:160px">Focus obscured</h1>
+  <p>A transparent overlay lies over the first link; nothing is painted over it.</p>
+</main>
+</body>
+</html>

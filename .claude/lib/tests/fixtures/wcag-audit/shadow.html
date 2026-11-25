@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadow DOM</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Shadow DOM</h1>
+  <contact-card></contact-card>
+</main>
+<script>
+  customElements.define('contact-card', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<div><span class="mail">anna.nowak@example.com</span> <button id="icon" style="width:32px;height:32px"></button></div>';
+    }
+  });
+</script>
+</body>
+</html>
