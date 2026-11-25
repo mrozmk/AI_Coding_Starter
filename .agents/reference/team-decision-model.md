@@ -47,9 +47,9 @@ Operator's typed message in the Supervisor window, the whole message exactly `ma
 <class>[,<class>…] for <N>h|<N>d team <name>[,<name>…]` (at most 7 days); `team-mandate.sh grant`
 records it in one local file in the main checkout, `.agents/team/mandate.json` — outside every
 clone and outside git, a record and a cache: every use derives the mandate again from the message.
-The latest instruction governs (a later grant replaces, the typed `revoke mandate` cancels), a
-grant covers each named team for the run it is on when typed, and a new Supervisor session ends
-it. A pending decision bound to an ask whose class the mandate names goes to the Supervisor's
+The latest instruction governs (a later grant replaces, the typed `revoke mandate` cancels; a
+history that cannot be read whole grants nothing), a grant covers each named team for the exact
+run id it showed back, and a new Supervisor session ends it. A pending decision bound to an ask whose class the mandate names goes to the Supervisor's
 inbox instead of notifying the Operator; the Supervisor answers it as a delegate, never as the
 Operator, or hands it back.
 
@@ -67,8 +67,9 @@ replaced mandate, a rotated Supervisor session, a replayed or stale answer, a ch
 answer for another run are refused and the decision returns to the Operator. It is logged apart
 from the Operator's answers (`answers.md` `[authority supervisor (delegated)]`, the decision's
 `answered_via: supervisor-delegated`, `team-mandate.sh answers`) and is no Operator touch. In a run
-the mandate covers, an answer counts as the Operator's only on positive human evidence (their typed
-message or their dialog answer), never because delegation markers are absent
+that has been under a mandate at any point, an answer counts as the Operator's only on positive
+human evidence (their typed message or their dialog answer) for the rest of that run, never
+because delegation markers are absent or the mandate has ended
 ([team-lead.md](team-lead.md) §7, [roles/supervisor.md](roles/supervisor.md) → Mandate).
 
 **The order brief decides first.** A stage question the order brief already settles (a `[D]` line,

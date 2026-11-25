@@ -162,12 +162,12 @@ verify_operator() {
   for x in "$MAIN"/.agents/team/delegated/*-"$RUN-$did.json"; do [ ! -e "$x" ] || return 1; done
   case "$via" in
     terminal)
-      # Not re-verifiable from a file (team-lead.md §7). In a run the Operator's mandate covers
-      # that is not enough: Operator authority needs positive human evidence (the cases below).
+      # Not re-verifiable from a file (team-lead.md §7). In a run that has been under the
+      # Operator's mandate at any point that is not enough, for the rest of the run: Operator
+      # authority needs positive human evidence (the cases below).
       x="$(team_anchor_team "$MAIN" "$CLONE")" || x=""
-      if [ -n "$x" ] && . "$LIB/team-mandate.sh" 2>/dev/null \
-          && mandate_run_capable "$MAIN" "$(cut -f1 <<<"$x")" "$RUN"; then return 1; fi
-      return 0 ;;
+      . "$LIB/team-mandate.sh" 2>/dev/null || return 1
+      ! mandate_run_ever "$MAIN" "$(cut -f1 <<<"$x")" "$RUN"; return ;;
     "teamlead-window "*) uuid="${via#teamlead-window }" ;;
     "supervisor-window "*) verify_relay "$id" "$did" "${via#supervisor-window }" "$form" "$val" "$a"; return ;;
     "teamlead-ask "*)
@@ -258,17 +258,19 @@ verify_relay() {
 # - the team and its active run from the main checkout's anchor;
 # - the live input of this very event (handle's payload: the question, the plan, the permission
 #   request) — an event with none refuses delegation — and its canonical digest;
-# - the stage's active session and attempt (session.json, as this hook read them at entry), which
-#   must be the ask's;
-# - the mandate in force now, derived from the Operator's message in the registered Supervisor
-#   session: it names the decision's class, this team and this run;
+# - the stage's active run, session and attempt, read from session.json now (after the wait,
+#   never the values of this hook's entry), which must be the ask's;
+# - the mandate the answer was given under (the ledger's and the decision's id) is the one in
+#   force now, derived from the Operator's message in the registered Supervisor session, naming
+#   the class and bound to this run — a later mandate of the same class approves nothing;
 # - the registered Supervisor session's transcript (registry + declared profile, never the
 #   ledger) holds a standalone call whose argv is exactly run, decision, ask, attempt, session,
-#   request digest and reply, made no earlier than the decision opened nor before the run started;
+#   request digest and reply, made no earlier than the decision opened, the run started or that
+#   mandate was typed;
 # - that reply, parsed by the writer's parser, is this answer.
-# The ledger only says which reply and class to look for and stops a second, different answer.
+# The ledger only says which reply, class and mandate to look for and stops a second answer.
 verify_delegated() {
-  local x team lf cfg t floor cls reply sid cwd dig args
+  local x team lf cfg t floor cls reply sid cwd dig args ssid att mid
   . "$LIB/team-mandate.sh" 2>/dev/null && command -v mandate_covers >/dev/null 2>&1 || return 1
   x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
   team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
@@ -276,18 +278,18 @@ verify_delegated() {
   [ -n "${LIVEP:-}" ] && jq -e 'type == "object"' <<<"$LIVEP" >/dev/null 2>&1 || return 1
   dig="$(jq -cS . <<<"$LIVEP" 2>/dev/null | team_evidence_sha)" && [ -n "$dig" ] || return 1
   [ "$dig" = "$(jq -cS .payload "$ASK_D/$1.json" 2>/dev/null | team_evidence_sha)" ] || return 1
-  # The stage's active session and attempt are the ask's.
-  [ -n "$STAGE_SID" ] && [ -n "$ATTEMPT" ] && [ "$(ask_get "$1" session_id)" = "$STAGE_SID" ] \
-    && [ "$(ask_get "$1" attempt)" = "$ATTEMPT" ] || return 1
+  # The stage's run, session and attempt as they are now, and they are the ask's.
+  ssid="$(sj session_id)"; att="$(sj attempt)"
+  [ "$(sj run)" = "$RUN" ] && [ -n "$ssid" ] && [ -n "$att" ] && [ "$(ask_get "$1" session_id)" = "$ssid" ] \
+    && [ "$(ask_get "$1" attempt)" = "$att" ] || return 1
   lf="$MAIN/.agents/team/delegated/$team-$RUN-$2.json"
   team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" || return 1
-  reply="$(jq -r '.reply // ""' "$lf")"; cls="$(jq -r '.class // ""' "$lf")"
-  [ -n "$reply" ] && [ -n "$cls" ] || return 1
-  # The class from the main checkout's checker on the live input, and the mandate in force now.
+  reply="$(jq -r '.reply // ""' "$lf")"; cls="$(jq -r '.class // ""' "$lf")"; mid="$(jq -r '.mandate // ""' "$lf")"
+  [ -n "$reply" ] && [ -n "$cls" ] && [ -n "$mid" ] && [ "$mid" = "$(dfm_h delegate_mandate)" ] || return 1
+  # The class from the main checkout's checker on the live input; the answer's own mandate, in force.
   jq -n --arg k "$(ask_get "$1" kind)" --argjson p "$LIVEP" '{kind: $k, payload: $p}' > "$TMP.mand" 2>/dev/null || return 1
   [ "$(mandate_ask_class "$MAIN" "$CLONE" "$TMP.mand" "$cls")" = "$cls" ] || return 1
-  mandate_covers "$MAIN" "$cls" "$team" "$RUN" >/dev/null || return 1
-  # The Supervisor's own call, from the registered session.
+  [ "$(mandate_covers "$MAIN" "$cls" "$team" "$RUN" "$mid")" = "$mid" ] || return 1
   sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"
   cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"; cwd="${cwd:-$MAIN}"
   [ -n "$sid" ] || return 1
@@ -295,8 +297,8 @@ verify_delegated() {
   t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
   [ -f "$t" ] || return 1
   floor="$(team_run_floor "$RUN" "$(dfm_h created_at)")"
-  [ -n "$floor" ] || return 1
-  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$ATTEMPT" "$STAGE_SID" "$dig" "$reply")"
+  [ -n "$floor" ] && floor="$(mandate_since "$MAIN" "$mid" "$floor")" || return 1
+  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$att" "$ssid" "$dig" "$reply")"
   [ -n "$(team_evidence_tool_call "$t" "$floor" "$MAIN" "$args")" ] || return 1
   reply_matches "$1" "$2" "$reply" "$3" "$4" "$5"
 }

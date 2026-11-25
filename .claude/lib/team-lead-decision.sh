@@ -548,11 +548,12 @@ decision_answer() {
   if [ -n "$fromask" ]; then
     how="teamlead-ask $uuid"
   elif [ -t 0 ] && [ -r /dev/tty ]; then
-    # A run the Operator's mandate covers can hold delegated answers: there a terminal answer,
-    # which leaves no evidence a hook can read back, is not taken as the Operator's.
-    ! { command -v mandate_run_capable >/dev/null 2>&1 \
-        && mandate_run_capable "$MAIN" "$(jq -r .team "$TD/team.json")" "$RUN"; } \
-      || d_bad 7 "run $RUN is under the Operator's mandate — an Operator answer needs evidence here: answer in the TeamLead's dialog or window, or relay it through the Supervisor (a terminal answer is refused)"
+    # A run that has been under the Operator's mandate at any point can hold delegated answers:
+    # for the rest of it a terminal answer, which leaves no evidence a hook can read back, is not
+    # taken as the Operator's.
+    ! { command -v mandate_run_ever >/dev/null 2>&1 \
+        && mandate_run_ever "$MAIN" "$(jq -r .team "$TD/team.json")" "$RUN"; } \
+      || d_bad 7 "run $RUN is or was under the Operator's mandate — an Operator answer needs evidence here: answer in the TeamLead's dialog or window, or relay it through the Supervisor (a terminal answer is refused)"
     printf 'Operator answer to %s: %s\nconfirm by typing %s: ' "$id" "$text" "$id" > /dev/tty
     IFS= read -r c < /dev/tty || c=""
     [ "$c" = "$id" ] || d_bad 7 "not confirmed — nothing applied"
@@ -792,6 +793,8 @@ decision_delegated() {
   [ -n "$cfg" ] && [ -f "$tx" ] || d_bad 7 "no Supervisor transcript to bind the answer to — nothing applied"
   floor="$(team_run_floor "$RUN" "$(dfm "$f" created_at)")"
   [ -n "$floor" ] || d_bad 7 "$id has no creation time to bind the answer to — nothing applied"
+  # … and no earlier than the Operator typed the mandate: a call made under another one is none.
+  floor="$(mandate_since "$MAIN" "$m" "$floor")" || d_bad 7 "mandate $m is no longer in force — hand $id back"
   . "$LIB/team-evidence.sh" && command -v team_evidence_tool_call >/dev/null 2>&1 \
     || d_bad 7 "no evidence matcher (team-evidence.sh)"
   args="$(team_delegate_args "$team" "$id" "$RUN" "$ask" "$aatt" "$asess" "$areq" "$text")"

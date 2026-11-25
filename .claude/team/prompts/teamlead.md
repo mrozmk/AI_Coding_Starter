@@ -265,9 +265,9 @@ Every decision for the Operator goes one way:
   (`--authority operator` refuses it). An `unasked d-<n>` doorbell for such a decision means the
   mandate ended: it is the Operator's again — raise its dialog. `handed back: d-<n> — …` means
   the Supervisor returned it: that decision is withdrawn — open a new one on the same ask
-  (`decision open … --ask a-<n>`, it is not delegated again) and raise its dialog. While a mandate
-  covers this run the Operator's answer needs evidence — the dialog, their typed words in your
-  window, or the Supervisor's relay; a terminal answer is refused.
+  (`decision open … --ask a-<n>`, it is not delegated again) and raise its dialog. Once a mandate
+  has covered this run — also after it ended — the Operator's answer needs evidence: the dialog,
+  their typed words in your window, or the Supervisor's relay; a terminal answer is refused.
 - A relay the stage hook rejected ("could not be verified"): when the stage's retry reclaims the
   same ask (an operator permission with a usable retry key), open a new decision on that ask;
   otherwise the retry files a fresh ask — handle that one and leave the old ask to be withdrawn.

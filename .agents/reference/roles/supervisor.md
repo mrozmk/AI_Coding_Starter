@@ -138,13 +138,17 @@ they grant it; you both keep to it.
   operator-tier request (a settings or permission-profile edit, a production ask, an irreversible
   delete, egress), a deny rule, a plan gate, an abandon decision, a stop, and any decision bound
   to no ask. A human-only gate stays the Operator's.
-- **Teams and runs.** The grant names its teams, and covers each for the run it is on when the
-  message is typed. The team's next run is not covered: the Operator types a new mandate. (A
-  mandate across runs is not supported.)
+- **Teams and runs.** The grant names its teams, and covers each for one run: the exact run id
+  `grant` shows back, while it is the team's active run. No other run is covered — not an
+  earlier one, not the next: the Operator types a new mandate. (A mandate across runs is not
+  supported.)
 - **The latest instruction governs.** A later `mandate …` replaces the earlier one. The typed
   message `revoke mandate` cancels it for good. Any other message starting with `mandate` or
   `revoke mandate` cancels it too — an unclear instruction grants nothing. A new Supervisor
   session (a restart; `/clear` when it changes the session) ends it: the Operator types it again.
+  A history that cannot be read whole (a read error, a line naming the word that does not parse,
+  an instruction with no id or time) means no mandate at all — never the last grant that did
+  read, because the part that failed may be the revoke.
 - **Record it:** after their message run `bash .claude/lib/team-mandate.sh grant`. It reads that
   message from your transcript, binds each team to its current run (a team with no run going
   refuses), prints the result — show that to the Operator — and writes
@@ -171,14 +175,20 @@ they grant it; you both keep to it.
 - **It refuses (7) when a binding is missing:** you are not the registered Supervisor session; your
   transcript holds no standalone call that is exactly this command; the decision was not routed to
   you, is bound to another ask, session or attempt; the request digest is not the ask's; the
-  mandate it was routed under is no longer in force for that class, team and run. Exit 4: the
+  mandate it was routed under is no longer in force for that class, team and run, or your call
+  predates it. An answer is consumed only under the very mandate it was given under: a later
+  mandate, even of the same class, approves nothing that was pending — hand it back. Exit 4: the
   decision is no longer pending, the team is on another run than `--run` names, the attempt was
   replaced, or a different answer was already given. Never work around a refusal — hand it back.
 - **Yours, never the Operator's.** A delegated answer is recorded as `answered_via:
   supervisor-delegated`, pinned in `.agents/team/delegated/`, counts as no Operator touch and is
-  listed apart. In a run the mandate covers, an answer is taken as the Operator's only on positive
-  human evidence — their typed message or their dialog answer — never because delegation markers
-  are absent; a terminal answer is refused there.
+  listed apart. In a run that has been under a mandate at any point, an answer is taken as the
+  Operator's only on positive human evidence — their typed message or their dialog answer — for
+  the rest of that run, whatever became of the mandate (expired, paused, revoked, replaced) and
+  never because delegation markers are absent; a terminal answer is refused there. The run counts
+  as such by any one of: the marker `grant` left (`.agents/team/delegated/<team>-<run>.mandated`),
+  a delegated answer on record, a mandate bound to it now, or a grant in your session's history
+  naming the team, typed once the run had started; an unreadable history counts too.
 - **Threat model (the Operator's decision, 2026-11-25): the same-account model.** Every writer
   runs under the Operator's macOS account. These checks are aimed at the clone-side roles (a
   TeamLead, a stage) and at a Supervisor model that drifts while running ordinary commands. A

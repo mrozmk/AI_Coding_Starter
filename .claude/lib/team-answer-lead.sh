@@ -55,11 +55,15 @@ auth_preflight() {
     # ledger is never relayed as the Operator's (the stage hook refuses it too).
     [ ! -e "$mr/.agents/team/delegated/$TEAM-$run-$(auth_fm "$d" id).json" ] \
       || refuse 7 "decision $(auth_fm "$d" id) has a delegated answer on record — relay it with --authority delegated"
-    # In a run the Operator's mandate covers, Operator authority needs positive human evidence
-    # (a typed message or a dialog answer): a `terminal` marker is not one.
-    if [ "$(auth_fm "$d" answered_via)" = terminal ] && . "$mr/.claude/lib/team-lead-lib.sh" 2>/dev/null \
-        && . "$mr/.claude/lib/team-mandate.sh" 2>/dev/null && mandate_run_capable "$mr" "$TEAM" "$run"; then
-      refuse 7 "run $run is under the Operator's mandate — a terminal answer is not taken as the Operator's; the Operator answers in the TeamLead's dialog or window, or through the Supervisor's relay"
+    # In a run that has been under the Operator's mandate at any point — expired, paused or
+    # revoked since, no matter — Operator authority needs positive human evidence (a typed
+    # message or a dialog answer) for the rest of the run: a `terminal` marker is not one.
+    # Checked here, before anything is logged or delivered.
+    if [ "$(auth_fm "$d" answered_via)" = terminal ]; then
+      . "$mr/.claude/lib/team-lead-lib.sh" 2>/dev/null && . "$mr/.claude/lib/team-mandate.sh" 2>/dev/null \
+        || refuse 7 "the main checkout's mandate library cannot be loaded — a terminal answer cannot be relayed as the Operator's"
+      ! mandate_run_ever "$mr" "$TEAM" "$run" \
+        || refuse 7 "run $run is or was under the Operator's mandate — a terminal answer is not taken as the Operator's for the rest of the run; the Operator answers in the TeamLead's dialog or window, or through the Supervisor's relay"
     fi
   fi
   # A decision about an ask binds that ask: a successor ask is never answered with it.

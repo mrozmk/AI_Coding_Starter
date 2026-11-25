@@ -1669,6 +1669,40 @@ jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"; LD a-1 d-1; wait "$HP1"; cp
 ok '[ "$R1" = 7 ] && [ "$R2" = 1 ] && [ "$R3" = 0 ] && grep -q "could not be verified for a-1" "$T/m10.out"' \
   "a stale grant after the Supervisor session rotates: no mandate, no delegated answer, and an earlier one is not delivered ($(cat "$T/sd.out"))"
 
+# ---- second review: unreadable history, the exact run, consumption --------------------------------
+# a line naming the word that does not parse: nothing is taken from the part that did read
+mrun 20990101-000016; G "$M1"; TM covers no-rule beta "$RUN"; R1="$TMRC"
+printf '{"type":"user","uuid":"xb","message":{"content":"revoke mandate"\n' >> "$SUPT"; say_sup x16 "revoke mandate" 2099-01-01T13:00:00Z
+TM covers no-rule beta "$RUN"; R2="$TMRC"; TM grant
+ok '[ "$R1" = 0 ] && [ "$R2" = 1 ] && [ "$TMRC" = 7 ] && grep -q "cannot be read whole" "$T/tm.out"' \
+  "a history with an unparseable mandate line grants nothing — never the last grant that did read ($(cat "$T/tm.out"))"
+mrun 20990101-000017; G "$M1"; jq -nc '{type: "user", timestamp: "2099-01-01T13:00:00Z", message: {role: "user", content: "revoke mandate"}}' >> "$SUPT"
+TM covers no-rule beta "$RUN"
+ok '[ "$TMRC" = 1 ]' "an instruction the history cannot identify (no uuid) is not skipped: no mandate"
+# the exact run id the grant showed, not any run that had started by then
+mrun 20990101-000018; G "$M1"; TM covers no-rule beta beta-20990101-000003; R1="$TMRC"; TM covers no-rule beta "$RUN"; R2="$TMRC"
+jq '.runs.beta = "beta-20990101-000003"' "$MF" > "$T/mf" && cp "$T/mf" "$MF"
+TM covers no-rule beta beta-20990101-000003; R3="$TMRC"; TM covers no-rule beta "$RUN"
+ok '[ "$R1" = 1 ] && [ "$R2" = 0 ] && [ "$R3" = 1 ] && [ "$TMRC" = 1 ]' \
+  "an earlier run of the team is not covered: the binding is the exact run id the grant showed, and it is the team's active run"
+# an answer pending since the previous mandate is not approved by a new one of the same class
+mrun 20990101-000019; G "$M1"; qask m19 1; dcall cm19 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"; R1="$SDRC"
+G "$M1" 2099-07-01T00:00:00Z; R2="$TMRC"; LD a-1 d-1; wait "$HP1"
+ok '[ "$R1" = 0 ] && [ "$R2" = 0 ] && grep -q "could not be verified for a-1" "$T/m19.out"' \
+  "an answer given under the previous mandate is not consumed under a new one of the same class ($(cat "$T/l.out"))"
+mrun 20990101-000020; G "$M1"; qask m20 1; dcall cm20 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"
+G "$M1" 2099-07-01T00:00:00Z
+jq --arg m "m-g$GN" '.mandate = $m' "$DLG/beta-$RUN-d-1.json" > "$T/led20" && cp "$T/led20" "$DLG/beta-$RUN-d-1.json"
+sed "s/^delegate_mandate: .*/delegate_mandate: m-g$GN/" "$RD/decisions/d-1.md" > "$T/d1.m" && cp "$T/d1.m" "$RD/decisions/d-1.md"
+LD a-1 d-1; wait "$HP1"
+ok 'grep -q "could not be verified for a-1" "$T/m20.out"' "… even with the ledger and the decision rewritten to the new mandate: the call predates it"
+# the attempt changed while the hook waited: read again at consumption
+mrun 20990101-000021; G "$M1"; qask m21 1; dcall cm21 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"; R1="$SDRC"
+jq '.attempt = 2' "$TD/session.json" > "$T/sj" && cp "$T/sj" "$TD/session.json"
+jq -n '{id: "a-1", form: "pick", value: "Remove it", authority: "supervisor (delegated)", why: "Supervisor (delegated)", decision: "d-1", answered_at: "2099-06-01T00:00:00Z", lead_session_id: "lid-1"}' > "$T/a21.json" && mv "$T/a21.json" "$AD/a-1.answer.json"
+wait "$HP1"
+ok '[ "$R1" = 0 ] && grep -q "could not be verified for a-1" "$T/m21.out"' "a stage attempt replaced while the hook waited → the hook denies (session and attempt are read at consumption)"
+
 # ---- attribution: Operator authority only on positive human evidence -----------------------------
 # a delegated answer on record, the decision rewritten to a terminal answer
 mrun 20990101-000011; G "$M1"; qask m11 1; dcall cm11 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"
@@ -1686,6 +1720,17 @@ jq -n '{id: "a-1", form: "allow", value: "", authority: "operator", why: "Operat
 wait "$HP"
 ok '[ "$R1" = 7 ] && grep -q "under the Operator.s mandate" "$T/l.out" && grep -q "could not be verified for a-1" "$T/m12.out"' \
   "missing markers produce no Operator attribution: in a run the mandate covers a terminal answer is refused by the sender and the hook ($(cat "$T/l.out"))"
+# the mandate ended (paused, then revoked): for the rest of the run a terminal marker is still no evidence
+mrun 20990101-000022; G "$M1"; TM pause; say_sup x22 "revoke mandate" 2099-01-01T13:00:00Z; TM covers no-rule beta "$RUN"; R0="$TMRC"
+pl perm-wc; TO=90 HB m22; wf "$AD/a-1.json"
+printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R1="$LRC"
+R3=1; [ ! -e "$DLG/beta-$RUN.mandated" ] || R3=0; rm -f "$DLG/beta-$RUN.mandated"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R2="$LRC"
+jq -n '{id: "a-1", form: "allow", value: "", authority: "operator", why: "Operator", decision: "d-1", answered_at: "2099-06-01T00:00:00Z", lead_session_id: "lid-1"}' > "$AD/a-1.answer.json"
+wait "$HP"
+ok '[ "$R0" = 1 ] && [ "$R1" = 7 ] && [ "$R3" = 0 ] && [ "$R2" = 7 ] && grep -q "could not be verified for a-1" "$T/m22.out" && ! grep -q "authority operator" "$RD/answers.md" 2>/dev/null' \
+  "a run that was under the mandate stays one after it is paused and revoked: a terminal answer is refused by the sender (by the grant's marker, and by the history without it) and by the hook, nothing logged ($(cat "$T/l.out"))"
 # the sender needs the real main checkout
 mrun 20990101-000013; pl perm-wc; TO=60 HB m13; wf "$AD/a-1.json"
 printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"

@@ -27,8 +27,9 @@ stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.m
   `Bash(bash .claude/lib/team-lead.sh decision handback *)`. A deny rule there for writes to
   `.agents/team/mandate.json`, `.agents/team/delegated/**` and `.agents/team/registry/**` closes
   the gap the same-account model leaves (`roles/supervisor.md` → Mandate).
-- In a run the mandate covers, an Operator answer needs evidence: the lead's dialog or window, or
-  the Supervisor's relay. `decision answer` from a terminal is refused there.
+- In a run that has been under a mandate at any point, an Operator answer needs evidence for the
+  rest of that run, also after the mandate ended: the lead's dialog or window, or the
+  Supervisor's relay. `decision answer` from a terminal is refused there.
 
 ## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
 
