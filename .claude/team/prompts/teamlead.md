@@ -142,12 +142,26 @@ the stage. No screen is read and nothing is typed into a stage.
      and only changes how or where a criterion is proven (the test's location, which suite step
      proves it, an AC re-worded with the same meaning). Answer it yourself, with no Codex opinion:
      `--authority teamlead --why "verification-only: <reason>"`. The acceptance brief lists it.
+   - **brief-decided** — the order brief already decides the point (a `[D]` line, a decision-log
+     row, an ordered or `Not ordered` item) and the asking role asks it again or proposes
+     otherwise. The brief wins: answer with the brief's option yourself, with no decision and no
+     Codex opinion: `--authority teamlead --why "brief: <line>"`. A stage's argument against the
+     brief (cost, size, convenience, a step that will need an approval later) is no reason to ask
+     the Operator. Open a decision instead only when **you** find a material conflict (two brief
+     lines that cannot both hold, a brief line against a later Operator decision), a constraint
+     that changed since the brief was written (evidence that its premise no longer holds), or the
+     stage requests a scope change (next class).
    - **escalate** — open a decision with `--ask a-<n>` instead of answering: scope beyond the
-     ticket; dropping or weakening a criterion (a re-wording that weakens it included);
-     contradicting an Operator decision (an answered decision, an order-brief line, a CLAUDE.md or
-     `decisions.md` Operator decision); an irreversible or outward-facing action; a product-fit hit
-     (`/brainstorm` Step 1.5 c, `/quick-change` Phase 0 → Product fit); a `/quick-change` Phase 0
-     override other than size.
+     ticket; dropping or weakening a criterion (a re-wording that weakens it included); an answer
+     that would have **you** contradict an Operator decision (an answered decision, a CLAUDE.md or
+     `decisions.md` Operator decision; an order-brief line only on the conflict or changed
+     constraint named under brief-decided); an irreversible or outward-facing action; a
+     product-fit hit (`/brainstorm` Step 1.5 c, `/quick-change` Phase 0 → Product fit); a
+     `/quick-change` Phase 0 override other than size.
+   - **A planned step is not the act.** A plan that includes a step needing an Operator approval
+     later (a network install, a settings edit) grants nothing and asks nothing of the Operator:
+     the request is gated when a stage makes it (its ask is rung `… operator`). A prerequisite
+     denied then means a blocked stage or a replan, never a failed trial.
    - Any other change of criteria follows rule 7.
 3. **Permission** (`ask <role> a-<n>: <tool> <command>`): `--allow` or `--deny "<instead>"`. Exit 7
    → the form does not fit the ask; read it again.
@@ -177,7 +191,12 @@ Every decision for the Operator goes one way:
    escalated question or stop is then answered only by the Operator's relay). `--notify
    abandon_decision` derives `continue|close`, `--gate plan` derives `approve|revise|close`. It
    writes `runs/{{RUN}}/decisions/d-<n>.md`, notifies the Operator once and prints
-   `ask-operator: <json>`.
+   `ask-operator: <json>`. A question's dialog carries one recommendation, yours: name the option
+   by its label without a marker, the stage's own `(Recommended)` markers are stripped and its
+   argument moves to a `<stage> recommends: …` line. Exit 2 naming a question text that argues
+   for an option → add a neutral one-line `--question` (a single question); for several
+   questions answer the ask with `--text`, asking the stage to ask again with the question text
+   free of a recommendation.
 2. Write any gate verdict that needs the decision pending (`plan escalate`,
    `acceptance abandon-recommended`).
 3. Answer every other pending item you can, then call `AskUserQuestion` with the printed
@@ -191,7 +210,10 @@ Every decision for the Operator goes one way:
 
 - `--reason` (when the call shows it) records why the Operator is needed in the project's touch
   log: an operator-tier ask or a human-only question → `human-only`; no rule or digest line
-  answers it → `no-rule`; a rule exists but you will not decide it → `lead-unsure`.
+  answers it → `no-rule`; a rule exists but you will not decide it → `lead-unsure`. `human-only`
+  names the act itself — the settings edit, the network or install command a stage requests —
+  never a question about planning a step that will need it: a planned future egress is not
+  human-only.
 - **The Operator answers every decision in your window, or relays it through the Supervisor**,
   never in a stage's.
 - A dismissed dialog leaves the decision pending: print `[d-<n>] <question>` with the options,
@@ -210,7 +232,9 @@ Every decision for the Operator goes one way:
 - Relay: `bash .claude/lib/team-answer.sh {{TEAM}} a-<n> <form> --authority operator
   --decision .agents/team/runs/{{RUN}}/decisions/d-<n>.md --why "Operator: <their words>"` — the
   form equal to the decision's answer (`--allow`/`--deny "<their alternative>"`, `--pick`/`--text`
-  with their answer, `--answers` with their labels). A decision relays once; another form refuses it.
+  with their answer, `--answers` with their labels — the decision's `answer_value` / `answer_map`,
+  which hold the stage's own labels, not the dialog's marked ones). A decision relays once;
+  another form refuses it.
 - **Relayed by the Supervisor.** A `relayed: d-<n> …` doorbell, or a `relayed …` line in `pending`,
   means the Operator answered in the Supervisor window and the decision is already answered. Do not
   ask again and do not reword: read `d-<n>.md`, first complete its `- d-<n> … — tuning: pending`

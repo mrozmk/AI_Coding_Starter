@@ -129,7 +129,7 @@ fallback() {
 # AskUserQuestion dialog there, or a `<team> d-<n> …` message the Supervisor relayed from its own
 # transcript) with this very answer.
 verify_operator() {
-  local id="$1" a="$2" did f via uuid t form val msg p x cfg r
+  local id="$1" a="$2" did f via uuid t form val msg p x cfg r dlg
   did="$(jq -r '.decision // ""' <<<"$a")"
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
@@ -164,11 +164,12 @@ verify_operator() {
       [ -f "$t" ] || return 1
       # ## Dialog is clone-side, yet safe: every dialog naming d-<n> must equal it, so an edit to
       # another wording only removes the evidence (team_evidence_dialog_valid).
-      r="$(team_evidence_dialog_read "$t" "$uuid" "$did" "$(dfm_h created_at)" \
-        "$(sed -n '/^## Dialog$/{n;p;q;}' "$f")")"
+      dlg="$(sed -n '/^## Dialog$/{n;p;q;}' "$f")"
+      r="$(team_evidence_dialog_read "$t" "$uuid" "$did" "$(dfm_h created_at)" "$dlg")"
       [ -n "$r" ] || return 1
       if [ "$form" = answers ]; then
-        [ "$(jq -cS .map <<<"$r")" = "$(jq -cS .value <<<"$a")" ]; return
+        # The dialog's map read back to the stage's question texts and labels, as the writer did.
+        [ "$(ask_dialog_map "$id" "$did" "$dlg" "$(jq -c .map <<<"$r")")" = "$(jq -cS .value <<<"$a")" ]; return
       fi
       reply_matches "$id" "$did" "$(jq -r .reply <<<"$r")" "$form" "$val" "$a"; return ;;
     *) return 1 ;;

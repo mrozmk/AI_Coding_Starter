@@ -6,7 +6,8 @@
 #     [--reason human-only|no-rule|lead-unsure|channel-failed|guard]
 #   decision open <team> --ask a-<n> [--question "<text>"] [--options "<a|b>"] [--recommend "<text>"]
 #     [--reason human-only|no-rule|lead-unsure|channel-failed|guard]
-#     (an operator-tier ask, or a workflow human gate in a question: bound to the ask)
+#     (an operator-tier ask, or a workflow human gate in a question: bound to the ask; --question
+#     is also the neutral dialog text of a single-question ask whose own text argues for an option)
 #   decision answer <team> d-<n> --text "<Operator answer>" | --from-ask
 #     [--outcome continue|close|more-revise|approve|allow|deny]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
@@ -163,12 +164,18 @@ notes_tune() {
 # The dialog's recommended option goes first, its description marked; every other text is kept.
 D_RECFIRST='def recfirst($r): (map(select(.label == $r)) | map(.description = ("Recommended — " + .label
   + (if (.description // "") == "" then "" else ". " + .description end)))) + map(select(.label != $r));'
+# A stage question carries one recommendation, the lead's: the option goes first with the label
+# suffix; the stage's own markers are stripped (ASK_LABEL_JQ unrec) and its pitch is attributed.
+D_REC_SUFFIX=' (Recommended)'
+D_RECQ='def recq($r; $s): (map(select(.label == $r)) | map(.label += $s)) + map(select(.label != $r));
+  def marked: test("[\\[(]\\s*recommended\\s*[\\])]"; "i");'
 
-# d_dialog <d-n> <ask|""> <kind> <dialog question> <options> <recommend> <gate> <notify> — the
-# Operator's AskUserQuestion input of a new-path decision, built from the filed ask payload (never
-# the shortened one-line summary); d_bad 2, nothing written, when it does not validate.
+# d_dialog <d-n> <ask|""> <kind> <dialog question> <options> <recommend> <gate> <notify>
+# [<neutral question>] — the Operator's AskUserQuestion input of a new-path decision, built from
+# the filed ask payload (never the shortened one-line summary); d_bad 2, nothing written, when it
+# does not validate. The neutral question is the lead's own --question of a single-question ask.
 d_dialog() {
-  local d="$1" ask="$2" kind="$3" dq="$4" opts="$5" rec="$6" gate="$7" notify="$8" j
+  local d="$1" ask="$2" kind="$3" dq="$4" opts="$5" rec="$6" gate="$7" notify="$8" nq="${9:-}" j
   case "$kind" in
     permission|plan)
       # The target is what the Operator decides on: never cut (Bash the whole command, an MCP or
@@ -184,14 +191,26 @@ d_dialog() {
             options: ([{label: "allow", description: (if $k == "plan" then "approve the plan as written" else "run it as asked" end)},
               {label: "deny", description: "type \"deny: <what instead>\" through Other"}] | recfirst($r))}]}' "$ASK_D/$ask.json")" ;;
     question)
-      j="$(jq -c --arg d "$d" --arg r "$rec" "$D_RECFIRST"'
+      # One recommendation, the lead's: stage markers leave the labels, the text after the question
+      # that argues for an option (or, with a neutral --question, the stage's whole text) moves to
+      # a "<stage> recommends: …" line, and only the lead's option gets the suffix.
+      j="$(jq -c --arg d "$d" --arg r "$rec" --arg nq "$nq" --arg s "$D_REC_SUFFIX" "$ASK_LABEL_JQ$D_RECQ"'
         .role as $role | (.payload.tool_input.questions // []) as $qs
-        | {questions: [$qs | to_entries[] | .key as $k | .value
-            | {question: ("\($d) " + (if ($qs | length) == 1 then "\($role): " else "" end) + .question),
-               header: (if ($qs | length) == 1 then $d else (.header // "\($d)/\($k + 1)") end),
-               multiSelect: (.multiSelect // false),
-               options: ([(.options // [])[] | {label, description: (.description // "")}]
-                 | if $k == 0 then recfirst($r) else . end)}]}' "$ASK_D/$ask.json")" ;;
+        | [$qs | to_entries[] | .key as $k | .value as $q
+            | (if $nq != "" and ($qs | length) == 1 then {h: $nq, p: ($q.question // "")}
+               else (($q.question // "") | pitchcut) end) as $c
+            | [($q.options // [])[] | .label | select(unrec != .) | unrec] as $m
+            | (if $c.p == "" and ($m | length) == 0 then ""
+               else "\n\n\($role) "
+                 + (if ($m | length) > 0 or ($c.p | argues) then "recommends: " else "adds: " end)
+                 + ([($m | join(" / ")), $c.p] | map(select(. != "")) | join(" — ")) end) as $line
+            | {head: $c.h,
+               q: {question: ("\($d) " + (if ($qs | length) == 1 then "\($role): " else "" end) + $c.h + $line),
+                 header: (if ($qs | length) == 1 then $d else ($q.header // "\($d)/\($k + 1)") end),
+                 multiSelect: ($q.multiSelect // false),
+                 options: ([($q.options // [])[] | {label: (.label | unrec), description: (.description // "")}]
+                   | if $k == 0 then recq($r; $s) else . end)}}]
+        | {questions: map(.q), heads: map(.head)}' "$ASK_D/$ask.json")" ;;
     *)
       if [ -z "$opts" ]; then
         if [ "$notify" = abandon_decision ]; then opts="continue|close"
@@ -207,8 +226,24 @@ d_dialog() {
             | {label: ., description: desc}] | recfirst($r))}]}')" ;;
   esac
   [ -n "$j" ] || d_bad 2 "the dialog of $d could not be built"
-  jq -e --arg r "$rec" 'any(.questions[0].options[]; .label == $r)' <<<"$j" >/dev/null 2>&1 \
-    || d_bad 2 "--recommend must name one of: $(jq -r '[.questions[0].options[].label] | sort | join("|")' <<<"$j")"
+  if [ "$kind" = question ]; then
+    jq -e --arg r "$rec$D_REC_SUFFIX" 'any(.questions[0].options[]; .label == $r)' <<<"$j" >/dev/null 2>&1 \
+      || d_bad 2 "--recommend must name one of: $(jq -r '[.questions[0].options[].label] | sort | join("|")' <<<"$j")"
+    # The rendered dialog, before anything is written or notified: exactly one recommended option
+    # — the lead's, first — and a single question's text no longer argues for one.
+    jq -e --arg r "$rec$D_REC_SUFFIX" "$D_RECQ"'
+      ([.questions[].options[].label | select(marked)] == [$r]) and .questions[0].options[0].label == $r' \
+      <<<"$j" >/dev/null 2>&1 \
+      || d_bad 2 "the dialog of $d must carry exactly one recommended option, the lead's, first — its labels: $(jq -r '[.questions[].options[].label] | join("|")' <<<"$j")"
+    jq -e "$ASK_LABEL_JQ"'all(.heads[]; argues | not)' <<<"$j" >/dev/null 2>&1 \
+      || d_bad 2 "a question text of $ask argues for an option — $(if [ "$(jq -r '.heads | length' <<<"$j")" = 1 ]; then
+        echo "pass a neutral one-line --question (the stage's own text moves to its \"recommends:\" line)"
+      else echo "several questions take no --question: answer the ask with --text, asking the stage to ask again with the question text free of a recommendation"; fi)"
+    j="$(jq -c 'del(.heads)' <<<"$j")"
+  else
+    jq -e --arg r "$rec" 'any(.questions[0].options[]; .label == $r)' <<<"$j" >/dev/null 2>&1 \
+      || d_bad 2 "--recommend must name one of: $(jq -r '[.questions[0].options[].label] | sort | join("|")' <<<"$j")"
+  fi
   jq -e '(.questions | length) >= 1 and (.questions | length) <= 4
     and all(.questions[]; (.options | length) >= 2 and (.options | length) <= 4
       and ((.header // "") | length) <= 12 and ((.options | map(.label) | unique | length) == (.options | length)))' \
@@ -273,7 +308,9 @@ ask_kind: $kind"
     if [ "$kind" = text ] && [ -z "$qgiven" ]; then
       dq="$(ask_get "$ask" role): $(jq -r '.payload.text // ""' "$ASK_D/$ask.json")"
     fi
-    dialog="$(d_dialog "d-$n" "$ask" "$kind" "$dq" "$opts" "$rec" "$gate" "$notify")" || exit $?
+    # A stage question is recommended by its clean label; ## Recommendation stores that one.
+    [ "$kind" != question ] || rec="$(jq -rn --arg r "$rec" "$ASK_LABEL_JQ"'$r | unrec')"
+    dialog="$(d_dialog "d-$n" "$ask" "$kind" "$dq" "$opts" "$rec" "$gate" "$notify" "$qgiven")" || exit $?
   fi
   { echo "---"; echo "id: d-$n"; echo "status: pending"
     echo "stage: $(jq -r '.role // "-"' "$TD/session.json" 2>/dev/null || echo -)"
@@ -405,7 +442,10 @@ decision_answer() {
     if [ -n "$fromask" ] && [ "${nq:-0}" -gt 1 ]; then
       # Several questions: the dialog's structured answers as they are, never a text round-trip,
       # so a ";" or ":" inside an answer survives.
-      amap="$(jq -cS 'select(type == "object") | .map // empty' <<<"$r")"
+      # The dialog's map is keyed by the dialog's question texts and labels; the stage reads its
+      # own, so each entry is re-keyed by position and its label read back (stagelabel).
+      amap="$(ask_dialog_map "$ask" "$id" "$(sed -n '/^## Dialog$/{n;p;q;}' "$f")" \
+        "$(jq -c 'select(type == "object") | .map // empty' <<<"$r")")" || amap=""
       jq -e --slurpfile a "$ASK_D/$ask.json" '(keys | sort) == ($a[0].payload.tool_input.questions | map(.question) | sort)
         and all(.[]; type == "string" and length > 0)' <<<"${amap:-null}" >/dev/null 2>&1 \
         || d_bad 7 "the dialog answer of $id does not answer every question of $ask"

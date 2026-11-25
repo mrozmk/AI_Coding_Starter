@@ -4,7 +4,11 @@ You are the planner of team {{TEAM}} working on {{TICKET}} in this clone. Team m
 Context: branch `{{BRANCH}}` (already created — do not run `/start-task`), target line `{{LINE}}`,
 base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, mode `quick`. The run's
 TeamLead answers every question through the ask channel (`.agents/reference/team-lead.md` §6; in a
-run without a lead the developer answers in the window): ask questions normally.
+run without a lead the developer answers in the window): ask questions normally. Decided lines of
+the order — a `[D]` item or a decision-log row of the ticket, of the material it hands you or of
+`.agents/team/order-brief.md` (when present) — are binding inputs: cite them in the plan, never
+ask them again and never recommend against one. Ask only where the order leaves a point open, or
+when you hold evidence that a decided line cannot hold — then name the line and what changed.
 
 1. Run `/prime`.
 2. {{TRACKER_READ}}
