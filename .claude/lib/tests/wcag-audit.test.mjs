@@ -22,6 +22,10 @@ import { STRINGS } from '../../skills/wcag-audit/runner/lib/strings.mjs';
 import { RULES, SCHEMAS } from '../../skills/wcag-audit/runner/lib/contract.mjs';
 import * as deps from '../../skills/wcag-audit/runner/lib/deps.mjs';
 import { startProxy } from '../../skills/wcag-audit/runner/lib/proxy.mjs';
+import { Scanner } from '../../skills/wcag-audit/runner/lib/scan.mjs';
+import { collectSemantic } from '../../skills/wcag-audit/runner/lib/checks/semantic.mjs';
+import arrowWidgets from '../../skills/wcag-audit/runner/lib/checks/arrow-widgets.mjs';
+import contrastRender from '../../skills/wcag-audit/runner/lib/checks/contrast-render.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..', '..');
@@ -694,3 +698,66 @@ test('judge agent contract holds', () => judgeAgentContract());
 test('command text contract holds', () => commandTextContract());
 test('settings contract holds', () => settingsContract());
 test('command contracts hold', () => { judgeAgentContract(); commandTextContract(); settingsContract(); });
+
+// ---- QA pins (round 1) ----------------------------------------------------------------------
+
+function scanner(Cls, run, opts = {}) {
+  return new Cls({ run, work: tmp(), ruleIds: [], profile: {}, ctxInfo: {}, persist: () => {}, ...opts });
+}
+
+test('an abandoned target settles before the scanner moves on', async () => {
+  const run = baseRun();
+  const seen = [];
+  class Slow extends Scanner {
+    async scanTarget(url) {
+      await new Promise((r) => setTimeout(r, 80));
+      seen.push({ page: this.page, viewport: this.viewport });
+      await this.prepared('desktop', url);
+      seen.push('opened after the time limit');
+    }
+  }
+  await scanner(Slow, run, { pageLimitMs: 20 }).target(0, 'https://example.com/a', 'desktop');
+  assert.deepEqual(seen, [{ page: ev.pageKey(0), viewport: 'desktop' }]);
+  assert.ok(run.ledger.some((l) => l.kind === 'page-time-limit'));
+});
+
+test('the desktop user-agent retry never fires on the proxy refusal', async () => {
+  const run = baseRun();
+  class Blocked extends Scanner {
+    async prepared() { this.calls = (this.calls || 0) + 1; return { error: { status: 403, reason: 'destination-blocked' } }; }
+  }
+  const s = scanner(Blocked, run);
+  await s.target(0, 'https://example.com/a', 'desktop');
+  assert.equal(s.calls, 1);
+  assert.deepEqual(run.scope.retries, []);
+  assert.equal(run.pages.find((p) => p.page === ev.pageKey(0)).reason, 'destination-blocked');
+});
+
+test('a broken image needs an HTTP error or a failed load, never an image the lockdown kept unloaded', async () => {
+  const imgs = ['404', 'lazy', 'blocked', 'dns'].map((n, i) => ({ sel: `img:nth-of-type(${i + 1})`, src: `https://x.test/${n}.png`, alt: n, loaded: false, visible: true }));
+  const page = { evaluate: async () => ({ imgs, groups: [], outline: [] }) };
+  const responses = new Map([['https://x.test/404.png', 404]]);
+  const failed = new Map([['https://x.test/blocked.png', 'net::ERR_BLOCKED_BY_CLIENT'], ['https://x.test/dns.png', 'net::ERR_NAME_NOT_RESOLVED']]);
+  const res = await collectSemantic(page, { responses, failed, cdp: null });
+  assert.deepEqual(res.broken.map((b) => b.selector), ['img:nth-of-type(1)', 'img:nth-of-type(4)']);
+  assert.equal(res.items.filter((i) => i.kind === 'alt-vs-image').length, 0);
+});
+
+test('an IPv6 literal target is a given origin', () => {
+  const origins = policy.givenOrigins([new URL('http://[::1]:8080/')]);
+  for (const host of ['::1', '[::1]']) assert.equal(policy.decide({ scheme: 'http', host, port: '8080', addresses: ['::1'], runClass: 'loopback', origins }).allow, true, host);
+});
+
+test('selectors from W.sel are resolved through W.q, never document.querySelector', () => {
+  const lib = path.join(SKILL, 'runner', 'lib');
+  const files = [lib, path.join(lib, 'checks'), path.join(lib, 'engines')].flatMap((d) => fs.readdirSync(d).filter((f) => f.endsWith('.mjs')).map((f) => path.join(d, f)));
+  for (const f of files) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /document\.querySelector\(arg/, f);
+});
+
+test('arrow-widgets and contrast-render report a missing unit when nothing was measured', async () => {
+  const queue = [['[role=tablist]'], false];
+  const page = { evaluate: async () => queue.shift(), keyboard: { press: async () => {} } };
+  assert.deepEqual(await arrowWidgets.run({ page }), [{ contributor: 'arrow-widgets', missing: 'not-measured' }]);
+  const detached = { locator: () => ({ first: () => ({ evaluate: async () => { throw new Error('detached'); } }) }) };
+  assert.deepEqual(await contrastRender.run({ page: detached, axe: [{ rule: 'color-contrast', outcome: 'needs-review', selector: 'p' }] }), [{ contributor: 'contrast-render', missing: 'not-measured' }]);
+});

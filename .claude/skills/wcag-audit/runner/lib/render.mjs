@@ -5,6 +5,9 @@ import path from 'node:path';
 import { pick, remediation } from './strings.mjs';
 import { understandingUrl, criterionById } from './criteria.mjs';
 import { evidencePath } from './paths.mjs';
+import { SKILL_DIR } from './deps.mjs';
+import { IMPACTS } from './contract.mjs';
+import { STATUS } from './evidence.mjs';
 
 export function esc(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -50,7 +53,7 @@ function cropTag(work, run, evidenceId) {
   return `<img class="crop" alt="${esc(`Evidence ${evidenceId}`)}" src="data:image/png;base64,${b64}">`;
 }
 
-export function loadLegal(skillDir) {
+export function loadLegal(skillDir = SKILL_DIR) {
   return JSON.parse(fs.readFileSync(path.join(skillDir, 'legal.json'), 'utf8'));
 }
 
@@ -83,14 +86,13 @@ export function render(run, { lang = 'en', siteLang = null, work = null, legal =
     parts.push(section('legal', s.sections.legal, `<p>${esc(s.labels.last_verified)}: ${esc(legal.last_verified)}</p><ul>${items.join('')}</ul>`));
   }
 
-  const impacts = ['blocker', 'serious', 'moderate', 'minor'];
   const findings = run.findings || [];
-  parts.push(section('summary', s.sections.summary, table(s.sections.summary, [s.labels.impact, '●', '◐'], impacts.map((i) => [esc(i), String(findings.filter((f) => f.impact === i && f.basis === '●').length), String(findings.filter((f) => f.impact === i && f.basis === '◐').length)]))));
+  parts.push(section('summary', s.sections.summary, table(s.sections.summary, [s.labels.impact, '●', '◐'], IMPACTS.map((i) => [esc(i), String(findings.filter((f) => f.impact === i && f.basis === '●').length), String(findings.filter((f) => f.impact === i && f.basis === '◐').length)]))));
 
   const matrixRows = (run.criteria || []).map((c) => {
     const crit = criterionById(c.id);
     const label = s.status[c.status] ?? c.status;
-    const cls = c.status === 'fails' ? 's-fails' : c.status === 'suspected' ? 's-suspected' : '';
+    const cls = c.status === STATUS.FAILS ? 's-fails' : c.status === STATUS.SUSPECTED ? 's-suspected' : '';
     const link = crit ? ` <a href="${esc(understandingUrl(crit.slug))}">${esc(s.labels.understanding)}</a>` : '';
     return [`${esc(c.id)} ${esc(crit?.title || '')}${link}`, `<span class="${cls}">${esc(label)}</span>`, esc(c.ceiling), esc(c.reason || '')];
   });

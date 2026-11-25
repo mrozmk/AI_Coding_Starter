@@ -31,21 +31,22 @@ export function lockBytes(skillDir = SKILL_DIR) {
 }
 
 // absent: no cache root or no ready.json anywhere under it (the suite skips the browser step);
-// broken:<why>: something is installed but unusable for this lock; ready: usable.
+// broken:<why>: something is installed but unusable for this lock; ready: usable. Every non-ready
+// result carries its refusal code.
 export function classifyInstall({ root = cacheRoot(), skillDir = SKILL_DIR, nodeVersion = process.versions.node } = {}) {
   let entries = [];
-  try { entries = fs.readdirSync(root); } catch { return { install: 'absent' }; }
+  try { entries = fs.readdirSync(root); } catch { return { install: 'absent', refusal: 'cache-absent' }; }
   const readyDirs = entries.filter((e) => fs.existsSync(path.join(root, e, 'ready.json')));
-  if (!readyDirs.length) return { install: 'absent' };
+  if (!readyDirs.length) return { install: 'absent', refusal: 'cache-absent' };
   let key;
-  try { key = cacheKey(lockBytes(skillDir), { nodeMajor: nodeVersion.split('.')[0] }); } catch { return { install: 'broken', reason: 'package-lock.json unreadable' }; }
+  try { key = cacheKey(lockBytes(skillDir), { nodeMajor: nodeVersion.split('.')[0] }); } catch { return { install: 'broken', refusal: 'cache-broken', reason: 'package-lock.json unreadable' }; }
   const dir = path.join(root, key);
-  if (!readyDirs.includes(key)) return { install: 'broken', reason: 'cache-key-mismatch', dir };
+  if (!readyDirs.includes(key)) return { install: 'broken', refusal: 'cache-key-mismatch', reason: 'cache-key-mismatch', dir };
   let ready;
-  try { ready = JSON.parse(fs.readFileSync(path.join(dir, 'ready.json'), 'utf8')); } catch { return { install: 'broken', reason: 'ready.json unreadable', dir }; }
-  if (ready.key !== key) return { install: 'broken', reason: 'cache-key-mismatch', dir };
+  try { ready = JSON.parse(fs.readFileSync(path.join(dir, 'ready.json'), 'utf8')); } catch { return { install: 'broken', refusal: 'cache-broken', reason: 'ready.json unreadable', dir }; }
+  if (ready.key !== key) return { install: 'broken', refusal: 'cache-key-mismatch', reason: 'cache-key-mismatch', dir };
   for (const mod of ['playwright-core', 'axe-core', '@axe-core/playwright', 'pngjs']) {
-    if (!fs.existsSync(path.join(dir, 'node_modules', mod, 'package.json'))) return { install: 'broken', reason: `module missing: ${mod}`, dir };
+    if (!fs.existsSync(path.join(dir, 'node_modules', mod, 'package.json'))) return { install: 'broken', refusal: 'cache-broken', reason: `module missing: ${mod}`, dir };
   }
   return { install: 'ready', dir, key };
 }
@@ -54,11 +55,7 @@ export function assertReady(opts = {}) {
   const nodeVersion = opts.nodeVersion ?? process.versions.node;
   if (!nodeOk(nodeVersion)) throw new Refusal('node-too-old', `node ${nodeVersion} is too old — /wcag-audit needs >= ${MIN_NODE.join('.')}`);
   const st = classifyInstall({ ...opts, nodeVersion });
-  if (st.install === 'absent') throw new Refusal('cache-absent', 'engine cache not installed — run: bash .claude/skills/wcag-audit/install.sh');
-  if (st.install === 'broken') {
-    const code = st.reason === 'cache-key-mismatch' ? 'cache-key-mismatch' : 'cache-broken';
-    throw new Refusal(code, `${st.reason} — run: bash .claude/skills/wcag-audit/install.sh`);
-  }
+  if (st.install !== 'ready') throw new Refusal(st.refusal, `${st.reason ?? 'engine cache not installed'} — run: bash .claude/skills/wcag-audit/install.sh`);
   return st;
 }
 
@@ -71,7 +68,7 @@ export function browserChoice(dir, env = process.env) {
   }
   const browsers = path.join(dir, 'browsers');
   try {
-    if (fs.readdirSync(browsers).some((e) => e.startsWith('chromium'))) return { channel: undefined, bundled: true };
+    if (fs.readdirSync(browsers).some((e) => e.startsWith('chromium'))) return { channel: undefined };
   } catch { /* none bundled */ }
   throw new Refusal('browser-absent', 'no Google Chrome and no bundled Chromium — install Chrome or run: bash .claude/skills/wcag-audit/install.sh --with-chromium');
 }
@@ -86,7 +83,6 @@ export function load(opts = {}) {
   const req = createRequire(path.join(st.dir, 'node_modules', 'noop.js'));
   loaded = {
     dir: st.dir,
-    require: req,
     playwright: req('playwright-core'),
     AxeBuilder: req('@axe-core/playwright').default ?? req('@axe-core/playwright').AxeBuilder,
     axe: req('axe-core'),

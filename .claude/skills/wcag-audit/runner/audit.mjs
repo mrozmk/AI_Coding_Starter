@@ -8,8 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Refusal, assertWork, readRun, writeRun, writeAtomic } from './lib/paths.mjs';
 
-export const SKILL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
 const USAGE = 'usage: audit.mjs doctor [--json] [--launch] | scan --urls-file <f> [--level A|AA] [--wcag 2.2|2.1] [--viewports desktop,mobile] [--max-pages n] [--client public-sector|eaa-service|microenterprise|other|unknown] [--no-llm] [--slug s] | pack --work <dir> --phase probe|judge|disprove | ingest --work <dir> --phase judge|disprove --file <f> | render --work <dir> [--lang <code>]';
 
 const FLAGS = new Set(['--json', '--launch', '--no-llm']);
@@ -44,7 +42,7 @@ async function doctor(opts) {
   info.install = st.install;
   if (st.install !== 'ready') {
     const hint = 'run: bash .claude/skills/wcag-audit/install.sh';
-    return out({ ...info, reason: st.reason ?? 'engine cache not installed', refusal: st.install === 'absent' ? 'cache-absent' : (st.reason === 'cache-key-mismatch' ? 'cache-key-mismatch' : 'cache-broken'), hint }, 3);
+    return out({ ...info, reason: st.reason ?? 'engine cache not installed', refusal: st.refusal, hint }, 3);
   }
   info.cache_dir = st.dir;
   try {
@@ -86,7 +84,7 @@ async function renderCmd(opts) {
   const run = readRun(work);
   finalize(run);
   writeRun(work, run);
-  const html = render(run, { lang: opts.lang || 'en', siteLang: run.site_lang ?? null, work, legal: loadLegal(SKILL_DIR) });
+  const html = render(run, { lang: opts.lang || 'en', siteLang: run.site_lang ?? null, work, legal: loadLegal() });
   const root = path.dirname(work);
   const base = path.basename(work);
   const htmlPath = path.join(root, `${base}.html`);

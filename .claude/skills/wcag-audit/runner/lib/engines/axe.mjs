@@ -8,8 +8,6 @@ import { redactText } from '../redact.mjs';
 
 const IMPACT = { critical: 'blocker', serious: 'serious', moderate: 'moderate', minor: 'minor' };
 
-// Each child frame whose security origin differs from the top frame's, is opaque, or is not in this
-// renderer's frame tree (an out-of-process, cross-site frame) is skipped.
 const PATH_FN = `function () {
   const parts = [];
   let cur = this;
@@ -51,7 +49,7 @@ export async function classifyFrames(page) {
     const entry = sel ? entries.find((e) => e.sel === sel) : null;
     if (!entry || opaque(entry.origin) || entry.origin !== topOrigin) skipped.push({ frame, selector: sel, reason: entry ? 'other-origin' : 'owner-unresolved' });
   }
-  return { skipped, topOrigin };
+  return { skipped };
 }
 
 export async function ownerSelector(frame) {
@@ -88,7 +86,6 @@ export async function runAxe(page, { ruleIds, enableTargetSize, exclude = [], te
           impact: IMPACT[(n && n.impact) || r.impact] || 'moderate',
           selector: n ? selectorOf(n.target) : '',
           frame: n ? frameOf(n.target) : '',
-          target: n ? n.target : null,
           help: r.help, helpUrl: r.helpUrl,
           data: outcome === 'needs-review' && n ? contrastData(n) : null,
         });

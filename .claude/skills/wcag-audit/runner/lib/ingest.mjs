@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Refusal, assertInputFile, readRun, writeRun } from './paths.mjs';
 import { OUTCOMES, VERDICTS, IMPACTS, MAX_TEXT, SCHEMAS } from './contract.mjs';
 import { finalize } from './evidence.mjs';
+import { assertLlm } from './pack.mjs';
 
 function exactKeys(obj, keys) {
   return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === keys.length && keys.every((k) => k in obj);
@@ -14,7 +15,7 @@ const shortText = (v) => typeof v === 'string' && v.length <= MAX_TEXT;
 export function ingest(work, phase, file) {
   if (phase !== 'judge' && phase !== 'disprove') throw new Refusal('bad-phase', '--phase must be judge or disprove');
   const run = readRun(work);
-  if (run.llm === false) throw new Refusal('llm-off', 'this run was scanned with --no-llm — no pack and no ingest');
+  assertLlm(run);
   assertInputFile(file);
   const model = JSON.parse(JSON.stringify(run.model));
   const dropped = [];

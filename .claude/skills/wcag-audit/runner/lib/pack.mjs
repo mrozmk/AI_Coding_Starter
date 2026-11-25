@@ -27,7 +27,7 @@ function reportRendered(work) {
   return fs.existsSync(path.join(root, `${path.basename(work)}.html`));
 }
 
-function assertLlm(run) {
+export function assertLlm(run) {
   if (run.llm === false) throw new Refusal('llm-off', 'this run was scanned with --no-llm — no pack and no ingest');
 }
 

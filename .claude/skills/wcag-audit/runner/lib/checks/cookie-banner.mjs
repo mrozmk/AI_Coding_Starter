@@ -3,7 +3,7 @@
 import { inPage, toLocator } from '../dom.mjs';
 
 export const CMP_SELECTORS = '#onetrust-banner-sdk, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .cmplz-cookiebanner, #iubenda-cs-banner, [id*=cookie i], [class*=cookie i], [id*=consent i], [class*=consent i]';
-// Exact names: "Reject all", "Odrzuć wszystkie", "Odrzuć", "Decline", "Only necessary", "Nur notwendige", "Close", "Zamknij".
+// Matched against the whole button name ("Reject all" matches, "Reject all and pay" does not).
 export const REJECT_NAMES = /^(reject all|reject|odrzuć wszystkie|odrzuć|decline|decline all|only necessary|necessary only|tylko niezbędne|nur notwendige|alle ablehnen|ablehnen|tout refuser|refuser|continuer sans accepter|rechazar todo|rechazar|close|zamknij|schließen|fermer|cerrar|×|✕|x)$/i;
 export const ACCEPT_LIKE = /accept|akceptuj|zgadzam|allow all|agree|zezwól|zaakceptuj|alle akzeptieren|tout accepter|aceptar/i;
 
@@ -19,7 +19,7 @@ export async function detectBanner(page) {
 // Returns {dismissed: boolean, button?: string}.
 export async function dismissBanner(page, selector) {
   const btn = await inPage(page, `
-    const box = document.querySelector(arg.sel);
+    const box = W.q(arg.sel);
     if (!box) return null;
     const re = new RegExp(arg.reject, 'i');
     const accept = new RegExp(arg.accept, 'i');
@@ -31,6 +31,6 @@ export async function dismissBanner(page, selector) {
   if (!btn) return { dismissed: false };
   await page.locator(toLocator(btn)).first().click({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(150);
-  const still = await inPage(page, 'const b = document.querySelector(arg); return !!b && W.visible(b);', selector);
+  const still = await inPage(page, 'const b = W.q(arg); return !!b && W.visible(b);', selector);
   return { dismissed: !still, button: btn };
 }

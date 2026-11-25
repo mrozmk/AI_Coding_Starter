@@ -15,9 +15,10 @@ export default {
     const widgets = await inPage(page, `return W.all().filter((el) => el.matches(arg) && W.visible(el)).slice(0, 5).map((el) => W.sel(el));`, ROLES);
     if (!widgets.length) return [{ contributor: 'arrow-widgets', outcome: 'inapplicable' }];
     const out = [];
+    let tried = 0;
     for (const sel of widgets) {
       const focused = await inPage(page, `
-        const c = document.querySelector(arg);
+        const c = W.q(arg);
         if (!c) return false;
         const t = c.matches('[tabindex]:not([tabindex="-1"])') ? c : Array.from(c.querySelectorAll('*')).find((el) => el.tabIndex >= 0 && W.visible(el));
         if (!t) return false;
@@ -25,6 +26,7 @@ export default {
         return true;
       `, sel).catch(() => false);
       if (!focused) continue;
+      tried += 1;
       const before = await inPage(page, STATE);
       let moved = false;
       for (const key of ['ArrowRight', 'ArrowDown']) {
@@ -37,6 +39,8 @@ export default {
           steps: ['Focus the widget with Tab.', 'Press ArrowRight and ArrowDown: neither focus nor the active descendant moves.'] });
       }
     }
+    // No widget could be focused: nothing was measured, so the unit is missing, never a pass.
+    if (!tried) return [{ contributor: 'arrow-widgets', missing: 'not-measured' }];
     if (!out.length) out.push({ contributor: 'arrow-widgets', outcome: 'pass' });
     return out;
   },

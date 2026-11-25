@@ -13,8 +13,6 @@ export const STATUS = {
   NOT_TESTED: 'not tested',
 };
 
-export const VERDICT_KEYS = ['nothing-scanned', 'partial', 'fails', 'suspected', 'positive'];
-
 export function newRun({ urls, viewports, wcag = '2.2', level = 'AA', client = 'unknown', llm = true, tool = {} }) {
   return {
     schema: 1,

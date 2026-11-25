@@ -24,19 +24,19 @@ function parseRgb(text) {
 export default {
   name: 'contrast-render',
   mode: 'readonly',
-  needsAxe: true,
   contributors: [{ id: 'contrast-render', sc: ['1.4.3'] }],
   doesNotDetect: 'contrast of text inside images',
   async run({ page, axe }) {
-    const { PNG } = loadDeps();
     const nodes = (axe || []).filter((r) => r.rule === 'color-contrast' && r.outcome === 'needs-review' && r.selector && !r.frame).slice(0, MAX_NODES);
     if (!nodes.length) return [{ contributor: 'contrast-render', outcome: 'inapplicable' }];
     const out = [];
+    let measured = 0;
     for (const n of nodes) {
       const loc = page.locator(toLocator(n.selector)).first();
       let info;
       try {
         info = await loc.evaluate((el) => {
+          el.scrollIntoView({ block: 'center', inline: 'center' });
           const cs = getComputedStyle(el);
           const size = parseFloat(cs.fontSize);
           const bold = parseInt(cs.fontWeight, 10) >= 700;
@@ -57,6 +57,7 @@ export default {
       }, info.prev).catch(() => {});
       const fg = parseRgb(info.color);
       if (!buf || !fg) continue;
+      const { PNG } = loadDeps();
       const png = PNG.sync.read(buf);
       let worst = Infinity;
       for (let y = 2; y < png.height - 2; y += 1) {
@@ -68,11 +69,14 @@ export default {
         }
       }
       if (!Number.isFinite(worst)) continue;
+      measured += 1;
       const threshold = info.large ? 3 : 4.5;
       if (worst < threshold) {
         out.push({ contributor: 'contrast-render', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: n.selector, cropSelector: n.selector, data: { worst_ratio: Math.round(worst * 100) / 100, threshold } });
       }
     }
+    // Nothing sampled: the unit is missing, never a pass.
+    if (!measured) return [{ contributor: 'contrast-render', missing: 'not-measured' }];
     if (!out.length) out.push({ contributor: 'contrast-render', outcome: 'pass' });
     return out;
   },

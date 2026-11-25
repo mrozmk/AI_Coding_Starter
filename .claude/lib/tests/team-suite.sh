@@ -500,11 +500,10 @@ for s in "${STANDALONE[@]}"; do
 done
 
 # ---- 3b. /wcag-audit browser test: needs the per-machine engine cache; skipped only when absent ---
-if want wcag-audit-browser-test && ! skipped wcag-audit-browser-test && [ -n "${TEAM_SUITE_ONLY:-}" ]; then
-  add 1 wcag-audit-browser-test bash "$TESTS/wcag-audit-browser-test.sh"   # serial: timing-sensitive
-elif [ "$(node "$ROOT/.claude/skills/wcag-audit/runner/audit.mjs" doctor --json 2>/dev/null | jq -r .install 2>/dev/null)" = absent ]; then
-  want wcag-audit-browser-test && ! skipped wcag-audit-browser-test \
-    && add_note wcag-audit-browser-test "skip wcag-audit-browser-test — engine cache not installed (bash .claude/skills/wcag-audit/install.sh)"
+# An explicit TEAM_SUITE_ONLY selection always runs it (serial: timing-sensitive).
+if want wcag-audit-browser-test && ! skipped wcag-audit-browser-test && [ -z "${TEAM_SUITE_ONLY:-}" ] \
+  && [ "$(node "$ROOT/.claude/skills/wcag-audit/runner/audit.mjs" doctor --json 2>/dev/null | jq -r .install 2>/dev/null)" = absent ]; then
+  add_note wcag-audit-browser-test "skip wcag-audit-browser-test — engine cache not installed (bash .claude/skills/wcag-audit/install.sh)"
 else
   add 1 wcag-audit-browser-test bash "$TESTS/wcag-audit-browser-test.sh"
 fi

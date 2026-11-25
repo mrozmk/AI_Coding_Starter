@@ -1,6 +1,7 @@
 // cluster.mjs — finding merge (exact node identity + SC, contributors kept), barrier clustering and
 // versioned fingerprints. Normalisation is used for fingerprints and barriers, never for merging.
 import crypto from 'node:crypto';
+import { IMPACTS } from './contract.mjs';
 
 export function nodeKey({ page, viewport, state, frame = '', selector = '', shadow = '' }) {
   return [page, viewport, state, frame, selector, shadow].join('|');
@@ -62,7 +63,7 @@ export function rankBasis(b) {
   return b === '●' ? 2 : b === '◐' ? 1 : 0;
 }
 
-const IMPACT = ['minor', 'moderate', 'serious', 'blocker'];
+const IMPACT = [...IMPACTS].reverse();
 export function rankImpact(i) {
   return IMPACT.indexOf(i);
 }

@@ -9,6 +9,7 @@
   .wrap { overflow-x: auto; max-width: 100%; }
   table { width: 900px; border-collapse: collapse; }
   td, th { border: 1px solid #333; padding: 4px; }
+  .drawer { position: fixed; top: 0; left: 100%; width: 240px; }
 </style>
 </head>
 <body>
@@ -23,5 +24,7 @@
     </table>
   </div>
 </main>
+<nav class="drawer" aria-label="Menu"><p>Closed off-canvas menu</p></nav>
+<nav class="drawer" aria-label="Account" inert><a href="#account">Account</a></nav>
 </body>
 </html>

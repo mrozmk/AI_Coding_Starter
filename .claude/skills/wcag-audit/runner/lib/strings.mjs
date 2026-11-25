@@ -5,7 +5,7 @@ export const STRINGS = {
     title: 'WCAG scan report',
     sections: {
       verdict: 'Verdict', scope: 'Scope', legal: 'Legal framing', summary: 'Summary by impact', matrix: 'Criterion matrix',
-      barriers: 'Barriers', review: 'Needs-review queue', manual: 'Manual tasks', ledger: 'Coverage ledger', method: 'Method', disclaimer: 'Disclaimer',
+      barriers: 'Barriers', review: 'Needs-review queue', manual: 'Manual tasks', ledger: 'Coverage ledger', method: 'Method',
     },
     status: {
       fails: 'fails', suspected: 'suspected', 'n/a': 'n/a', 'no automated failure found': 'no automated failure found', 'not tested': 'not tested',
@@ -19,13 +19,13 @@ export const STRINGS = {
     },
     disclaimer: 'This report prepares a professional accessibility and legal review; it is not a conformance certificate. A scan covers only the given URLs and the states it opened — no sampling, no complete processes.',
     labels: {
-      urls: 'URLs', viewports: 'Viewports', date: 'Date', wcag: 'WCAG', level: 'Level', tool: 'Tool and rule versions', engineB: 'Second engine',
+      urls: 'URLs', viewports: 'Viewports', date: 'Date', wcag: 'WCAG', tool: 'Tool and rule versions', engineB: 'Second engine',
       llm: 'Model judgement', on: 'on', off: 'off', retry: 'Desktop user-agent retry', none: 'none', criterion: 'Criterion', status: 'Status',
-      ceiling: 'Coverage ceiling', reason: 'Reason', impact: 'Impact', count: 'Count', basis: 'Basis', where: 'Where', fix: 'How to fix',
-      evidence: 'Evidence', kind: 'Kind', detail: 'Detail', steps: 'Steps', question: 'Question', last_verified: 'Legal facts last verified',
+      ceiling: 'Coverage ceiling', reason: 'Reason', impact: 'Impact', count: 'Count', where: 'Where', fix: 'How to fix',
+      kind: 'Kind', detail: 'Detail', question: 'Question', last_verified: 'Legal facts last verified',
       unverified: 'unverified — check the source', client: 'Client type', lang_note: 'Remediation text is in English: the site language is not en or pl.',
       model_not_completed: 'model phase not completed', guard_inactive: 'read guard not active — model phases skipped', understanding: 'Understanding',
-      partial: 'partial', status_run: 'Run status',
+      status_run: 'Run status',
     },
     ledger: {
       'destination-blocked': 'request refused by the destination policy', 'non-get': 'non-GET request aborted', 'interaction-lockdown': 'request caused after load aborted (interaction lockdown)',
@@ -43,7 +43,7 @@ export const STRINGS = {
     title: 'Raport skanu WCAG',
     sections: {
       verdict: 'Werdykt', scope: 'Zakres', legal: 'Ramy prawne', summary: 'Podsumowanie wg wpływu', matrix: 'Macierz kryteriów',
-      barriers: 'Bariery', review: 'Do przeglądu', manual: 'Zadania ręczne', ledger: 'Rejestr pokrycia', method: 'Metoda', disclaimer: 'Zastrzeżenie',
+      barriers: 'Bariery', review: 'Do przeglądu', manual: 'Zadania ręczne', ledger: 'Rejestr pokrycia', method: 'Metoda',
     },
     status: {
       fails: 'błąd', suspected: 'podejrzenie', 'n/a': 'nie dotyczy', 'no automated failure found': 'nie znaleziono błędu automatycznie', 'not tested': 'nie testowano',
@@ -57,13 +57,13 @@ export const STRINGS = {
     },
     disclaimer: 'Ten raport przygotowuje profesjonalny przegląd dostępności i przegląd prawny; nie jest certyfikatem zgodności. Skan obejmuje tylko podane adresy i otwarte stany — bez próbkowania i bez pełnych procesów.',
     labels: {
-      urls: 'Adresy', viewports: 'Widoki', date: 'Data', wcag: 'WCAG', level: 'Poziom', tool: 'Wersje narzędzi i reguł', engineB: 'Drugi silnik',
+      urls: 'Adresy', viewports: 'Widoki', date: 'Data', wcag: 'WCAG', tool: 'Wersje narzędzi i reguł', engineB: 'Drugi silnik',
       llm: 'Ocena modelu', on: 'włączona', off: 'wyłączona', retry: 'Ponowienie z UA desktopu', none: 'brak', criterion: 'Kryterium', status: 'Status',
-      ceiling: 'Pułap pokrycia', reason: 'Powód', impact: 'Wpływ', count: 'Liczba', basis: 'Podstawa', where: 'Gdzie', fix: 'Jak naprawić',
-      evidence: 'Dowód', kind: 'Rodzaj', detail: 'Szczegóły', steps: 'Kroki', question: 'Pytanie', last_verified: 'Fakty prawne ostatnio sprawdzone',
+      ceiling: 'Pułap pokrycia', reason: 'Powód', impact: 'Wpływ', count: 'Liczba', where: 'Gdzie', fix: 'Jak naprawić',
+      kind: 'Rodzaj', detail: 'Szczegóły', question: 'Pytanie', last_verified: 'Fakty prawne ostatnio sprawdzone',
       unverified: 'niezweryfikowane — sprawdź źródło', client: 'Typ klienta', lang_note: 'Wskazówki naprawy są po angielsku: język strony to nie en ani pl.',
       model_not_completed: 'faza modelu nieukończona', guard_inactive: 'strażnik odczytu nieaktywny — fazy modelu pominięte', understanding: 'Understanding',
-      partial: 'częściowy', status_run: 'Status przebiegu',
+      status_run: 'Status przebiegu',
     },
     ledger: {
       'destination-blocked': 'żądanie odrzucone przez politykę celów', 'non-get': 'żądanie inne niż GET przerwane', 'interaction-lockdown': 'żądanie po załadowaniu przerwane (blokada interakcji)',

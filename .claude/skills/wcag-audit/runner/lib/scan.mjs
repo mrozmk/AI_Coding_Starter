@@ -72,8 +72,6 @@ export async function scanCommand(opts) {
   const urls = parsed.slice(0, maxPages);
   lines = null;
 
-  const nodeVersion = process.versions.node;
-  if (!deps.nodeOk(nodeVersion)) throw new Refusal('node-too-old', `node ${nodeVersion} is too old — /wcag-audit needs >= 22.12`);
   const install = deps.assertReady();
   deps.browserChoice(install.dir);
 
@@ -153,9 +151,6 @@ export async function scanCommand(opts) {
     run.log.push({ at: new Date().toISOString(), phase: 'run', code: err.code || 'run-error' });
     ev.finalize(run);
     persist();
-    if (browser) await browser.close().catch(() => {});
-    if (proxy) await proxy.close().catch(() => {});
-    await closeAll();
     if (err instanceof Refusal) throw err;
     return { code: 4, body: { ok: false, error: err.code || 'run-error', hint: String(err.message || err).slice(0, 300), work: work.dir } };
   } finally {
@@ -165,15 +160,16 @@ export async function scanCommand(opts) {
   }
   ev.finalize(run);
   persist();
-  const counts = { findings: run.findings.length, fails: run.criteria.filter((c) => c.status === 'fails').length, suspected: run.criteria.filter((c) => c.status === 'suspected').length, pages: run.pages.filter((p) => p.status === 'completed').length };
+  const counts = { findings: run.findings.length, fails: run.criteria.filter((c) => c.status === ev.STATUS.FAILS).length, suspected: run.criteria.filter((c) => c.status === ev.STATUS.SUSPECTED).length, pages: run.pages.filter((p) => p.status === 'completed').length };
   return { code: 0, body: { ok: true, work: work.dir, status: run.status, verdict: run.verdict, counts } };
 }
 
-class Scanner {
-  constructor({ run, work, ruleIds, profile, ctxInfo, persist }) {
-    Object.assign(this, { run, work, ruleIds, profile, ctxInfo, persist });
+export class Scanner {
+  constructor({ run, work, ruleIds, profile, ctxInfo, persist, pageLimitMs = PAGE_LIMIT_MS }) {
+    Object.assign(this, { run, work, ruleIds, profile, ctxInfo, persist, pageLimitMs });
     this.evidenceCount = 0;
     this.siteLangSet = false;
+    this.token = { dead: false };
   }
 
   contributorSc(source, id) {
@@ -181,6 +177,8 @@ class Scanner {
   }
 
   async prepared(viewport, url, { banner = null, stateSpec = null, loadName = null } = {}) {
+    // A target abandoned at its page time limit opens nothing more.
+    if (this.token.dead) throw new PageTimeout('target abandoned');
     const s = await freshPage(this.browser, loadName || viewport, { ledger: this.run.ledger, context: this.ctxInfo, userAgent: this.userAgent });
     this.sessions.add(s);
     const r = await loadPage(s, url, { ledger: this.run.ledger, context: this.ctxInfo });
@@ -206,14 +204,21 @@ class Scanner {
     this.sessions = new Set();
     this.userAgent = undefined;
     this.evidenceCount = 0;
+    this.skippedOwners = [];
+    this.withholdCrops = false;
+    this.banner = null;
+    this.replay = null;
     this.page = page;
     this.viewport = viewport;
     this.rec = rec;
     rec.attempts = [];
+    const token = { dead: false };
+    this.token = token;
     let timer;
-    const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new PageTimeout('page time limit')), PAGE_LIMIT_MS); });
+    const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new PageTimeout('page time limit')), this.pageLimitMs); });
+    const scan = this.scanTarget(url);
     try {
-      await Promise.race([this.scanTarget(url), limit]);
+      await Promise.race([scan, limit]);
       if (rec.status === 'pending') rec.status = 'completed';
     } catch (err) {
       if (err instanceof PageTimeout) {
@@ -228,6 +233,11 @@ class Scanner {
       }
     } finally {
       clearTimeout(timer);
+      // An abandoned scanTarget must settle before the next target reuses this scanner's fields:
+      // closing its sessions makes every pending page call fail fast, and prepared() opens no more.
+      token.dead = true;
+      for (const s of [...this.sessions]) await this.drop(s).catch(() => {});
+      await scan.catch(() => {});
       for (const s of [...this.sessions]) await this.drop(s).catch(() => {});
     }
     // Units the target never reached stay missing for this page × viewport.
@@ -238,7 +248,7 @@ class Scanner {
     const { run, page, viewport, rec } = this;
     let first = await this.prepared(viewport, url);
     rec.attempts.push({ status: first.error ? first.error.status : first.status, ua: 'default' });
-    if (first.error && (first.error.status === 403 || first.error.status === 429)) {
+    if (first.error && first.error.reason !== 'destination-blocked' && (first.error.status === 403 || first.error.status === 429)) {
       // One internal retry of a CDN-blocked main document with a desktop-like user agent.
       const probe = await this.browser.newContext();
       const p = await probe.newPage();
@@ -271,7 +281,7 @@ class Scanner {
     await this.readonlyPass(s0, 'initial', { semantic: viewport === run.scope.viewports[0] });
     let replay = null;
     if (banner) {
-      const dres = await dismissBanner(s0.page, banner);
+      const dres = await dismissBanner(s0.page, banner).catch(() => ({ dismissed: false }));
       rec.banner.dismissed = dres.dismissed;
       if (dres.dismissed) replay = banner;
       else run.ledger.push({ kind: 'banner-not-dismissed', ...this.ctxInfo });
@@ -327,11 +337,8 @@ class Scanner {
     for (const check of CHECKS.filter((c) => c.mode === 'readonly')) {
       await this.runCheck(check, state, async () => ({ s: session, keep: true }), null, { axe });
     }
-    if (semantic && state === 'initial') await this.semantic(session);
-    else if (state === 'initial') {
-      // broken-image still runs on every viewport; judge items come from the first viewport only.
-      await this.semantic(session, { itemsToo: false });
-    }
+    // broken-image still runs on every viewport; judge items come from the first viewport only.
+    if (state === 'initial') await this.semantic(session, { itemsToo: semantic });
   }
 
   async recordAxe(session, state, res) {
@@ -348,7 +355,7 @@ class Scanner {
       }
       let ancestor = null;
       if (bannerSel && r.selector && !r.frame) {
-        ancestor = await inPage(session.page, 'const el = W.q(arg.sel); const b = document.querySelector(arg.banner); return !!el && !!b && b.contains(el);', { sel: r.selector, banner: bannerSel }).catch(() => false) ? bannerSel : null;
+        ancestor = await inPage(session.page, 'const el = W.q(arg.sel); const b = W.q(arg.banner); return !!el && !!b && b.contains(el);', { sel: r.selector, banner: bannerSel }).catch(() => false) ? bannerSel : null;
       }
       const evidence = r.selector && !r.frame ? await this.capture(session, { selector: r.selector }, state) : null;
       ev.addObservation(run, { source: 'axe', contributor: r.rule, sc: r.sc, outcome: r.outcome, impact: r.impact, page, viewport, state, selector: r.selector, frame: r.frame, ancestor, evidence_ids: evidence ? [evidence] : [], data: { help: r.help, helpUrl: r.helpUrl, ...(r.data || {}) }, remediation_key: r.rule });
@@ -364,7 +371,7 @@ class Scanner {
     let cdp = null;
     try { cdp = await session.context.newCDPSession(session.page); } catch { cdp = null; }
     try {
-      const res = await collectSemantic(session.page, { responses: session.state.responses, cdp: itemsToo ? cdp : null });
+      const res = await collectSemantic(session.page, { responses: session.state.responses, failed: session.state.failed, cdp: itemsToo ? cdp : null });
       for (const b of res.broken) {
         const evidence = await this.capture(session, { selector: b.selector }, 'initial');
         ev.addObservation(run, { source: 'runner', contributor: 'broken-image', sc: brokenImage.sc, outcome: 'violation', basis: '●', impact: 'serious', page, viewport, state: 'initial', selector: b.selector, data: b.data, evidence_ids: evidence ? [evidence] : [], remediation_key: 'broken-image',
@@ -448,13 +455,12 @@ class Scanner {
       const frames = page.mainFrame().childFrames();
       const masks = [page.locator(MASK_SELECTOR)];
       for (const f of frames) {
-        const owner = this.skippedOwners || [];
-        const skipped = await f.frameElement().then((el) => el.evaluate((node, list) => list.some((s) => { try { return node.matches(s); } catch { return false; } }), owner)).catch(() => true);
+        const skipped = await f.frameElement().then((el) => el.evaluate((node, list) => list.some((s) => { try { return node.matches(s); } catch { return false; } }), this.skippedOwners)).catch(() => true);
         if (skipped) continue;
         await inPage(f, 'return W.markEmails();').catch(() => {});
         masks.push(f.locator(MASK_SELECTOR));
       }
-      for (const s of this.skippedOwners || []) masks.push(page.locator(toLocator(s)));
+      for (const s of this.skippedOwners) masks.push(page.locator(toLocator(s)));
       const vp = page.viewportSize();
       let clip;
       let elBox = null;
@@ -488,8 +494,8 @@ class Scanner {
 
   async maskedBoxes(page) {
     const out = [];
-    for (const s of this.skippedOwners || []) {
-      const b = await inPage(page, 'const el = document.querySelector(arg); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };', s).catch(() => null);
+    for (const s of this.skippedOwners) {
+      const b = await inPage(page, 'const el = W.q(arg); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };', s).catch(() => null);
       if (b) out.push({ kind: 'skipped-frame', ...b });
     }
     return out;

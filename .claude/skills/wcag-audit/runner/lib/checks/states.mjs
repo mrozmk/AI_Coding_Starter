@@ -33,7 +33,7 @@ export async function openState(session, st) {
   const abortedBefore = state.aborted;
   state.navAttempt = false;
   if (st.kind === 'form-focus') {
-    const ok = await inPage(page, `const el = document.querySelector(arg); if (!el) return false; el.focus(); return W.deepActive() === el;`, st.opener).catch(() => false);
+    const ok = await inPage(page, `const el = W.q(arg); if (!el) return false; el.focus(); return W.deepActive() === el;`, st.opener).catch(() => false);
     return { opened: ok, reason: ok ? null : 'state-not-restored', withoutNetwork: false };
   }
   try {
@@ -44,7 +44,7 @@ export async function openState(session, st) {
   await page.waitForTimeout(250);
   if (state.navAttempt) return { opened: false, reason: 'not-opened (navigation attempted)', withoutNetwork: false };
   const ok = await inPage(page, `
-    const o = document.querySelector(arg.opener);
+    const o = W.q(arg.opener);
     if (arg.kind === 'menu') return !!o && o.getAttribute('aria-expanded') === 'true';
     return W.all().some((el) => el.matches('dialog[open], [role=dialog], [aria-modal=true]') && W.visible(el));
   `, st).catch(() => false);

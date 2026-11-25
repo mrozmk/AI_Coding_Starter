@@ -54,8 +54,7 @@ export default {
     }
     if (trapSet) {
       const info = await inPage(page, `
-        const q = (s) => { const parts = s.split(' >>> '); let root = document, el = null; for (const p of parts) { el = root.querySelector(p); if (!el) return null; root = el.shadowRoot || el; } return el; };
-        const els = arg.map(q).filter(Boolean);
+        const els = arg.map(W.q).filter(Boolean);
         if (!els.length) return null;
         let c = els[0].parentElement;
         while (c && !els.every((e) => c.contains(e))) c = c.parentElement;
@@ -73,7 +72,7 @@ export default {
         let escStays = false;
         if (shiftStays) {
           await page.keyboard.press('Escape');
-          escStays = (await inside()) && (await inPage(page, `const q = document.querySelector(arg); return !!q && W.visible(q);`, info.container).catch(() => true));
+          escStays = (await inside()) && (await inPage(page, `const q = W.q(arg); return !!q && W.visible(q);`, info.container).catch(() => true));
         }
         if (shiftStays && escStays) {
           out.push({ contributor: 'keyboard-trap', outcome: 'violation', basis: '●', impact: 'blocker', selector: info.container, cropSelector: info.container,

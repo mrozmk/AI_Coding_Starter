@@ -1,6 +1,5 @@
 // policy.mjs — the pure destination classifier. Every connection the browser makes (each redirect
 // hop, subresource and CONNECT tunnel) is decided here by the proxy.
-import net from 'node:net';
 import { privateAddressClass, resolveAddresses } from '../../../audit-security/scripts/lib/smoke.mjs';
 import { Refusal } from './paths.mjs';
 
@@ -22,7 +21,8 @@ function defaultPort(protocol) {
 
 export function originOf(url) {
   const u = url instanceof URL ? url : new URL(url);
-  return `${u.protocol}//${u.hostname.toLowerCase()}:${u.port || defaultPort(u.protocol)}`;
+  // An IPv6 literal keeps its brackets in URL.hostname; origins are compared bracket-free.
+  return `${u.protocol}//${u.hostname.toLowerCase().replace(/^\[|\]$/g, '')}:${u.port || defaultPort(u.protocol)}`;
 }
 
 export function parseTarget(text) {
@@ -55,9 +55,7 @@ export function givenOrigins(urls) {
 // blocks the whole destination.
 export function decide({ scheme = 'http', host, port, addresses, runClass, origins }) {
   if (!addresses || !addresses.length) return { allow: false, reason: 'dns-failed' };
-  const origin = `${scheme}://${String(host).toLowerCase().replace(/^\[|\]$/g, '')}:${port}`;
-  const originB = `${scheme}://${String(host).toLowerCase()}:${port}`;
-  const given = origins.has(origin) || origins.has(originB);
+  const given = origins.has(`${scheme}://${String(host).toLowerCase().replace(/^\[|\]$/g, '')}:${port}`);
   for (const a of addresses) {
     const c = addressClass(a);
     if (ALWAYS_BLOCKED.has(c)) return { allow: false, reason: c };
@@ -66,13 +64,4 @@ export function decide({ scheme = 'http', host, port, addresses, runClass, origi
     if (!given) return { allow: false, reason: `${c}-not-a-given-origin` };
   }
   return { allow: true, reason: 'ok' };
-}
-
-// The proxy speaks host:port; CONNECT tunnels carry https and plain requests carry http.
-export function decideHostPort({ host, port, scheme, addresses, runClass, origins }) {
-  return decide({ scheme, host, port: String(port), addresses, runClass, origins });
-}
-
-export function isIp(host) {
-  return net.isIP(String(host).replace(/^\[|\]$/g, '')) !== 0;
 }

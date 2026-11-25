@@ -102,7 +102,7 @@ export default {
       const focused = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
       await inPage(page, 'const a = W.deepActive(); if (a) a.blur();');
       const blurred = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
-      const after = await inPage(page, `const q = (s) => { const parts = s.split(' >>> '); let root = document, el = null; for (const p of parts) { el = root.querySelector(p); if (!el) return null; root = el.shadowRoot || el; } return el; }; const el = q(arg.sel); if (!el) return null; const cs = getComputedStyle(el); const style = arg.props.map((p) => cs.getPropertyValue(p)); el.focus(); return style;`, { sel: info.sel, props: STYLE_PROPS });
+      const after = await inPage(page, `const el = W.q(arg.sel); if (!el) return null; const cs = getComputedStyle(el); const style = arg.props.map((p) => cs.getPropertyValue(p)); el.focus(); return style;`, { sel: info.sel, props: STYLE_PROPS });
       if (!after) continue;
       const styleChanged = after.some((v, k) => v !== info.style[k]);
       const ratio = diffPixels(PNG, focused, blurred);

@@ -36,14 +36,3 @@ export function axExcerpt(node) {
   }
   return out;
 }
-
-export function redactDeep(value) {
-  if (typeof value === 'string') return redactText(value);
-  if (Array.isArray(value)) return value.map(redactDeep);
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = /url$/i.test(k) && typeof v === 'string' ? redactUrl(v) : redactDeep(v);
-    return out;
-  }
-  return value;
-}

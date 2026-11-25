@@ -1,7 +1,8 @@
 // semantic.mjs — the producer of judge input (readonly, always runs on the initial state): images with
 // a non-empty alt that loaded, link/button names with context, headings, labels, language changes,
-// error texts and help links. A broken image (HTTP error or naturalWidth 0) is never an item: it is
-// the runner finding broken-image (1.1.1, ●) with its load diagnostic.
+// error texts and help links. A broken image (an HTTP error, or a load that failed on the network) is
+// never an item: it is the runner finding broken-image (1.1.1, ●) with its load diagnostic. An image
+// that simply never loaded — lazy content the lockdown blocked or never requested — is neither.
 import { inPage } from '../dom.mjs';
 import { redactText, redactUrl, axExcerpt } from '../redact.mjs';
 
@@ -9,7 +10,7 @@ const PER_KIND = 15;
 
 export const brokenImage = { id: 'broken-image', sc: ['1.1.1'] };
 
-export async function collectSemantic(page, { responses, cdp }) {
+export async function collectSemantic(page, { responses, failed = new Map(), cdp }) {
   const raw = await inPage(page, `
     const all = W.all();
     const imgs = all.filter((el) => el.tagName === 'IMG').map((el) => ({ sel: W.sel(el), src: el.currentSrc || el.src, alt: el.getAttribute('alt'), loaded: el.complete && el.naturalWidth > 0, visible: W.visible(el) }));
@@ -29,7 +30,9 @@ export async function collectSemantic(page, { responses, cdp }) {
   const items = [];
   for (const img of raw.imgs) {
     const status = responses.get(img.src);
-    if ((status && status >= 400) || (!img.loaded && img.src)) {
+    const netError = failed.get(img.src);
+    const loadFailed = !img.loaded && !!img.src && !!netError && !/ERR_BLOCKED_BY_CLIENT/.test(netError);
+    if ((status && status >= 400) || loadFailed) {
       broken.push({ selector: img.sel, data: { status: status ?? null, url: redactUrl(img.src) } });
       continue;
     }
@@ -50,7 +53,7 @@ export async function collectSemantic(page, { responses, cdp }) {
 async function attachAx(page, cdp, items) {
   const sels = items.map((i) => i.selector);
   try {
-    await inPage(page, `arg.forEach((s, i) => { const parts = s.split(' >>> '); let root = document, el = null; for (const p of parts) { el = root.querySelector(p); if (!el) return; root = el.shadowRoot || el; } if (el) el.setAttribute('data-wcag-item', String(i)); });`, sels);
+    await inPage(page, `arg.forEach((s, i) => { const el = W.q(s); if (el) el.setAttribute('data-wcag-item', String(i)); });`, sels);
     const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
     const byItem = new Map();
     const walk = (n) => {

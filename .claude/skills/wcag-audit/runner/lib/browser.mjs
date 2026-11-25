@@ -114,7 +114,7 @@ export async function freshPage(browser, viewportName, { ledger, context: ctxInf
   const vp = VIEWPORTS[viewportName];
   const context = await browser.newContext({ ...vp, reducedMotion: 'reduce', serviceWorkers: 'block', ...(userAgent ? { userAgent } : {}) });
   const unregister = registerClose(() => context.close());
-  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, responses: new Map(), failed: new Map(), docServed: 0 };
+  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, responses: new Map(), failed: new Map() };
   await context.routeWebSocket(/.*/, (ws) => {
     ledger.push({ kind: 'websocket-blocked', url: redactUrl(ws.url()), ...ctxInfo });
     ws.close({ code: 1008, reason: 'blocked by wcag-audit' });

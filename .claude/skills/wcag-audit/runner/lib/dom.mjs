@@ -1,5 +1,8 @@
 // dom.mjs — helpers evaluated inside the page. Functions are built in Node and sent through CDP, so
 // they work under a page CSP; nothing is installed on window, so page script cannot tamper with them.
+// The e-mail pattern is the redaction one, so the crop mask and the text redaction agree.
+import { EMAIL_RE } from './redact.mjs';
+
 export const HELPERS = String.raw`
 const W = {};
 W.all = (root = document) => {
@@ -28,7 +31,6 @@ W.sel = (el) => {
       if (parent) { cur = parent; continue; }
     }
     if (root instanceof ShadowRoot) { parts.unshift('>>>'); cur = root.host; continue; }
-    if (parts[0] && parts[0].startsWith('#')) break;
     break;
   }
   return parts.join(' > ').replace(/ > >>> > /g, ' >>> ').replace(/^>>> > /, '');
@@ -50,7 +52,7 @@ W.ancestor = (el) => {
   return null;
 };
 W.deepActive = () => { let a = document.activeElement; while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement; return a; };
-W.EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+W.EMAIL = new RegExp(${JSON.stringify(EMAIL_RE.source)});
 W.q = (s) => { const parts = String(s).split(' >>> '); let root = document, el = null; for (const p of parts) { try { el = root.querySelector(p); } catch (e) { return null; } if (!el) return null; root = el.shadowRoot || el; } return el; };
 W.markEmails = () => {
   let n = 0;
