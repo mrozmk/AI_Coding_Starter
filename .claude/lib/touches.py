@@ -1,7 +1,8 @@
 """Operator touch log: one JSON line per human intervention for a session, per project and machine,
 in <main checkout>/.agents/touches/<yyyy-mm>.jsonl. CLI and usage: .claude/lib/touches.sh (add |
 block | report | hook). A `block` line (kind block, reason hook) records a hook that refused a call
-with no human involved; it is never counted as an Operator touch. Contract:
+with no human involved; it is never counted as an Operator touch. A touch with a tool call carries
+the optional `input` object: the call's masked tool input, cut only to fit the line. Contract:
 .agents/reference/operator-touches.md. Stdlib only and harness-free: the global opt-in copies this
 one file as is."""
 import argparse, calendar, collections, contextlib, json, os, re, stat, subprocess, sys, time  # noqa: E401
@@ -37,9 +38,35 @@ _HIGH = re.compile(
     r"|ATATT[0-9A-Za-z_=.-]{4,}|npm_[0-9A-Za-z]{4,}|eyJ[0-9A-Za-z_-]{4,}(?:\.[0-9A-Za-z_-]*){0,2}|SK[0-9a-f]{32}"
     r"|(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?|ftp)://[^:@/\s]+:[^@/\s]+@")
 
+# A private-key block to its END line, or to the end of a value cut upstream.
+_PEM = re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----(?:.*?-----END[A-Z ]*PRIVATE KEY-----|.*\Z)", re.S)
+_AUTHZ = re.compile(r"((?:Proxy-)?Authorization\s*:\s*|Cookie\s*:\s*)[^\r\n\"';|&]+", re.I)
+# Scoped to curl: a bare `-u` is also `git push -u origin`.
+_CURLU = re.compile(r"(\bcurl\b[^\n|;&]*?\s(?:-u|--user)(?:\s+|=))(%s|\S+)" % _Q)
+_USERINFO = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@")
+# Never an scp-like remote (git@host:path): the egress guard reads its host.
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b(?![A-Za-z0-9.-]*:)")
+_SECRET_KEY = re.compile(r"[A-Za-z0-9_-]*(?:%s)|(?:proxy-)?authorization|cookie" % _KEY, re.I)
+FIELDS = ("command", "url", "file_path", "path", "notebook_path", "skill", "pattern")
+
 def _mask(s):
-    s = _LABELLED.sub(lambda m: m.group(1) + m.group(2) + m.group(1) + m.group(3) + "***", s)
-    return _HIGH.sub("***", _BEARER.sub(r"\1***", _FLAGS.sub(r"\1\2***", s)))
+    s = _LABELLED.sub(lambda m: m.group(1) + m.group(2) + m.group(1) + m.group(3) + "***", _PEM.sub("***", s))
+    s = _USERINFO.sub(r"\1***@", _CURLU.sub(r"\1***", _AUTHZ.sub(r"\1***", s)))
+    return _HIGH.sub("***", _BEARER.sub(r"\1***", _FLAGS.sub(r"\1\2***", _EMAIL.sub("***@***", s))))
+
+def _mask_value(v):
+    """The masked full value: newlines and tabs kept, other control characters as spaces, no cap."""
+    return _mask(re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", str(v)))
+
+def mask_obj(o, key=None):
+    """A tool_input masked leaf by leaf; a value under a secret-named key is masked whole."""
+    if isinstance(o, dict):
+        return {k: mask_obj(v, k) for k, v in o.items()}
+    if isinstance(o, list):
+        return [mask_obj(v, key) for v in o]
+    if key is not None and o is not None and _SECRET_KEY.fullmatch(str(key)):
+        return "***"
+    return _mask_value(o) if isinstance(o, str) else o
 
 def _clean(s, cap=200):
     return re.sub(r" {2,}", " ", _mask(re.sub(r"[\x00-\x1f\x7f]", " ", str(s)))).strip()[:cap]
@@ -92,22 +119,44 @@ def resolve_main(explicit, cwd, redirects=True):
     common = _git_out(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
     return os.path.realpath(os.path.dirname(common) if common and common.endswith("/.git") else top)
 
+def _team(project, session_id):
+    """(team.json, session.json, is the lead's session) of project's repository; None outside a clone."""
+    td = os.path.join(_git_out(project, "rev-parse", "--show-toplevel") or project, ".agents/team")
+    if not os.path.isfile(os.path.join(td, "team.json")):
+        return None
+    tj, tl = _json(os.path.join(td, "team.json")), _json(os.path.join(td, "teamlead.json"))
+    sj = _json(os.path.join(td, "session.json"))
+    run = (_read_regular(os.path.join(td, "run")) or b"").decode("utf-8", "replace").strip()
+    lead = bool(session_id and session_id == tl.get("session_id") and tl.get("run") and tl.get("run") == run)
+    return tj, sj, lead or (not sj and os.environ.get("TEAM_SESSION_ROLE") == "TeamLead")
+
 def default_where(main, project, cwd, session_id):
     """Team files come from project's repository; cwd only names the solo path."""
-    td = os.path.join(_git_out(project, "rev-parse", "--show-toplevel") or project, ".agents/team")
-    if os.path.isfile(os.path.join(td, "team.json")):
-        tj, tl = _json(os.path.join(td, "team.json")), _json(os.path.join(td, "teamlead.json"))
-        sj = _json(os.path.join(td, "session.json"))
-        run = (_read_regular(os.path.join(td, "run")) or b"").decode("utf-8", "replace").strip()
-        lead = "team %s / %s / TeamLead" % (tj.get("team", "?"), tj.get("ticket", "?"))
-        if session_id and session_id == tl.get("session_id") and tl.get("run") and tl.get("run") == run:
-            return lead
-        if sj:
-            return "team %s / %s / %s" % (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?"))
-        if os.environ.get("TEAM_SESSION_ROLE") == "TeamLead":
-            return lead
+    t = _team(project, session_id)
+    if t and (t[2] or t[1]):
+        tj, sj, lead = t
+        if lead:
+            return "team %s / %s / TeamLead" % (tj.get("team", "?"), tj.get("ticket", "?"))
+        return "team %s / %s / %s" % (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?"))
     rel = os.path.relpath(os.path.realpath(cwd), os.path.realpath(main))
     return "solo " + ("?" if rel.startswith("..") else rel)
+
+def _role(project, session_id):
+    """The role of input: like default_where, else $TEAM_SESSION_ROLE, else solo."""
+    t = _team(project, session_id)
+    if t and (t[2] or t[1]):
+        return "TeamLead" if t[2] else _ident(t[1].get("role")) or "?"
+    return _ident(os.environ.get("TEAM_SESSION_ROLE")) or "solo"
+
+def make_input(tool, tool_input, cwd, role, session):
+    """The masked projection of a tool call the guard and the tier read; key names for the rest."""
+    ti = tool_input if isinstance(tool_input, dict) else {}
+    out = {"tool": _clean(tool or "", 100),
+           "fields": {k: _mask_value(ti[k]) for k in FIELDS if isinstance(ti.get(k), str)}}
+    if any(k not in out["fields"] for k in ti):
+        out["keys"] = sorted(str(k) for k in ti)
+    out.update(cwd=_mask_value(cwd) if isinstance(cwd, str) else "", role=_ident(role), session=_ident(session))
+    return out
 
 def make_entry(kind, what, reason, answer="", wait_s=None, where=""):
     return {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -115,8 +164,25 @@ def make_entry(kind, what, reason, answer="", wait_s=None, where=""):
             "who": _ident(os.environ.get("USER", "")), "where": _clean(where), "kind": kind,
             "what": _clean(what), "reason": reason, "answer": _clean(answer), "wait_s": wait_s}
 
+def _encode(entry):
+    return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+
 def _line(entry):
-    line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+    line = _encode(entry)
+    inp = entry.get("input")
+    if len(line) > LINE_MAX and isinstance(inp, dict):
+        # The longest input field is cut first; optional evidence never costs the legacy record.
+        fields = inp.get("fields") if isinstance(inp.get("fields"), dict) else {}
+        while len(line) > LINE_MAX and fields:
+            k = max(sorted(fields), key=lambda f: len(fields[f]))
+            if len(fields[k]) <= 60:
+                break
+            inp.setdefault("cut", {}).setdefault(k, len(fields[k]))
+            fields[k] = fields[k][:max(60, len(fields[k]) - (len(line) - LINE_MAX))]
+            line = _encode(entry)
+        if len(line) > LINE_MAX:
+            del entry["input"]
+            line = _encode(entry)
     if len(line) > LINE_MAX:
         entry.update((k, entry[k][:60]) for k in ("where", "what", "answer"))
         line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
@@ -193,6 +259,7 @@ def _parse_entry(line):
     bad += [] if bad or e["kind"] in KINDS else ["bad kind"]
     bad += [] if bad or e["reason"] in REASONS else ["bad reason"]
     bad += [] if bad or AT_RE.match(e["at"]) else ["bad at"]
+    bad += [] if bad or "input" not in e or isinstance(e["input"], dict) else ["bad type input"]
     return (None, bad[0]) if bad else (e, None)
 
 def load(main, since_month=None, only=None):
@@ -291,7 +358,7 @@ def brief(a, main):
     return 0
 
 def _pending(transcript, msg):
-    """(tool, detail) of the one pending call (team_transcript.py semantics) the prompt names."""
+    """(tool, detail, tool_input) of the one pending call (team_transcript.py semantics) the prompt names."""
     if not isinstance(transcript, str) or not transcript:
         return None
     with os.fdopen(os.open(transcript, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC), "rb") as f:
@@ -319,7 +386,7 @@ def _pending(transcript, msg):
         return None
     tool, inp = cand[0][0], cand[0][1] if isinstance(cand[0][1], dict) else {}
     detail = next((inp[k] for k in ("command", "file_path", "url", "path") if isinstance(inp.get(k), str)), "")
-    return tool, (detail.splitlines() or [""])[0]
+    return tool, (detail.splitlines() or [""])[0], inp
 
 def _covered(td, sj, sid, t0, tool):
     """lead_ask_near (team-run-asks.sh) narrowed: only a permission ask of this stage covers."""
@@ -404,14 +471,35 @@ def hook(glob):
     main = resolve_main(None, project, redirects=not glob)
     if not main:
         return 0
-    what = "%s: %s" % pend if pend else (msg or "permission prompt")
+    what = "%s: %s" % pend[:2] if pend else (msg or "permission prompt")
     entry = make_entry("permission", what, reason, where=default_where(main, project, cwd, sid))
+    if pend:
+        entry["input"] = make_input(pend[0], pend[2], cwd, _role(project, sid), sid)
     if reason == "direct" and _guard_recent(main, entry):
         return 0
     if glob and not _ensure_ignored(main, ".agents/touches/%s.jsonl" % entry["at"][:7]):
         return 0
     append(main, entry)
     return 0
+
+def _input_file(path, cwd):
+    """(input, None) from an ask file (its payload) or a hook payload; (None, why) otherwise."""
+    data = _read_regular(path)
+    if data is None:
+        return None, "unreadable file"
+    try:
+        d = json.loads(data)
+    except ValueError:
+        return None, "not JSON"
+    if not isinstance(d, dict):
+        return None, "not a JSON object"
+    if isinstance(d.get("payload"), dict):
+        p, role = d["payload"], d.get("role")
+    else:
+        p, role = d, _role(cwd, d.get("session_id"))
+    if not isinstance(p.get("tool_name"), str) or not p["tool_name"]:
+        return None, "no tool_name"
+    return make_input(p["tool_name"], p.get("tool_input"), p.get("cwd"), role, d.get("session_id")), None
 
 def add(a):
     if not _clean(a.what):
@@ -429,6 +517,12 @@ def add(a):
         entry["relayed_by"] = _clean(a.relayed_by, 60)
     if a.relayed_session is not None:
         entry["relayed_session"] = _ident(a.relayed_session)
+    if a.input_file is not None:
+        inp, why = _input_file(a.input_file, cwd)
+        if inp is not None:
+            entry["input"] = inp
+        else:
+            print("warn: input not recorded (%s)" % why, file=sys.stderr)
     if append(main, entry):
         return _err("touch not written — unsafe or unwritable %s/.agents/touches" % main, 1)
     return 0
@@ -456,7 +550,7 @@ def _parser():
     ad, rp = sub.add_parser("add"), sub.add_parser("report")
     for f, choices in (("--kind", HUMAN_KINDS), ("--reason", HUMAN_REASONS), ("--what", None)):
         ad.add_argument(f, required=True, choices=choices)
-    for f in ("--answer", "--wait-s", "--where", "--main", "--relayed-by", "--relayed-session"):
+    for f in ("--answer", "--wait-s", "--where", "--main", "--relayed-by", "--relayed-session", "--input-file"):
         ad.add_argument(f, default="" if f == "--answer" else None)
     for f in ("--since", "--who", "--team", "--ticket", "--run", "--main"):
         rp.add_argument(f)

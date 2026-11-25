@@ -83,7 +83,9 @@ d_touch_reason() {  # d_touch_reason <file> — its touch_reason, derived for a 
 # [<relay session>] — the answered decision as one entry of the project's touch log (a relayed one
 # names the Supervisor and its session); a failure warns, the answer stands.
 d_touch_log() {
-  local f="$1" kind=decision ans c a ws="" stage
+  local f="$1" kind=decision ans c a ws="" stage inp=()
+  # A bound permission ask: its masked tool input goes into the entry (operator-touches.md → input).
+  [ -n "$3" ] && [ "$4" = permission ] && [ -f "$ASK_D/$3.json" ] && inp=(--input-file "$ASK_D/$3.json")
   if [ -n "$3" ]; then kind="${4:-decision}"; elif [ "$(dfm "$f" gate)" = plan ]; then kind=plan; fi
   case "$3:$4" in
     :*) ans="$8" ;;
@@ -97,7 +99,7 @@ d_touch_log() {
     --where "team $(jq -r .team "$TD/team.json") / $(jq -r .ticket "$TD/team.json") / $stage" \
     --kind "$kind" --reason "$(d_touch_reason "$f")" --what "$(sed -n '/^## Question$/{n;p;q;}' "$f")" \
     --answer "$ans" ${ws:+--wait-s "$ws"} ${9:+--relayed-by Supervisor --relayed-session "$9"} \
-    >/dev/null 2>&1 || echo "warn: touch not recorded ($2)" >&2
+    ${inp[@]+"${inp[@]}"} >/dev/null 2>&1 || echo "warn: touch not recorded ($2)" >&2
 }
 
 # d_record <file> <d-n> <how> <outcome> <answer value> <answer map> <text> [<answered session>]

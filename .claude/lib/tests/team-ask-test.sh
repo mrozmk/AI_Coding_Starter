@@ -333,6 +333,7 @@ ok '[ "$TLRC" = 0 ] && grep -q "^answer_outcome: deny$" "$RD/decisions/d-1.md" &
 ok 'grep -q " decision d-1$" "$RD/operator-touches"' "a human answer appends an Operator touch"
 TF="$MAIN/.agents/touches/$(date -u +%Y-%m).jsonl"
 ok '[ "$(grep -c . "$TF")" = 1 ] && [ "$(jq -r .kind "$TF")" = permission ] && [ "$(jq -r .reason "$TF")" = human-only ] && [ "$(jq -r .answer "$TF")" = "deny: fetch from the mirror" ] && [ "$(jq -r .where "$TF")" = "team beta / 1 / coder" ] && [ "$(jq -r ".wait_s | type" "$TF")" = number ]' "the answer is one touch-log entry: permission, human-only (operator-tier ask), the normalised answer, wait_s"
+ok '[ "$(jq -r .input.tool "$TF")" = Bash ] && [ "$(jq -r .input.role "$TF")" = coder ]' "the decision's touch entry carries the bound ask's masked input"
 L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator: deny"
 ok '[ "$LRC" = 7 ]' "a deny decision relayed as --allow → 7"
 L a-1 --deny "fetch from the mirror" --authority operator --decision "$RD/decisions/d-1.md" --why "Operator: deny"; wait "$HP"

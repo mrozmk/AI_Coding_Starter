@@ -638,8 +638,12 @@ ok "touch log: one #193-format line" jq -e -s 'length == 1 and (.[0] | .reason =
 check none "touch log: silent call" "$(role Supervisor "$D/suplog" "$(bash_cmd 'gh issue list | head -1')")"
 check ask "touch log: team role ask" "$(hook "$PC" "$D/suplog")"
 ok "touch log: no line for a silent call or a team role" [ "$(lines "$TL")" = 1 ]
-check ask "touch log: unreadable payload" "$(role Supervisor "$D/suplog" 'not json')"
+n0=$(lines "$TL"); UO="$(role Supervisor "$D/suplog" 'not json')"
+check ask "touch log: unreadable payload" "$UO"
 ok "touch log: unreadable payload line" last "$TL" '.where == "solo ?"'
+ok "touch log: unreadable payload keeps its exact reason" eval '[ "$(lines "$TL")" = $((n0 + 1)) ] \
+  && printf "%s" "$UO" | jq -e ".hookSpecificOutput.permissionDecisionReason | startswith(\"team egress: unreadable hook payload\")" \
+  && last "$TL" "has(\"input\") | not"'
 check ask "touch log: classifier crash" "$(crash "$D/suplog" "$PC")"
 ok "touch log: fail-closed line" last "$TL" '.what | startswith("guard failed to run")'
 check ask "touch log: python3 missing (Supervisor)" "$(printf '%s' "$PC" | (cd /tmp && env -u TEAM_RUN_TEAM \
@@ -674,6 +678,22 @@ MF="$D/supmode/.agents/touches/$M.jsonl"
 ok "touch log: fallback month file is 0600" [ "$(stat -f %Lp "$MF" 2>/dev/null || stat -c %a "$MF")" = 600 ]
 ok "touch log: fallback line parses, who capped" last "$MF" '.who == ("a" * 100)'
 ok "touch log: fallback line under 4096 bytes" [ "$(wc -c < "$MF")" -lt 4096 ]
+# The masked input of the asked call (#321): own fixtures, so suplog's exact counts stay.
+for d in supin nolib-main; do
+  mkdir -p "$D/$d/.claude"; cp "$D/sup/.claude/settings.json" "$D/sup/.claude/settings.local.json" "$D/$d/.claude/"
+done
+PIN="$(jq -nc --arg d "$D/supin" '{tool_name:"Bash", tool_input:{command:"curl https://x?token=SECRETVALUE"}, cwd:$d, session_id:"S-SUP"}')" # guard-push:allow
+TI="$D/supin/.agents/touches/$M.jsonl"
+check ask "touch log: Supervisor ask with input" "$(role Supervisor "$D/supin" "$PIN")"
+ok "touch log: Supervisor ask carries the masked input" last "$TI" '.input.tool == "Bash" and (.input.fields.command | contains("curl"))
+  and (.input.fields.command | contains("SECRETVALUE") | not) and .input.role == "Supervisor" and .input.session == "S-SUP"'
+mkdir -p "$D/nolib/hooks/lib"; cp "$H" "$D/nolib/hooks/"; cp .claude/hooks/lib/*.py "$D/nolib/hooks/lib/"
+PNL="$(jq -nc --arg d "$D/nolib-main" '{tool_name:"Bash", tool_input:{command:"curl https://x"}, cwd:$d, session_id:"S-NL"}')"
+TNL="$D/nolib-main/.agents/touches/$M.jsonl"
+o_ref="$(role Supervisor "$D/nolib-main" "$PNL")"; r_ref=$?
+o_nl="$(printf '%s' "$PNL" | (cd /tmp && env -u TEAM_RUN_TEAM TEAM_SESSION_ROLE=Supervisor CLAUDE_PROJECT_DIR="$D/nolib-main" bash "$D/nolib/hooks/guard-team-egress.sh"))"; r_nl=$?
+ok "touch log: masker unavailable" eval '[ ! -e "$D/nolib/lib/touches.py" ] && [ "$o_nl" = "$o_ref" ] && [ "$r_nl" = 0 ] && [ "$r_ref" = 0 ] \
+  && [ "$(lines "$TNL")" = 2 ] && sed -n 1p "$TNL" | jq -e "has(\"input\")" && last "$TNL" "has(\"input\") | not"'
 # --- the shipped example: read-only gh rules, the exact `gh auth status` (a prefix covers --show-token)
 mkdir -p "$D/supex/.claude"; cp .claude/settings.json "$D/supex/.claude/settings.json"
 cp .claude/settings.local.json.example "$D/supex/.claude/settings.local.json"
