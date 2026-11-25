@@ -30,9 +30,11 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   stage's `stage-hooks.settings.json`, the project's `guard-team-question.sh` is inert (`exit 0`),
   and `team-attention.sh` ignores the lead. `teamlead.json` carries `ask_operator: true`, and the
   launch records a snapshot of the lead session's effective `AskUserQuestion` hook registrations in
-  the anchor (`lead_ask_hooks[<session id>]`, §7 → Provenance guard). An unclean snapshot prints
-  `warn: TeamLead dialog — answers will not count as Operator evidence and the dialog may not
-  surface (<cause>); decisions wait in <lead window>`; the run goes on.
+  the anchor (`lead_ask_hooks[<session id>]`, §7 → Provenance guard). The check runs before
+  anything of the launch is written: unclean registrations end the runner with exit 4,
+  `TeamLead not launched — ask provenance unclean: <cause>` and a `fix:` line, and no lead starts
+  (also on a relaunch). `/start-team` runs the same check first
+  (`team-lead.sh preflight <team>`, exit 3), before the claim and the clone.
 - **Reuse.** A runner that restarts within the same run reuses a live lead whose
   `teamlead.json.run` is the current run; a dead one is launched again.
 - **Wait in place.** A stage's `blocked` / `failed` record no longer ends the runner: the runner
@@ -592,27 +594,82 @@ decision in plain text and the Operator types the reply.
   refuses with 7 and the decision stays pending; `revise` on the plan menu sets no outcome (the
   lead runs `plan revise` within the limit). Recorded as `answered_via: teamlead-ask <uuid>` with
   `answered_session`; the touch log, `operator-touches`, `## Answer` and the tuning line as for a
-  typed answer. A typed reply in the window (`--text`) still works.
-- **Provenance guard.** A dialog answer counts only when the lead session's effective
-  `AskUserQuestion` hook registrations are the inert project guard alone — any other hook could
-  answer the dialog with no menu shown. `team_evidence_ask_hooks <main> <clone> <config dir>`
-  (`team-evidence.sh`) reads the user profile (`<config dir>/settings.json`), the project
-  `settings.json`, `settings.local.json` and the lead's `teamlead.settings.json`, and takes every
-  `PreToolUse` and `PermissionRequest` entry (both can answer the dialog through `updatedInput`)
-  whose matcher is absent, empty, `*`, a comma- or pipe-separated name list naming
-  `AskUserQuestion`, or a regex matching it (unanchored; an invalid regex counts). Clean iff the
-  only such entries are the project's `PreToolUse`
-  `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command each), the clone's
-  guard equals main's byte for byte and main's is inert (`exit 0` only); an enabled plugin in any
-  source, a clone mod (`.claude/skills/<name>/hooks/`) that differs from main's tree, or any
-  user-level mod is unclean (code-registered hooks cannot be inventoried). The runner snapshots it
-  at each lead launch (`lead_ask_hooks[<session id>] = {run, clean, digest, cause, config_dir,
-  at}` in the anchor); `--from-ask` and the hook require that session's own snapshot to be clean
-  and the current registrations to give the same digest — Claude Code may snapshot hooks at session
-  start, so both semantics are covered, and the script bytes are re-checked each time. Uncertain
-  provenance (no snapshot, unclean, changed) → exit 7 naming the cause; the Operator types the
-  `d-<n>` reply instead. A session not in the anchor (e.g. after `/clear`) → a typed reply fails
-  too; the Operator answers from a terminal.
+  typed answer. The lead never asks for a typed reply; words the Operator types in the window on
+  their own are still recorded with `--text`.
+- **Provenance guard.** A dialog answer counts only when nothing else can answer the lead
+  session's `AskUserQuestion` dialog or replace its result. `team_evidence_ask_hooks <main>
+  <clone> <config dir>` (`team-evidence.sh`) reads five settings sources — the managed settings
+  file (`/Library/Application Support/ClaudeCode/managed-settings.json`, when present), the user
+  profile (`<config dir>/settings.json`), the project `settings.json`, `settings.local.json` and
+  the lead's `teamlead.settings.json` — and takes every `PreToolUse` and `PermissionRequest` entry
+  (both can answer the dialog through `updatedInput`) and every `PostToolUse` entry (it can
+  replace the tool result the answer is read from) whose matcher is absent, empty, `*`, a comma-
+  or pipe-separated name list naming `AskUserQuestion`, or a regex matching it (unanchored; an
+  invalid regex counts). So a `PostToolUse` entry on `Edit|Write` stays clean. Clean iff the only
+  such entries are the project's own two, both in the project `settings.json` and both pinned to
+  the main checkout's bytes: the `PreToolUse`
+  `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command; the clone's
+  guard equals main's byte for byte and main's is inert, `exit 0` only), and the matcher-less
+  `PostToolUse` `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh"` (one command, no hook
+  field beyond `type`, `command`, `timeout`; the clone's script equals main's byte for byte, and
+  those bytes join the digest). The same command in another source, with another field or beside
+  a second command is unclean. A clone mod (`.claude/skills/<name>/hooks/`) that differs from
+  main's tree, or any user-level mod is unclean (code-registered hooks cannot be inventoried).
+- **Plugin inventory** (`team_evidence_plugins`, `team_evidence_tree`). Every plugin id any of
+  those sources enables (any value but `false`, whichever source would win the merge) is resolved
+  as the host loads it, under `<config dir>/plugins/`: each install record of the id in
+  `installed_plugins.json` (`installPath`), and the id's entry in its marketplace manifest
+  (`known_marketplaces.json` → `<installLocation>/.claude-plugin/marketplace.json`). Hook sources
+  per install path: `.claude-plugin/plugin.json` `hooks` (a path, an inline event map, or a list of
+  both), every `hooks.json` in the install tree (`hooks/hooks.json`, a skill's own), and the
+  marketplace entry's inline `hooks` — a plugin without a manifest is defined by that entry. A
+  plugin is clean iff every source resolves and parses and none carries a `PreToolUse`,
+  `PermissionRequest`, `PostToolUse` or `UserPromptSubmit` hook, whatever its matcher (so an
+  MCP-only or LSP-only plugin is clean). Unclean, naming the plugin and the source: such a hook; a
+  `modules` key (hooks registered in code); a `hooks` key in the frontmatter of any `.md` of the
+  tree (a skill's or agent's hooks run while it is active); a hooks path that is missing or leaves
+  the plugin; no install record, no single marketplace entry, an unreadable file or tree; an entry
+  `hooks` that is no event map. Every `hooks.json` of the tree is read under any spelling and the
+  frontmatter test is textual (any frontmatter line with a `hooks` key, CR and BOM dropped): more
+  than the host loads, never less. Unknown stays unclean.
+- **Plugin roots and directories.** `CLAUDE_CODE_PLUGIN_CACHE_DIR` and `CLAUDE_CODE_PLUGIN_DIRS`
+  are read from the checking process's environment **and** from the `env` key of each of the five
+  settings sources (the host applies a settings file's `env` to the session). A
+  `CLAUDE_CODE_PLUGIN_CACHE_DIR` in any of them is unclean — the plugin root cannot be
+  established — with or without an enabled plugin. Every directory of every
+  `CLAUDE_CODE_PLUGIN_DIRS` (colon-separated, `~/` expanded) is inventoried as a plugin tree by
+  the rules above: it must hold `.claude-plugin/plugin.json`, and a mod there (`modules`) is
+  unclean; the cause names the source. After the `~/` expansion an entry that is not an absolute
+  path is unclean: it resolves against the working directory, which is the checker's here and the
+  clone for the lead, so the same string can name two trees. A value that is no plain one-line string (a newline, a tab,
+  another JSON type) is unclean: its directories cannot be established. Plugin content (a manifest, a hooks file, an `.md`) under
+  `<config dir>/plugins/synced` is unclean, it has no inventory. Not read: a policy delivered
+  another way (MDM, a server), and a lead whose own environment differs from the runner's.
+- **Same bytes.** Each input — a settings file, a plugin manifest, a hooks file, the install and
+  marketplace records, the two pinned scripts — is captured once into a private temporary
+  directory, and that copy is both inspected and hashed; the frontmatter of every plugin `.md` is
+  captured in one pass, tested and hashed from that capture. A clone mod is judged the same way:
+  one inventory of each tree (`team_evidence_inv`: every file's sha256; a tree with a
+  symbolic link has no inventory and is unclean, because equal link text can point at different
+  bytes) is taken, the two are compared, and main's same inventory joins the digest. The digest takes the matched settings
+  entries, the pinned scripts' bytes, each plugin install path with its manifest's and every hooks
+  file's sha256, the frontmatter capture's sha256, the marketplace entry's `hooks` and `strict`,
+  and each resolved `CLAUDE_CODE_PLUGIN_DIRS` directory once, in path order and without its source
+  (the lead's own process sees a settings `env` value in its environment too, and must get the
+  same digest) — so a plugin update, an edited hook, a changed or reordered frontmatter line, or
+  a moved directory after launch reads as changed. A lead launched
+  before this inventory existed has a digest of the older shape: its dialog answers read as
+  `registrations changed since launch` until it is relaunched.
+- **Snapshot and re-check.** The runner takes the check before each lead launch and launches only
+  on clean (§1); the clean line is the session's snapshot (`lead_ask_hooks[<session id>] = {run,
+  clean, digest, cause, config_dir, at}` in the anchor). `--from-ask` and the hook require that
+  session's own snapshot to be clean and the current registrations to give the same digest —
+  Claude Code may snapshot hooks at session start, so both semantics are covered, and the script
+  bytes are re-checked each time. Uncertain provenance (no snapshot, unclean, changed) → exit 7
+  naming the cause, the fix (`team_evidence_fix`) and the terminal command; so does a session not
+  in the anchor (e.g. after `/clear`). The lead prints that command as a line to copy and asks for
+  no typed reply: the terminal (`decision answer` on a TTY) is the one route left for that
+  decision, until the cause is fixed and the lead relaunched.
 - **The hook's re-verification** of a `teamlead-ask <uuid>` decision (`verify_operator`, main
   checkout) requires `answered_session` (a recorded, non-legacy session), that session's clean
   snapshot and an unchanged digest now, the transcript under the snapshot's own `config_dir` (never
@@ -623,14 +680,17 @@ decision in plain text and the Operator types the reply.
   times the ask out (`ask_reject`). When the stage's retry reclaims the same ask (an operator-tier
   permission with a usable retry key) the lead opens a new decision on that ask; otherwise the
   retry files a fresh ask, which gets its own decision, and the old ask is withdrawn.
-- **Degraded environment** (TeamLead decision "Degrade + warn"). When a session's launch snapshot is
-  unclean, or its registrations changed since, the dialog may be answered by a hook with no menu
-  shown, so a raised dialog is no attention and its answer is no evidence. AC2/AC3 then hold only as
-  the runner's `warn:` line and `notify.sh`: the reminder keeps ringing every interval as `unasked
-  d-<n>: the dialog is unreliable here (<cause>) — print d-<n> in plain text for the Operator — …`,
-  and once per decision (`decisions/.unclean-warned-<id>`) the runner prints `warn: <id> waits in
-  <lead window> — dialog unreliable (<cause>)`. The cause is named at launch (§1). This is a
-  narrowing, stated plainly.
+- **Degraded environment** (TeamLead decision "Degrade + warn"). No lead is launched unclean (§1),
+  so this is the case of registrations that changed after launch (or a snapshot an older runner
+  recorded unclean): the dialog may be answered by a hook with no menu shown, so a raised dialog is
+  no attention and its answer is no evidence. AC2/AC3 then hold only as the runner's `warn:` line
+  and `notify.sh`: the reminder keeps ringing every interval as `unasked d-<n>: the dialog is
+  unreliable here (<cause>) — ask for no typed reply; print d-<n> and this line for the Operator
+  to copy into a terminal: bash .claude/lib/team-lead.sh decision answer <team> d-<n> --text
+  "d-<n> <answer>" [--outcome …] — …` (`team_evidence_terminal`: an unbound decision's line
+  carries `--outcome`, which only a dialog answer derives from the label), and once per decision (`decisions/.unclean-warned-<id>`) the runner
+  prints `warn: <id> waits in <lead window> — dialog unreliable (<cause>)`. This is a narrowing,
+  stated plainly.
 - **Blocking.** While a dialog is open the lead answers nothing else. A lead-tier ask re-asks at its
   hook deadline. An operator-tier permission ask that cannot be pinned is withdrawn and its caller
   stops (a coder/QA `blocked` record, a finder `STATUS: failed`); that stop reaches the lead as an

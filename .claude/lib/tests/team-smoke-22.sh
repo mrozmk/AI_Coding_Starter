@@ -947,7 +947,7 @@ jq '.lead_ask_hooks["sid-lead"].clean = false | .lead_ask_hooks["sid-lead"].caus
 cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep2"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"
 fresh; TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked
-[ "$(nb)" = 1 ] && grep -q "^unasked $DR: the dialog is unreliable here (launch snapshot unclean: user profile: .\* matcher) — print $DR in plain text" "$WORK/bells" \
+[ "$(nb)" = 1 ] && grep -q "^unasked $DR: the dialog is unreliable here (launch snapshot unclean: user profile: .\* matcher) — ask for no typed reply; print $DR and this line for the Operator to copy into a terminal: bash .claude/lib/team-lead.sh decision answer alfa $DR --text" "$WORK/bells" \
   && [ "$(grep -c "^warn: $DR waits in .*alfa-lead — dialog unreliable" "$WORK/uq.out")" = 1 ] \
   || fail "(m) an unclean environment: $(cat "$WORK/bells") $(cat "$WORK/uq.out")"
 TEAM_UNASKED_GRACE_SECS=0 TEAM_ASK_RERING_SECS=0 unasked

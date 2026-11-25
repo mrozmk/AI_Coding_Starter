@@ -101,8 +101,9 @@ lead_asks() {
 # a ## Dialog the lead has not raised as AskUserQuestion is rung `unasked d-<n>: …` after
 # TEAM_UNASKED_GRACE_SECS, then every TEAM_ASK_RERING_SECS — a channel that never depends on
 # notify.sh. Where the dialog is unreliable (an unclean or changed registration snapshot: a hook
-# may answer it with no menu shown) a raised dialog is no attention: the ring goes on, worded to
-# print the decision in plain text, and the runner warns once per decision. Always returns 0.
+# may answer it with no menu shown — after launch only: an unclean lead is never launched) a raised
+# dialog is no attention: the ring goes on, worded to print the decision with the terminal command
+# as a line to copy, and the runner warns once per decision. Always returns 0.
 lead_unasked_decisions() {
   local f id c oldest="" list="" x sid t="" raised="" env_ok="" cause="" grace q w msg
   jq -e '.ask_operator == true' "$TD/teamlead.json" >/dev/null 2>&1 || return 0
@@ -136,7 +137,7 @@ lead_unasked_decisions() {
     if [ -n "$env_ok" ]; then
       msg="unasked $id: no AskUserQuestion raised yet — run decision list --pending, then raise the ask-operator dialog of $id (team-lead.md §7) — ${q:0:120}"
     else
-      msg="unasked $id: the dialog is unreliable here ($cause) — print $id in plain text for the Operator — ${q:0:120}"
+      msg="unasked $id: the dialog is unreliable here ($cause) — ask for no typed reply; print $id and this line for the Operator to copy into a terminal: $(team_evidence_terminal "$TEAM" "$f" "$id") — ${q:0:120}"
       if [ ! -e "$TD/runs/$RUN/decisions/.unclean-warned-$id" ]; then
         touch "$TD/runs/$RUN/decisions/.unclean-warned-$id"
         echo "warn: $id waits in $w — dialog unreliable ($cause)"

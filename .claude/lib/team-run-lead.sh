@@ -94,6 +94,15 @@ launch_lead() {
   ch="$(codex_home)" || die 1 "$ch"
   # The project's Claude profile, as launch() takes it (team_claude_home, team-profile.sh).
   cc="$(team_claude_home "$root")" || die 1 "$cc"
+  # The lead's effective AskUserQuestion registrations (after materialize wrote its --settings),
+  # checked before anything of this launch is written: a dialog answer counts as Operator evidence
+  # only while they are clean, so an unclean lead is never launched (team-lead.md §7). The clean
+  # line becomes the session's launch snapshot below.
+  . "$root/.claude/lib/team-evidence.sh" 2>/dev/null && command -v team_evidence_fix >/dev/null 2>&1 \
+    || die 4 "TeamLead not launched — no registration check (team-evidence.sh) in the main checkout"
+  ah="$(team_evidence_ask_hooks "$root" "$CLONE" "$cc")" \
+    || die 4 "TeamLead not launched — ask provenance unclean: ${ah#unclean }
+fix: $(team_evidence_fix "${ah#unclean }"), then /start-team $TEAM"
   sid="$(new_uuid)" || die 1 "error: new_uuid gave no UUID"
   # pipefail: no earlier session makes ls fail, which must not end the runner.
   n="$(ls "$TD/runs/$RUN"/lead-*.session 2>/dev/null | wc -l | tr -d ' ' || true)"; n=$((n + 1))
@@ -110,15 +119,7 @@ launch_lead() {
       effort: $effort, permission_mode: $perm, main_root: $main, claude_config_dir: $cc,
       ask_operator: true}' > "$TD/teamlead.json.tmp"
   mv "$TD/teamlead.json.tmp" "$TD/teamlead.json"
-  # The launch snapshot of the lead's effective AskUserQuestion registrations (after materialize
-  # wrote its --settings): a dialog answer counts as Operator evidence only while they stay clean.
-  if . "$root/.claude/lib/team-evidence.sh" 2>/dev/null && command -v team_evidence_ask_hooks >/dev/null 2>&1; then
-    ah="$(team_evidence_ask_hooks "$root" "$CLONE" "$cc")" || true
-  fi
   lead_session_record "$sid" "$cc" "$ah" || die 1 "TeamLead session not recorded in the anchor"
-  case "$ah" in clean\ *) ;; *)
-    echo "warn: TeamLead dialog — answers will not count as Operator evidence and the dialog may not surface (${ah#unclean }); decisions wait in $name" ;;
-  esac
   # The .session/.prompt.md pair is how cost.py bind --team-run finds every lead session.
   printf '%s\n' "$sid" > "$TD/runs/$RUN/lead-$n.session"
   render_lead_prompt "$pf"

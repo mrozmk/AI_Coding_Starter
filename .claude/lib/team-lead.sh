@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The per-run TeamLead's identity and permission profile.
 # Usage: bash .claude/lib/team-lead.sh materialize <team>   (from the main checkout)
+#        bash .claude/lib/team-lead.sh preflight <team>      (main checkout; 3 = ask provenance unclean)
 #        bash .claude/lib/team-lead.sh whoami                (exit 0 when the caller is the lead)
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
@@ -32,7 +33,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -372,8 +373,29 @@ materialize() {
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }
 
+# preflight <team> — before a start (main checkout): the AskUserQuestion registrations a lead of this
+# team would launch with (team-evidence.sh; the team's clone, or the main checkout while there is
+# none yet). Clean → one line, 0. Unclean → the cause and the fix, 3: a lead launched now could not
+# take the Operator's dialog answers, and the runner would refuse to launch it.
+preflight() {
+  local r clone cfg ah
+  team_check_name "$1" || exit 2
+  r="$(team_root)"
+  [ ! -f "$r/.agents/team/team.json" ] || { echo "error: preflight runs from the main checkout" >&2; exit 2; }
+  team_profile_load "$r"
+  clone="$(team_clone_dir "$1" "$r")" || exit 2
+  [ -d "$clone/.claude" ] || clone="$r"
+  cfg="$(team_claude_home "$r")" || { echo "$cfg" >&2; exit 1; }
+  . "$LIB/team-evidence.sh"
+  if ah="$(team_evidence_ask_hooks "$r" "$clone" "$cfg")"; then echo "ask provenance: clean"; return 0; fi
+  echo "error: ask provenance unclean — ${ah#unclean }" >&2
+  echo "fix: $(team_evidence_fix "${ah#unclean }"), then start again" >&2
+  exit 3
+}
+
 case "$1" in
   materialize) [ $# -eq 2 ] || usage; materialize "$2" ;;
+  preflight) [ $# -eq 2 ] || usage; preflight "$2" ;;
   whoami) [ $# -eq 1 ] || usage; team_lead_caller ;;
   pending) [ $# -eq 2 ] || usage; pending "$2" ;;
   digest-check) [ $# -eq 3 ] || usage; digest_check "$2" "$3" ;;

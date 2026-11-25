@@ -131,6 +131,8 @@ smoke_init() {
   # Session names carry the fixture prefix (teams.session_prefix = smk).
   unset TEAM_GATE_LOCK_DIR TEAM_GATE_LOCK_LOG TEAM_GATE_LOCK_TOKEN TEAM_GATE_LOCK_WAIT
   unset CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR
+  # The calling session's own plugin sources: the registration check reads them (team-evidence.sh).
+  unset CLAUDE_CODE_PLUGIN_DIRS CLAUDE_CODE_PLUGIN_CACHE_DIR
   smoke_gitconfig
   smoke_stubs
   smoke_git_stub

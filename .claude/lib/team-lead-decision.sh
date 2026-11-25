@@ -386,7 +386,7 @@ d_from_ask() {
     || d_bad 7 "no dialog evidence — the TeamLead session is not one the anchor records; answer from a terminal"
   sid="$(cut -f1 <<<"$x")"
   cfg="$(team_evidence_provenance "$trust" "$clone" "$RUN" "$sid")" \
-    || d_bad 7 "no dialog evidence — $cfg; the Operator types the $id reply"
+    || d_bad 7 "no dialog evidence — $cfg. Ask for no typed reply: the Operator answers from a terminal — print this as a line to copy: $(team_evidence_terminal "$(jq -r .team "$TD/team.json")" "$f" "$id") (fix: $(team_evidence_fix "$cfg"))"
   t="$(team_role_transcript "$clone" "$sid" "$cfg")"
   uuid="$(team_evidence_dialog_find "$t" "$id" "$(dfm "$f" created_at)" "$dlg")"
   [ -n "$uuid" ] && r="$(team_evidence_dialog_read "$t" "$uuid" "$id" "$(dfm "$f" created_at)" "$dlg")" && [ -n "$r" ] \

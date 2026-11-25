@@ -87,6 +87,17 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      (`teams.sessions.TeamLead`); drop it from --roles" (`cli=//manual` from `--permission-mode
      manual` is allowed).
 
+1a. **ASK provenance preflight** — for every start whose run has a per-run TeamLead: a NEW
+   start with `MODE` ≠ `cli`, and a RESUME whose ticket's `mode` in
+   `<CLONE>/.agents/team/team.json` is not `cli` (fixed or chosen by a lead: the runner launches
+   no lead for either).
+   Before the claim, the clone and the runner: `bash .claude/lib/team-lead.sh preflight <TEAM>`.
+   Exit 3 → print its `error:` and `fix:` lines verbatim and stop — no claim, no clone, no
+   runner: a lead launched now could not take the Operator's dialog answers, and the runner
+   would refuse to launch it. Never work around it (no `--mode cli` on your own, no settings or
+   plugin edit): the Operator makes the fix and starts again. Exit 0 prints
+   `ask provenance: clean` (`.agents/reference/team-lead.md` §7 → Provenance guard).
+
 2. **RESUME** (no `KEY`, and for `none` no `--brief*` either). `CLONE` must exist. Never call
    `team-tracker.sh read` here: a resume allocates nothing, and the ticket it continues is already in
    `<CLONE>/.agents/team/ticket.json` (`github`/`none`) or in Jira. With `ROLES` → step 4a first, then run
