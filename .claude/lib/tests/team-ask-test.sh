@@ -994,6 +994,24 @@ jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: "~"}}' > "$US"; ahk
 sub '[ "$AHRC" = 1 ] && grep -q "not an absolute path" <<<"$AH"' "(h) a bare ~ is not expanded ($AH)"
 rm -rf "$CLONE/pd1"; rm -f "$US"; ahk
 sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(h) restored: clean, the same digest ($AH)"
+# The lead's --settings file decides the plugin directories (#316): materialize writes "" there, so
+# a mod the Operator loads through the user settings env never reaches the lead.
+LS="$CLONE/.agents/team/teamlead.settings.json"; mkdir -p "$CLONE/.agents/team"
+[ ! -f "$LS" ] || cp "$LS" "$T/ls.keep"
+jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$US"; jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: ""}}' > "$LS"; ahk
+sub '[ "$AHRC" = 0 ]' "(h2) a mod in the user settings env, the lead profile's \"\" drops it ($AH)"
+AH="$(CLAUDE_CODE_PLUGIN_DIRS="$T/pd2" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 0 ]' "(h2) … and in the inherited environment ($AH)"
+jq -n --arg p "$T/pd2" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$LS"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "plugin directory $T/pd2 (CLAUDE_CODE_PLUGIN_DIRS, teamlead.settings.json env): hooks/hooks.json registers hooks in code" <<<"$AH"' "(h2) a mod named by the lead profile itself ($AH)"
+jq -n --arg p "$T/pd1" '{env: {CLAUDE_CODE_PLUGIN_DIRS: $p}}' > "$LS"; ahk
+sub '[ "$AHRC" = 0 ] && [ "$AH" != "$CLEAN" ]' "(h2) the lead profile's hookless directory replaces the user's, in the digest ($AH)"
+rm -f "$LS"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "user settings.json env" <<<"$AH"' "(h2) no lead profile: the user settings env counts again ($AH)"
+AH="$(TEAM_EVIDENCE_LEAD_PROFILE=1 team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 0 ]' "(h2) the preflight takes the value the launch materializes ($AH)"
+rm -f "$US"; [ ! -f "$T/ls.keep" ] || cp "$T/ls.keep" "$LS"; ahk
+sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(h2) restored: clean, the same digest ($AH)"
 # A clone mod: one inventory of each tree decides the comparison and feeds the digest.
 MOD="$(cd "$MAIN/.claude/skills" && for d in */hooks; do [ -d "$d" ] && echo "${d%/hooks}" && break; done)"
 sub '[ -n "$MOD" ] && [ -d "$CLONE/.claude/skills/$MOD/hooks" ]' "(i) the fixture has a project mod ($MOD)"
