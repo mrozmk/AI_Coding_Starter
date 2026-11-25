@@ -1766,13 +1766,14 @@ wait "$HP"; cp "$T/sreg.keep" "$SREG"; rm -f "$(dirname "$SUPT")/sup-2.jsonl"
 ok '[ "$R1" = 7 ] && [ "$R2" = 7 ] && [ "$R3" = 7 ] && grep -q "could not be verified for a-1" "$T/m25.out" && ! grep -q "authority operator" "$RD/answers.md" 2>/dev/null' \
   "uncertain lineage — a rotated Supervisor session with the markers gone, a session with no transcript, no registration — a terminal answer is refused as the Operator's by the sender and the hook ($(cat "$T/l.out"))"
 # the registration changes between the lookups of one check: one snapshot, and it must still hold at the end
-rot() {  # rot → mandate_run_ever's rc when the registry rotates to sup-2 right after its first lookup
+rot() {  # rot → mandate_run_ever's rc when the registry rotates to sup-2 right after the check's own lookup
+  # (the 2nd resolution: the 1st belongs to the "bound now" test before it)
   jq -nc '{type: "user", uuid: "r1", timestamp: "2099-01-01T14:00:00Z", message: {role: "user", content: "hello again"}}' > "$(dirname "$SUPT")/sup-2.jsonl"
-  cp "$SREG" "$T/sreg.keep"; rm -f "$T/rot.done"
+  cp "$SREG" "$T/sreg.keep"; : > "$T/rot.n"
   ( cd "$MAIN" && . .claude/lib/team-lib.sh && . .claude/lib/team-lead-lib.sh && . .claude/lib/team-evidence.sh && . .claude/lib/team-mandate.sh || exit 9
     eval "orig_$(declare -f mandate_transcript)"
     mandate_transcript() { local rc=0; orig_mandate_transcript "$@" || rc=$?
-      [ -e "$T/rot.done" ] || { : > "$T/rot.done"; jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"; }; return "$rc"; }
+      printf x >> "$T/rot.n"; [ "$(wc -c < "$T/rot.n" | tr -d ' ')" != 2 ] || jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"; return "$rc"; }
     mandate_run_ever "$MAIN" beta "$RUN" ) > /dev/null 2>&1; ROT=$?
   cp "$T/sreg.keep" "$SREG"; rm -f "$(dirname "$SUPT")/sup-2.jsonl"
 }
