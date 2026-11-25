@@ -25,7 +25,7 @@ export const STRINGS = {
       kind: 'Kind', detail: 'Detail', question: 'Question', last_verified: 'Legal facts last verified',
       unverified: 'unverified — check the source', client: 'Client type', lang_note: 'Remediation text is in English: the site language is not en or pl.',
       model_not_completed: 'model phase not completed', guard_inactive: 'read guard not active — model phases skipped', understanding: 'Understanding',
-      status_run: 'Run status',
+      status_run: 'Run status', decode_failed: 'the image file could not be decoded',
     },
     ledger: {
       'destination-blocked': 'request refused by the destination policy', 'non-get': 'non-GET request aborted', 'interaction-lockdown': 'request caused after load aborted (interaction lockdown)',
@@ -63,7 +63,7 @@ export const STRINGS = {
       kind: 'Rodzaj', detail: 'Szczegóły', question: 'Pytanie', last_verified: 'Fakty prawne ostatnio sprawdzone',
       unverified: 'niezweryfikowane — sprawdź źródło', client: 'Typ klienta', lang_note: 'Wskazówki naprawy są po angielsku: język strony to nie en ani pl.',
       model_not_completed: 'faza modelu nieukończona', guard_inactive: 'strażnik odczytu nieaktywny — fazy modelu pominięte', understanding: 'Understanding',
-      status_run: 'Status przebiegu',
+      status_run: 'Status przebiegu', decode_failed: 'nie można zdekodować pliku obrazu',
     },
     ledger: {
       'destination-blocked': 'żądanie odrzucone przez politykę celów', 'non-get': 'żądanie inne niż GET przerwane', 'interaction-lockdown': 'żądanie po załadowaniu przerwane (blokada interakcji)',
@@ -97,7 +97,7 @@ export const REMEDIATION = {
   'pause-control': { en: 'Give moving or auto-playing content a pause/stop control.', pl: 'Daj ruchomej lub samoodtwarzającej się treści przycisk pauzy/zatrzymania.' },
   'status-messages': { en: 'Announce form errors and status changes through a live region (role="status" or role="alert").', pl: 'Ogłaszaj błędy formularza i zmiany statusu przez region na żywo (role="status" lub role="alert").' },
   orientation: { en: 'Do not lock or hide content in landscape orientation.', pl: 'Nie blokuj ani nie ukrywaj treści w orientacji poziomej.' },
-  'broken-image': { en: 'Fix the image URL (the server answered with an error) before judging its text alternative.', pl: 'Napraw adres obrazu (serwer zwrócił błąd), zanim ocenisz jego tekst alternatywny.' },
+  'broken-image': { en: 'Fix the image URL (the server answered with an error) or replace a file that cannot be decoded before judging its text alternative.', pl: 'Napraw adres obrazu (serwer zwrócił błąd) albo podmień plik, którego nie można zdekodować, zanim ocenisz jego tekst alternatywny.' },
 };
 
 export function pick(lang) {

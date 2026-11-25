@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebRTC frame</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>WebRTC frame</h1>
+  <p>A frame opens a peer connection and is removed before teardown.</p>
+  <iframe id="rtc" src="webrtc.html" title="Peer connection"></iframe>
+</main>
+<script>document.getElementById('rtc').addEventListener('load', (e) => { e.target.remove(); });</script>
+</body>
+</html>

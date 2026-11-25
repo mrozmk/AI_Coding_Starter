@@ -391,7 +391,7 @@ export class Scanner {
       for (const b of res.broken) {
         const evidence = await this.capture(session, { selector: b.selector }, 'initial');
         ev.addObservation(run, { source: 'runner', contributor: 'broken-image', sc: brokenImage.sc, outcome: 'violation', basis: '●', impact: 'serious', page, viewport, state: 'initial', selector: b.selector, data: b.data, evidence_ids: evidence ? [evidence] : [], remediation_key: 'broken-image',
-          steps: ['Open the page and look at the image.', `The image did not load (HTTP ${b.data.status ?? 'error'}); its text alternative cannot be judged.`] });
+          steps: ['Open the page and look at the image.', b.data.decode === 'failed' ? 'The image file could not be decoded; its text alternative cannot be judged.' : `The image did not load (HTTP ${b.data.status ?? 'error'}); its text alternative cannot be judged.`] });
       }
       if (!res.broken.length) ev.addObservation(run, { source: 'runner', contributor: 'broken-image', sc: brokenImage.sc, outcome: res.imageCount ? 'pass' : 'inapplicable', page, viewport, state: 'initial' });
       ev.completeUnits(run, { page, viewport, state: 'initial', contributor: 'runner:broken-image' });

@@ -29,5 +29,9 @@
   "axe-fault.html": { "viewport": "desktop", "scan": false, "findings": [], "absent": [], "ledger": [], "notes": "WCAG_AUDIT_TEST_FAULT=axe-on:axe-fault.html" },
   "consent-load.html": { "viewport": "desktop", "scan": false, "findings": [], "absent": [], "ledger": [], "notes": "no request may carry the consent cookie" },
   "sandboxed-frame.html": { "viewport": "desktop", "scan": false, "findings": [], "absent": [], "ledger": ["cross-origin-frame-skipped"], "notes": "opaque-origin frame skipped despite the origin spoof" },
-  "pii.html": { "viewport": "desktop", "scan": false, "findings": [{ "check_or_rule": "label", "sc": "4.1.2", "basis": "●" }], "absent": [], "ledger": [], "notes": "collection policy test" }
+  "pii.html": { "viewport": "desktop", "scan": false, "findings": [{ "check_or_rule": "label", "sc": "4.1.2", "basis": "●" }], "absent": [], "ledger": [], "notes": "collection policy test" },
+  "broken-redirect.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "broken-image", "sc": "1.1.1", "basis": "●" }], "absent": [], "ledger": [], "notes": "image redirected 301 to a 404 carries the final status" },
+  "broken-bytes.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "broken-image", "sc": "1.1.1", "basis": "●" }], "absent": [], "ledger": [], "notes": "image answered 200 with bytes that cannot be decoded" },
+  "reflow-aria-hidden.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "reflow", "sc": "1.4.10", "basis": "●" }], "absent": [], "ledger": [], "notes": "visible aria-hidden text clipped at 320 px is a reflow loss" },
+  "reflow-inert.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "reflow", "sc": "1.4.10", "basis": "●" }], "absent": [], "ledger": [], "notes": "visible inert button clipped at 320 px is a reflow loss" }
 }

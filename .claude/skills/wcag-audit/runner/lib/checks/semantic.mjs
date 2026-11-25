@@ -1,7 +1,8 @@
 // semantic.mjs — the producer of judge input (readonly, always runs on the initial state): images with
 // a non-empty alt that loaded, link/button names with context, headings, labels, language changes,
-// error texts and help links. A broken image (an HTTP error, or a load that failed on the network) is
-// never an item: it is the runner finding broken-image (1.1.1, ●) with its load diagnostic. An image
+// error texts and help links. A broken image (an HTTP error, a load that failed on the network, or a
+// file that answered 2xx but cannot be decoded) is never an item: it is the runner finding
+// broken-image (1.1.1, ●) with its load diagnostic. An image
 // that simply never loaded — lazy content the lockdown blocked or never requested — is neither.
 import { inPage } from '../dom.mjs';
 import { redactText, redactUrl, axExcerpt } from '../redact.mjs';
@@ -16,7 +17,9 @@ const NOT_ORIGIN_ERRORS = /ERR_BLOCKED_BY_CLIENT|ERR_TUNNEL_CONNECTION_FAILED/;
 export async function collectSemantic(page, { responses, failed = new Map(), proxyBlocked = new Set(), cdp }) {
   const raw = await inPage(page, `
     const all = W.all();
-    const imgs = all.filter((el) => el.tagName === 'IMG').map((el) => ({ sel: W.sel(el), src: el.currentSrc || el.src, alt: el.getAttribute('alt'), loaded: el.complete && el.naturalWidth > 0, visible: W.visible(el) }));
+    // decode() is asked only of a complete image, so it starts no request; a sizeless SVG resolves.
+    const decodeFailed = (el, src) => (el.complete && el.naturalWidth === 0 && src ? el.decode().then(() => false, () => true) : Promise.resolve(false));
+    const imgPromise = Promise.all(all.filter((el) => el.tagName === 'IMG').map((el) => { const src = el.currentSrc || el.src; return decodeFailed(el, src).then((df) => ({ sel: W.sel(el), src, alt: el.getAttribute('alt'), loaded: el.complete && el.naturalWidth > 0, visible: W.visible(el), decodeFailed: df })); }));
     const ctx = (el) => { const p = el.closest('p, li, td, th, h1, h2, h3, h4, h5, h6, figcaption') || el.parentElement; return p ? p.textContent.trim().replace(/\\s+/g, ' ').slice(0, 200) : ''; };
     const name = (el) => (el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || '').trim().replace(/\\s+/g, ' ').slice(0, 200);
     const links = all.filter((el) => el.matches('a[href], button, [role=button], [role=link]') && W.visible(el)).map((el) => ({ sel: W.sel(el), kind: 'link-purpose', text: name(el), context: ctx(el) }));
@@ -27,7 +30,7 @@ export async function collectSemantic(page, { responses, failed = new Map(), pro
     const errors = all.filter((el) => el.matches('[role=alert], [aria-invalid=true], .error, .invalid-feedback') && el.textContent.trim()).map((el) => ({ sel: W.sel(el), kind: 'error-text', text: el.textContent.trim().slice(0, 200) }));
     const help = all.filter((el) => el.matches('a[href]') && /help|pomoc|kontakt|contact|support|faq/i.test(el.textContent)).map((el) => ({ sel: W.sel(el), kind: 'consistent-help', text: el.textContent.trim().slice(0, 80) }));
     const outline = all.filter((el) => /^H[1-6]$/.test(el.tagName)).map((el) => el.tagName + ' ' + el.textContent.trim().slice(0, 60)).slice(0, 40);
-    return { imgs, groups: [links, labelled, headings, labels, langs, errors, help], outline };
+    return imgPromise.then((imgs) => ({ imgs, groups: [links, labelled, headings, labels, langs, errors, help], outline }));
   `);
   const broken = [];
   const items = [];
@@ -39,6 +42,10 @@ export async function collectSemantic(page, { responses, failed = new Map(), pro
     const loadFailed = !img.loaded && !!img.src && !!netError && !NOT_ORIGIN_ERRORS.test(netError);
     if ((status && status >= 400) || loadFailed) {
       broken.push({ selector: img.sel, data: { status: status ?? null, url: redactUrl(img.src) } });
+      continue;
+    }
+    if (status >= 200 && status < 300 && img.decodeFailed) {
+      broken.push({ selector: img.sel, data: { status, url: redactUrl(img.src), decode: 'failed' } });
       continue;
     }
     if (img.alt && img.alt.trim() && img.loaded && img.visible && (!status || (status >= 200 && status < 300))) {

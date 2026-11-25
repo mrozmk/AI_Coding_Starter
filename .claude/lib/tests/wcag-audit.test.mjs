@@ -745,6 +745,45 @@ test('a broken image needs an HTTP error or a failed load, never an image the lo
   assert.equal(res.items.filter((i) => i.kind === 'alt-vs-image').length, 0);
 });
 
+// ---- #324 fix pass --------------------------------------------------------------------------
+
+test('a guard refusal before the judge phase marks the run and the report prints the scope line', () => {
+  const repo = mkRepo();
+  const work = writeWork(repo, llmRun());
+  fs.writeFileSync(path.join(work, 'evidence', 'e-1.png'), 'png');
+  const { probe_denied: probe } = writeProbe(work, repo);
+  assert.throws(() => writePack(work, 'judge', repo), (e) => e.code === 'guard-not-proven');
+  assert.equal(readRun(work).model.guard_inactive, true);
+  assert.ok(render(readRun(work), { lang: 'en', work }).includes('read guard not active — model phases skipped'));
+  assert.equal(guard(probe, { repo }), 2);
+  writePack(work, 'judge', repo);
+  assert.equal(readRun(work).model.guard_inactive, undefined);
+});
+
+test('a guard refusal after the judge phase leaves the scope line unset', () => {
+  const repo = mkRepo();
+  const run = llmRun();
+  run.model.phases.judge = 'ingested';
+  const work = writeWork(repo, run);
+  assert.throws(() => writePack(work, 'disprove', repo), (e) => e.code === 'guard-not-proven');
+  assert.notEqual(readRun(work).model.guard_inactive, true);
+});
+
+test('an image with a 2xx response that fails to decode is a broken image', async () => {
+  const imgs = [
+    { sel: 'img.bytes', src: 'https://x.test/bytes.png', alt: 'bytes', loaded: false, visible: true, decodeFailed: true },
+    { sel: 'img.lazy', src: 'https://x.test/lazy.png', alt: 'lazy', loaded: false, visible: true, decodeFailed: true },
+    { sel: 'img.svg', src: 'https://x.test/logo.svg', alt: 'svg', loaded: true, visible: true, decodeFailed: false },
+  ];
+  const page = { evaluate: async () => ({ imgs, groups: [], outline: [] }) };
+  const responses = new Map([['https://x.test/bytes.png', 200], ['https://x.test/logo.svg', 200]]);
+  const failed = new Map([['https://x.test/lazy.png', 'net::ERR_BLOCKED_BY_CLIENT']]);
+  const res = await collectSemantic(page, { responses, failed, proxyBlocked: new Set(), cdp: null });
+  assert.deepEqual(res.broken.map((b) => b.selector), ['img.bytes']);
+  assert.equal(res.broken[0].data.decode, 'failed');
+  assert.equal(res.broken[0].data.status, 200);
+});
+
 test('the disprove pack carries each candidate with its own evidence', () => {
   const repo = mkRepo();
   const run = llmRun();
