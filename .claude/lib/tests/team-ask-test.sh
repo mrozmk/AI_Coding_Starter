@@ -1765,6 +1765,23 @@ jq -n '{id: "a-1", form: "allow", value: "", authority: "operator", why: "Operat
 wait "$HP"; cp "$T/sreg.keep" "$SREG"; rm -f "$(dirname "$SUPT")/sup-2.jsonl"
 ok '[ "$R1" = 7 ] && [ "$R2" = 7 ] && [ "$R3" = 7 ] && grep -q "could not be verified for a-1" "$T/m25.out" && ! grep -q "authority operator" "$RD/answers.md" 2>/dev/null' \
   "uncertain lineage — a rotated Supervisor session with the markers gone, a session with no transcript, no registration — a terminal answer is refused as the Operator's by the sender and the hook ($(cat "$T/l.out"))"
+# the registration changes between the lookups of one check: one snapshot, and it must still hold at the end
+rot() {  # rot → mandate_run_ever's rc when the registry rotates to sup-2 right after its first lookup
+  jq -nc '{type: "user", uuid: "r1", timestamp: "2099-01-01T14:00:00Z", message: {role: "user", content: "hello again"}}' > "$(dirname "$SUPT")/sup-2.jsonl"
+  cp "$SREG" "$T/sreg.keep"; rm -f "$T/rot.done"
+  ( cd "$MAIN" && . .claude/lib/team-lib.sh && . .claude/lib/team-lead-lib.sh && . .claude/lib/team-evidence.sh && . .claude/lib/team-mandate.sh || exit 9
+    eval "orig_$(declare -f mandate_transcript)"
+    mandate_transcript() { local rc=0; orig_mandate_transcript "$@" || rc=$?
+      [ -e "$T/rot.done" ] || { : > "$T/rot.done"; jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"; }; return "$rc"; }
+    mandate_run_ever "$MAIN" beta "$RUN" ) > /dev/null 2>&1; ROT=$?
+  cp "$T/sreg.keep" "$SREG"; rm -f "$(dirname "$SUPT")/sup-2.jsonl"
+}
+mrun 20990101-000027; say_sup s0 "hello" 2000-01-01T00:00:00Z
+(cd "$MAIN" && . .claude/lib/team-lib.sh && . .claude/lib/team-lead-lib.sh && . .claude/lib/team-evidence.sh && . .claude/lib/team-mandate.sh && mandate_run_ever "$MAIN" beta "$RUN") > /dev/null 2>&1; R0=$?
+rot; R1="$ROT"
+G "$M1"; TM pause; rm -f "$DLG/beta-$RUN.mandated"; rot
+ok '[ "$R0" = 1 ] && [ "$R1" = 0 ] && [ "$ROT" = 0 ]' \
+  "a registration that changes between the lookups of one check is an uncertain lineage: the start time and the history come from one snapshot, never the old session's start with its successor's empty history (steady $R0, rotated $R1, rotated after a grant $ROT)"
 # the sender needs the real main checkout
 mrun 20990101-000013; say_sup s0 "hello" 2000-01-01T00:00:00Z; pl perm-wc; TO=60 HB m13; wf "$AD/a-1.json"
 printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"

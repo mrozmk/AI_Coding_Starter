@@ -127,7 +127,7 @@ mandate_session_start() {
   printf '%sZ\n' "${BASH_REMATCH[0]}"
 }
 
-# mandate_history <main> → every mandate instruction the Operator typed in the registered
+# mandate_history <main> [<transcript>] → every mandate instruction the Operator typed in the registered
 # Supervisor session, one compact JSON row {uuid, ts, m} per line, in transcript order. The
 # transcript comes from the registration (<main>/.agents/team/registry/Supervisor.json) and the
 # declared Claude profile — never from mandate.json. Typed user messages only (no machine line: a
@@ -139,8 +139,9 @@ mandate_session_start() {
 # the revoke. A record still being written is retried briefly (TEAM_MANDATE_READ_TRIES, 0.3 s
 # apart), and refuses until it reads whole.
 mandate_history() {
-  local t n=0 rows row m bad="the Supervisor session's history cannot be read whole — no mandate is taken from a partial history"
-  t="$(mandate_transcript "$1")" || return
+  local t="${2:-}" n=0 rows row m bad="the Supervisor session's history cannot be read whole — no mandate is taken from a partial history"
+  # A caller that already resolved the registration passes its transcript: one lookup, not two.
+  [ -n "$t" ] || t="$(mandate_transcript "$1")" || return
   while ! rows="$(mandate_read "$t")"; do
     n=$((n + 1)); [ "$n" -lt "${TEAM_MANDATE_READ_TRIES:-4}" ] || { echo "$bad" >&2; return 3; }
     sleep 0.3
@@ -226,24 +227,30 @@ mandate_run_capable() {
 # (recorded or not). Uncertain, and counted the same: no registered Supervisor session, no
 # transcript, a history that does not read whole, a run id with no start time, or a registered
 # session that began after the run did (a rotation: what the earlier session held is not
-# readable here, and markers may be gone). rc 1 only when the registered session has been there
-# since before the run started, its history reads whole and holds no such grant. An empty <team>
-# is read from the run id.
+# readable here, and markers may be gone), or a registration that changed while this ran. rc 1
+# only when the registered session has been there since before the run started, its history
+# reads whole and holds no such grant, and the registration is still the one read at the start.
+# An empty <team> is read from the run id.
 mandate_run_ever() {
-  local team="$2" start rows row p x t s0
+  local team="$2" start rows row p x t s0 snap reg="$1/.agents/team/registry/Supervisor.json"
   [ -n "$team" ] || team="${3%-*-*}"
   [ -n "$team" ] && [ -n "$3" ] || return 0
   [ ! -e "$1/.agents/team/delegated/$team-$3.mandated" ] || return 0
   for x in "$1/.agents/team/delegated/$team-$3"-d-*.json; do [ ! -e "$x" ] || return 0; done
   ! mandate_run_capable "$1" "$team" "$3" || return 0
   start="$(mandate_run_start "$3")" || return 0
-  t="$(mandate_transcript "$1" 2>/dev/null)" && rows="$(mandate_history "$1" 2>/dev/null)" || return 0
+  # One snapshot of the registration: its bytes and the transcript it names. The start time and
+  # the history both come from that one transcript, and the registration must still read the
+  # same when the answer is given — a session rotated in between is an uncertain lineage.
+  snap="$(cat "$reg" 2>/dev/null)" && [ -n "$snap" ] || return 0
+  t="$(mandate_transcript "$1" 2>/dev/null)" && rows="$(mandate_history "$1" "$t" 2>/dev/null)" || return 0
   s0="$(mandate_session_start "$t")" && [[ ! "$s0" > "$start" ]] || return 0
   while IFS= read -r row; do
     [ -n "$row" ] && p="$(mandate_parse "$(jq -r .m <<<"$row")")" || continue
     case ",$(cut -f3 <<<"$p")," in *",$team,"*) ;; *) continue ;; esac
     [[ "$start" > "$(jq -r .ts <<<"$row")" ]] || return 0
   done <<<"$rows"
+  [ "$(cat "$reg" 2>/dev/null)" = "$snap" ] && [ "$(mandate_transcript "$1" 2>/dev/null)" = "$t" ] || return 0
   return 1
 }
 

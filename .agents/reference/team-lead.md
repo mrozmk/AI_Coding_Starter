@@ -844,7 +844,10 @@ decision in plain text and the Operator types the reply.
   the run had started (recorded or not). An uncertain lineage counts the same: no registered
   Supervisor session, no transcript, a history that does not read whole, or a registered session
   whose first record is later than the run's start (a rotation — the earlier session's history
-  is not read, and markers may be gone). A terminal answer is taken as the Operator's only when
+  is not read, and markers may be gone), or a registration that changes while the check runs
+  (the check reads the registration once — its bytes and the transcript it names — takes the
+  start time and the history from that one transcript, and requires the registration to read
+  the same at the end). A terminal answer is taken as the Operator's only when
   the registered Supervisor session has been there since before the run started, its history
   reads whole and holds no grant for the team — so **a checkout with no registered Supervisor
   session takes no terminal answer through this path**.
