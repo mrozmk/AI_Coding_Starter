@@ -596,50 +596,65 @@ decision in plain text and the Operator types the reply.
   `answered_session`; the touch log, `operator-touches`, `## Answer` and the tuning line as for a
   typed answer. The lead never asks for a typed reply; words the Operator types in the window on
   their own are still recorded with `--text`.
-- **Provenance guard.** A dialog answer counts only when the lead session's effective
-  `AskUserQuestion` hook registrations are the inert project guard alone — any other hook could
-  answer the dialog with no menu shown. `team_evidence_ask_hooks <main> <clone> <config dir>`
-  (`team-evidence.sh`) reads the managed settings file
-  (`/Library/Application Support/ClaudeCode/managed-settings.json`, when present), the user profile
-  (`<config dir>/settings.json`), the project
-  `settings.json`, `settings.local.json` and the lead's `teamlead.settings.json`, and takes every
-  `PreToolUse` and `PermissionRequest` entry (both can answer the dialog through `updatedInput`)
-  whose matcher is absent, empty, `*`, a comma- or pipe-separated name list naming
-  `AskUserQuestion`, or a regex matching it (unanchored; an invalid regex counts). Clean iff the
-  only such entries are the project's `PreToolUse`
-  `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command each), the clone's
-  guard equals main's byte for byte and main's is inert (`exit 0` only); a clone mod
-  (`.claude/skills/<name>/hooks/`) that differs from main's tree, or any user-level mod is unclean
-  (code-registered hooks cannot be inventoried).
-- **Plugin inventory** (`team_evidence_plugins`). Every plugin id any of those sources
-  enables (any value but `false`, whichever source would win the merge) is resolved as the host
-  loads it, under `<config dir>/plugins/`: each install record of the id in
+- **Provenance guard.** A dialog answer counts only when nothing else can answer the lead
+  session's `AskUserQuestion` dialog or replace its result. `team_evidence_ask_hooks <main>
+  <clone> <config dir>` (`team-evidence.sh`) reads five settings sources — the managed settings
+  file (`/Library/Application Support/ClaudeCode/managed-settings.json`, when present), the user
+  profile (`<config dir>/settings.json`), the project `settings.json`, `settings.local.json` and
+  the lead's `teamlead.settings.json` — and takes every `PreToolUse` and `PermissionRequest` entry
+  (both can answer the dialog through `updatedInput`) and every `PostToolUse` entry (it can
+  replace the tool result the answer is read from) whose matcher is absent, empty, `*`, a comma-
+  or pipe-separated name list naming `AskUserQuestion`, or a regex matching it (unanchored; an
+  invalid regex counts). So a `PostToolUse` entry on `Edit|Write` stays clean. Clean iff the only
+  such entries are the project's own two, both in the project `settings.json` and both pinned to
+  the main checkout's bytes: the `PreToolUse`
+  `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command; the clone's
+  guard equals main's byte for byte and main's is inert, `exit 0` only), and the matcher-less
+  `PostToolUse` `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh"` (one command, no hook
+  field beyond `type`, `command`, `timeout`; the clone's script equals main's byte for byte, and
+  those bytes join the digest). The same command in another source, with another field or beside
+  a second command is unclean. A clone mod (`.claude/skills/<name>/hooks/`) that differs from
+  main's tree, or any user-level mod is unclean (code-registered hooks cannot be inventoried).
+- **Plugin inventory** (`team_evidence_plugins`, `team_evidence_tree`). Every plugin id any of
+  those sources enables (any value but `false`, whichever source would win the merge) is resolved
+  as the host loads it, under `<config dir>/plugins/`: each install record of the id in
   `installed_plugins.json` (`installPath`), and the id's entry in its marketplace manifest
   (`known_marketplaces.json` → `<installLocation>/.claude-plugin/marketplace.json`). Hook sources
   per install path: `.claude-plugin/plugin.json` `hooks` (a path, an inline event map, or a list of
   both), every `hooks.json` in the install tree (`hooks/hooks.json`, a skill's own), and the
   marketplace entry's inline `hooks` — a plugin without a manifest is defined by that entry. A
   plugin is clean iff every source resolves and parses and none carries a `PreToolUse`,
-  `PermissionRequest`, `PostToolUse` (it can replace the tool result the answer is read from) or
-  `UserPromptSubmit` hook, whatever its matcher (so an MCP-only or LSP-only plugin is clean). The
-  settings sources keep their own rule above: a `PostToolUse` entry there is not checked (the
-  project registers its own), a known limit. Unclean, naming the plugin and the source: such a hook; a `modules`
-  key (hooks registered in code); `hooks:` frontmatter in any `.md` of the tree (a skill's or
-  agent's hooks run while it is active); a hooks path that is missing or leaves the plugin; no
-  install record, no single marketplace entry, an unreadable file or tree; an entry `hooks` that is
-  no event map; `CLAUDE_CODE_PLUGIN_CACHE_DIR` set (the plugin root cannot be established).
-  Every `hooks.json` of the tree is read under any spelling and the frontmatter test is textual
-  (a `hooks` key on any frontmatter line): more than the host loads, never less. Plugins the host
-  loads with no `enabledPlugins` entry: each directory of `CLAUDE_CODE_PLUGIN_DIRS`
-  (colon-separated, `~/` expanded) is inventoried as a plugin tree by the same rules and joins the
-  digest — it must hold `.claude-plugin/plugin.json`, and a mod there (`modules`) is unclean;
-  plugin content (a manifest, a hooks file, an `.md`) under `<config dir>/plugins/synced` is
-  unclean, it has no inventory.
-  The check reads the runner's environment and those settings sources (a policy delivered another
-  way — MDM, a server — is not read); a lead whose own
-  environment differs is outside it. Unknown stays unclean. The digest takes each install path, the manifest's and every hooks
-  file's sha256 and the entry's `hooks` and `strict`, so a plugin update or an edited hook after
-  launch reads as changed.
+  `PermissionRequest`, `PostToolUse` or `UserPromptSubmit` hook, whatever its matcher (so an
+  MCP-only or LSP-only plugin is clean). Unclean, naming the plugin and the source: such a hook; a
+  `modules` key (hooks registered in code); a `hooks` key in the frontmatter of any `.md` of the
+  tree (a skill's or agent's hooks run while it is active); a hooks path that is missing or leaves
+  the plugin; no install record, no single marketplace entry, an unreadable file or tree; an entry
+  `hooks` that is no event map. Every `hooks.json` of the tree is read under any spelling and the
+  frontmatter test is textual (any frontmatter line with a `hooks` key, CR and BOM dropped): more
+  than the host loads, never less. Unknown stays unclean.
+- **Plugin roots and directories.** `CLAUDE_CODE_PLUGIN_CACHE_DIR` and `CLAUDE_CODE_PLUGIN_DIRS`
+  are read from the checking process's environment **and** from the `env` key of each of the five
+  settings sources (the host applies a settings file's `env` to the session). A
+  `CLAUDE_CODE_PLUGIN_CACHE_DIR` in any of them is unclean — the plugin root cannot be
+  established — with or without an enabled plugin. Every directory of every
+  `CLAUDE_CODE_PLUGIN_DIRS` (colon-separated, `~/` expanded) is inventoried as a plugin tree by
+  the rules above: it must hold `.claude-plugin/plugin.json`, and a mod there (`modules`) is
+  unclean; the cause names the source. A value that is no plain one-line string (a newline, a tab,
+  another JSON type) is unclean: its directories cannot be established. Plugin content (a manifest, a hooks file, an `.md`) under
+  `<config dir>/plugins/synced` is unclean, it has no inventory. Not read: a policy delivered
+  another way (MDM, a server), and a lead whose own environment differs from the runner's.
+- **Same bytes.** Each input — a settings file, a plugin manifest, a hooks file, the install and
+  marketplace records, the two pinned scripts — is captured once into a private temporary
+  directory, and that copy is both inspected and hashed; the frontmatter of every plugin `.md` is
+  captured in one pass, tested and hashed from that capture. The digest takes the matched settings
+  entries, the pinned scripts' bytes, each plugin install path with its manifest's and every hooks
+  file's sha256, the frontmatter capture's sha256, the marketplace entry's `hooks` and `strict`,
+  and each resolved `CLAUDE_CODE_PLUGIN_DIRS` directory once, in path order and without its source
+  (the lead's own process sees a settings `env` value in its environment too, and must get the
+  same digest) — so a plugin update, an edited hook, a changed or reordered frontmatter line, or
+  a moved directory after launch reads as changed. A lead launched
+  before this inventory existed has a digest of the older shape: its dialog answers read as
+  `registrations changed since launch` until it is relaunched.
 - **Snapshot and re-check.** The runner takes the check before each lead launch and launches only
   on clean (§1); the clean line is the session's snapshot (`lead_ask_hooks[<session id>] = {run,
   clean, digest, cause, config_dir, at}` in the anchor). `--from-ask` and the hook require that
