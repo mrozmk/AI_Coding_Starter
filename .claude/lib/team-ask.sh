@@ -452,6 +452,7 @@ ask_main() {
     fi
     # An Operator-bound answer is verified by the Stop hook (main-checkout code), never here.
     if [ "$(jq -r .authority <<<"$ans")" = operator ] || [ "$(ask_get "$id" tier)" = operator ] \
+        || [ "$(jq -r .authority <<<"$ans")" = "supervisor (delegated)" ] \
         || [ -n "$(ask_get "$id" requires_decision)" ]; then
       echo "answered — end your turn now; the Stop hook checks and delivers the answer"; return 0
     fi

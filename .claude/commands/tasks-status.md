@@ -67,7 +67,14 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
    - **Waiting on the team** — everything the TeamLead, Advisor or Supervisor acts on:
      `attention[]` items (role questions, prompts, `blocked`/`failed` records with their
      `resume_hint`) and PRs `awaiting_merge` (the Supervisor's merge gate; it reaches the Operator
-     only when that gate refuses). Name who acts.
+     only when that gate refuses). Name who acts. A pending decision delegated to the Supervisor
+     under the Operator's mandate (`team-lead.sh decision list <team>` shows
+     `pending [delegated to the Supervisor]`) belongs here, never under **Waiting for you**.
+   - **Delegated answers** — only with a `teams` block: run `bash .claude/lib/team-mandate.sh show`
+     and `bash .claude/lib/team-mandate.sh answers` once (a missing script or a non-zero exit →
+     nothing). They feed the report's `Mandate` line: the mandate in force and every answer the
+     Supervisor gave as a delegate, kept apart from the Operator's own answers and from the
+     Operator touches.
 
 7. **Recommend.** For every task and every "waiting" row write **Next action** yourself (main
    session, not the extractor): one concrete step toward Done, who does it, ≤ 15 words. Prefer, in
@@ -102,6 +109,8 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
 **Check:** extractor caveats, status/evidence mismatches, unverified PRs — omit when none.
 
 **Operator touches (7 days):** <header line count> — <up to 3 group rows, newest first>; recurring: <top Recurring line> — omit when the log is absent or the report says none recorded.
+
+**Mandate:** <classes> until <expiry> — <n> delegated answer(s): <team d-n → reply, newest first, up to 5> — omit when no mandate is in force and no delegated answer exists; the list is never cut when the Operator asks for the delegated answers.
 
 <n> tasks · <k> extracted · <t> teams
 ```

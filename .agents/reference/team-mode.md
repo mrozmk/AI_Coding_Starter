@@ -54,7 +54,9 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `acked` | `team-run.sh` | the last acknowledged record, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, or with a TeamLead a gate input |
 | `teamlead.*`, `round`, `verdict-acked`; `runs/<run>/teamlead-<gate>-<seq>.json`, `decisions/`, `answers.md`, `teamlead-notes.md`, `rework-<n>.md` | runner, TeamLead scripts | the per-run TeamLead's identity, verdicts, pending decisions, authority answers, notes and rework orders — team-lead.md §2, §9, §10 |
 | `runs/<run>/r<n>/` | runner, roles | rework round n ≥ 2: the same record, prompt, session, notes and report names as round 1 (team-lead.md §9) |
-| `<main checkout>/.agents/team/inbox/Supervisor/new/` | `team-inbox.sh` (runner, `team-verdict.sh event`) | the Supervisor's four events: `accepted`, `closed`, `collision`, `session_dead` (team-lead.md §3) |
+| `<main checkout>/.agents/team/inbox/Supervisor/new/` | `team-inbox.sh` (runner, `team-verdict.sh event`) | the Supervisor's four events: `accepted`, `closed`, `collision`, `session_dead` (team-lead.md §3); under a mandate also `delegated` |
+| `<main checkout>/.agents/team/mandate.json` | `team-mandate.sh grant` (from the Operator's typed message only) | the local record of the Operator's mandate to the Supervisor — classes, teams and their runs, expiry, their words; a cache, re-derived from the message at every use (team-lead.md §7) |
+| `<main checkout>/.agents/team/delegated/<team>-<run>-d-<n>.json` | `team-lead.sh decision answer --delegated` (the Supervisor) | one pinned record per delegated answer; re-verified by the stage hook |
 | `lock/` (`lock/pid`) | `team-run.sh` | runner mutex |
 | `cancel` | `team-run.sh stop` | stop request for a live runner |
 | `roles.override.json` | `team-run.sh roles` | per-ticket model/effort override, merged over `.claude/team/roles.json` at each launch |

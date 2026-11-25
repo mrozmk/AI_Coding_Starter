@@ -3,6 +3,40 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The Operator can delegate team decisions to the Supervisor (mandate)
+
+**Before:** every decision the TeamLead escalated reached the Operator.
+
+**Now:** off by default, nothing changes until a mandate is granted. The Operator types, as a
+whole message in the Supervisor window, `mandate <class>[,<class>…] for <N>h|<N>d team
+<name>[,<name>…]` (classes `no-rule`, `lead-unsure`) and `bash .claude/lib/team-mandate.sh grant`
+records it in `.agents/team/mandate.json` in the main checkout (git-ignored, per machine). A
+pending decision bound to an ask whose class the mandate names goes to the Supervisor's inbox
+(`delegated`, with the whole answer command); the Supervisor runs that command or hands it back
+(`decision handback`). The answer is recorded as `supervisor (delegated)` and re-verified by the
+stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.md` → Mandate).
+
+**Do:**
+- Run `/setup:teams` (the manifest adds `.claude/lib/team-mandate.sh`).
+- A TeamLead launched before this change has no delegation rule: its decisions are not routed
+  until its next run.
+- The Supervisor profile (`.claude/team/sessions/Supervisor.settings.json`) has no allow rule for
+  the three new commands; add them by hand if the Supervisor should run them without a prompt:
+  `Bash(bash .claude/lib/team-mandate.sh *)`,
+  `Bash(bash .claude/lib/team-lead.sh decision answer * --delegated *)`,
+  `Bash(bash .claude/lib/team-lead.sh decision handback *)`. A deny rule there for writes to
+  `.agents/team/mandate.json`, `.agents/team/delegated/**` and `.agents/team/registry/**` closes
+  the gap the same-account model leaves (`roles/supervisor.md` → Mandate).
+- In a run that has been under a mandate at any point, an Operator answer needs evidence for the
+  rest of that run, also after the mandate ended: the lead's dialog or window, or the
+  Supervisor's relay. `decision answer` from a terminal is refused there.
+- **Behaviour change without a mandate:** a terminal answer (`decision answer` typed in a
+  terminal) is taken as the Operator's only when a Supervisor session is registered, has been
+  running since before the team's run started, and its history reads whole with no mandate for
+  the team. With no registered Supervisor session, or after the Supervisor restarts mid-run, a
+  terminal answer is refused for that run — answer in the TeamLead's dialog or window, or
+  through the Supervisor's relay.
+
 ## The TeamLead runs without your plugin directories (#316)
 
 `team-lead.sh materialize` now writes `env.CLAUDE_CODE_PLUGIN_DIRS = ""` into

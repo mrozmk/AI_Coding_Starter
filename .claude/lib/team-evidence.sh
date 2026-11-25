@@ -11,6 +11,8 @@
 #       <since> addressed to that decision (`<team> <d-n>` first); nothing when none. A multi-line
 #       newest message prints an empty text: it still wins, so no older one-line reply matches.
 #   team_evidence_machine_line <text> → 0 when the text is a machine line.
+#   team_evidence_tool_call <transcript> <since> <main> <args> → the uuid of the session's newest
+#     own Bash tool call that is the standalone `bash [<main>/].claude/lib/team-lead.sh <args>…"`
 #   team_evidence_dialog_extract <transcript> <since> → the AskUserQuestion calls and answer entries
 #     at or after <since>, one compact JSON line each (a half-written last line is dropped)
 #   team_evidence_dialog_norm <dialog json> <d-n> → the call's <d-n> questions in full and in order,
@@ -37,7 +39,7 @@
 # Its own file: team-lib.sh has no room, and the callers run from the clone and the main checkout.
 
 # Every line a script or a peer session puts into a supervised window starts with one of these.
-TEAM_EVIDENCE_MACHINE_RE='^(stop |gate |prompt |ask |attention |unasked |inbox:|relaunched: |human-only |rejected |continue granted |round |close refused: |relayed: |\[peer\] |\[team-run\]|\[team-watch |<hc from=)'
+TEAM_EVIDENCE_MACHINE_RE='^(stop |gate |prompt |ask |attention |unasked |inbox:|relaunched: |human-only |rejected |continue granted |round |close refused: |relayed: |handed back: |\[peer\] |\[team-run\]|\[team-watch |<hc from=)'
 
 team_evidence_machine_line() { [[ "$1" =~ $TEAM_EVIDENCE_MACHINE_RE ]]; }
 
@@ -66,6 +68,37 @@ team_evidence_latest() {
     | ($m | sub("^\\s+"; "") | sub("\\s+$"; "")) as $t
     | select($t | test("^" + $team + "[[:space:]]+" + $id + "([[:space:]]|$)"))
     | "\($uid)\t\(if ($t | contains("\n")) then "" else $t end)"' "$1" 2>/dev/null | tail -n 1
+}
+
+# team_evidence_tool_call <transcript> <since> <main> <args> → the uuid of the newest assistant
+# entry of the session itself (no sub-agent) at or after <since> whose Bash tool call IS the
+# standalone invocation of the main checkout's team-lead.sh with exactly that argv: the whole
+# command, trimmed, reads `bash .claude/lib/team-lead.sh <args><why>"` with the entry's cwd the
+# main checkout, or `bash <main>/.claude/lib/team-lead.sh <args><why>"` — <args> the canonical
+# text up to the opening of the last option (team_delegate_args) and <why> free of quotes, `$`,
+# backticks, backslashes and newlines, so nothing follows the closing quote. A compound command,
+# another directory's script of the same name, a quoted invocation, a longer or different argv
+# does not match. Nothing when none. A delegated answer's evidence (the writer and the stage
+# hook): the Supervisor session's own call, never a typed message, so it can never read as the
+# Operator's words. A half-written last line is skipped (jq stops there).
+team_evidence_tool_call() {
+  local mp
+  [ -f "$1" ] && [ -n "$3" ] && [ -n "$4" ] || return 0
+  mp="$(cd "$3" 2>/dev/null && pwd -P)" || mp="$3"
+  jq -r --arg since "$2" --arg main "$3" --arg mp "$mp" --arg args "$4" '
+    "bash .claude/lib/team-lead.sh " as $rel
+    | select(type == "object" and .type == "assistant" and ((.isSidechain // false) | not)
+      and ((.timestamp // "") >= $since)) | . as $e
+    | first(($e.message.content // []) | if type == "array" then .[] else empty end
+        | select(type == "object" and .type == "tool_use" and .name == "Bash")
+        | (.input.command // "" | tostring | sub("^\\s+"; "") | sub("\\s+$"; "")) as $c
+        | (if ($c | startswith($rel)) and (($e.cwd // "") == $main or ($e.cwd // "") == $mp) then $c[($rel | length):]
+           elif ($c | startswith("bash " + $main + "/.claude/lib/team-lead.sh ")) then $c[(("bash " + $main + "/.claude/lib/team-lead.sh ") | length):]
+           elif ($c | startswith("bash " + $mp + "/.claude/lib/team-lead.sh ")) then $c[(("bash " + $mp + "/.claude/lib/team-lead.sh ") | length):]
+           else null end) as $r
+        | select($r != null and ($r | startswith($args)))
+        | select($r[($args | length):] | test("^[^\"$`\\\\\n]*\"$")))
+    | $e.uuid // empty' "$1" 2>/dev/null | tail -n 1
 }
 
 # The normalised <d-n> questions of a call input: exactly {"questions": [...]}, every field the

@@ -515,7 +515,7 @@ lead() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}"
 hookin() { jq -c '{tool_name, tool_input}' "$WORK/in.json"; }   # the hook's payload of the last call
 sleep 600 & WPID=$!   # a live stage hook waiting on its permission asks
 bashp "git rm old.txt"; mkask a-1 permission lead "$(hookin)" "$WPID"
-lead alfa a-1 --allow; expect 2 "--authority must be teamlead or operator" "(bare) a call without --authority"
+lead alfa a-1 --allow; expect 2 "--authority must be teamlead, operator or delegated" "(bare) a call without --authority"
 run "$CLONE" $ANS alfa a-1 --allow --authority teamlead --why w; expect 7 "is the run's TeamLead's" "(caller) not the lead"
 lead alfa a-1 --allow --authority teamlead; expect 2 "needs --why" "(caller) no --why"
 LT=beta lead alfa a-1 --allow --authority teamlead --why w; expect 7 "only its own team" "(caller) another team"

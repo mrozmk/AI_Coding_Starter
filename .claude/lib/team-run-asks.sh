@@ -111,6 +111,8 @@ lead_unasked_decisions() {
   command -v team_evidence_provenance >/dev/null 2>&1 || return 0
   for f in "$TD/runs/$RUN"/decisions/d-*.md; do
     [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] && grep -qx '## Dialog' "$f" || continue
+    # Delegated to the Supervisor (team-mandate.sh): no dialog is owed until it lapses or is handed back.
+    [ "$(lfm "$f" delegate)" != supervisor ] || continue
     list="$list $(lfm "$f" id)"; c="$(lfm "$f" created_at)"
     if [ -z "$oldest" ] || [[ "$c" < "$oldest" ]]; then oldest="$c"; fi
   done

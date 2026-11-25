@@ -2,8 +2,10 @@
 # The per-run TeamLead answers an ask of its stage: runs/<run>/asks/a-<n>.json → a-<n>.answer.json,
 # which the stage hook returns to Claude Code (team-ask.sh, .claude/hooks/team-ask-hook.sh).
 #
-# Usage: bash .claude/lib/team-answer.sh <team> a-<n> <form> --authority teamlead|operator
+# Usage: bash .claude/lib/team-answer.sh <team> a-<n> <form> --authority teamlead|operator|delegated
 #          --why "<line>" [--decision <answered d-<n>.md>]
+#   delegated: a decision the Supervisor answered under the Operator's mandate (team-mandate.sh);
+#   recorded as `authority supervisor (delegated)`, never as the Operator's.
 # Forms: --answers '<json: question text → label>' | --pick "<label>" | --text "<free text>"
 #        | --allow | --deny "<what to do instead>"
 #   question: --answers, --pick (a single-question ask; one of its labels), --text (free text)
@@ -14,7 +16,7 @@
 #   · 9 operator tier (open a decision: team-lead.sh decision open <team> --ask a-<n>).
 set -euo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 3 ] || usage
 TEAM="$1"; ASK="$2"; shift 2
 FORM=""; VALUE=""; AUTH=""; WHY=""; DECISION=""; DEC_ID=""; DEC_FILE=""
@@ -68,7 +70,7 @@ esac
 KIND="$(ask_get "$ASK" kind)"; TIER="$(ask_get "$ASK" tier)"; REQ="$(ask_get "$ASK" requires_decision)"
 case "$TIER" in class|lead|operator) ;; *) refuse 6 "ask $ASK is not classified" ;; esac
 if [ "$TIER" = operator ] || [ -n "$REQ" ]; then
-  [ "$AUTH" = operator ] && [ -n "$DEC_ID" ] \
+  [ "$AUTH" != teamlead ] && [ -n "$DEC_ID" ] \
     || refuse 9 "ask $ASK is the Operator's${REQ:+ (decision $REQ)} — open a decision: team-lead.sh decision open $TEAM --ask $ASK"
   [ -z "$REQ" ] || [ "$REQ" = "$DEC_ID" ] || refuse 7 "ask $ASK waits for decision $REQ, not $DEC_ID"
 fi
@@ -101,6 +103,8 @@ if [ -n "$DEC_ID" ]; then
 fi
 
 if [ "$FORM" = answers ]; then V="$(jq -c . <<<"$VALUE")"; else V="$(jq -n --arg v "$VALUE" '$v')"; fi
+# The answer file and the answers.md line name a delegated answer in full, apart from the Operator's.
+[ "$AUTH" != delegated ] || AUTH="supervisor (delegated)"
 ANSWER="$(jq -n --arg id "$ASK" --arg form "$FORM" --argjson v "$V" --arg auth "$AUTH" --arg why "$WHY" \
   --arg dec "$DEC_ID" --arg at "$(team_utc)" --arg lsid "$(jq -r '.session_id // ""' "$TD/teamlead.json")" \
   '{id: $id, form: $form, value: $v, authority: $auth, why: $why, decision: $dec, answered_at: $at,
