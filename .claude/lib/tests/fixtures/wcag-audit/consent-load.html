@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consent on load</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Consent on load</h1>
+  <button type="button" aria-expanded="false" aria-controls="more" id="toggle">More</button>
+  <div id="more" hidden><p>More text.</p></div>
+</main>
+<div id="cookie-banner" role="dialog" aria-label="Cookie consent">
+  <p>We use cookies.</p>
+  <button type="button" id="accept">Accept all</button>
+  <button type="button" id="reject">Reject all</button>
+</div>
+<script>
+  const banner = document.getElementById('cookie-banner');
+  if (document.cookie.includes('consent=')) {
+    banner.hidden = true;
+    fetch('/consent-dependent').catch(() => {});
+  }
+  document.getElementById('reject').addEventListener('click', () => {
+    document.cookie = 'consent=no; path=/';
+    banner.hidden = true;
+  });
+  document.getElementById('accept').addEventListener('click', () => {
+    document.cookie = 'consent=yes; path=/';
+    banner.hidden = true;
+  });
+  const t = document.getElementById('toggle');
+  t.addEventListener('click', () => {
+    const open = t.getAttribute('aria-expanded') === 'true';
+    t.setAttribute('aria-expanded', String(!open));
+    document.getElementById('more').hidden = open;
+  });
+</script>
+</body>
+</html>

@@ -37,7 +37,7 @@ export const NO_CORE_WARNING = 'no CORE Task — the delivery plan starts every 
 export const QUALITY_MARKERS = {
   'audit:security': { kind: 'closing', command: '/audit-security', size: 'H', conditional: false, planned: true },
   'audit:seo-geo': { kind: 'closing', command: '/seo-geo-audit', size: 'H', conditional: true, planned: true },
-  'audit:wcag': { kind: 'closing', command: '/wcag', size: 'H', conditional: true, planned: true },
+  'audit:wcag': { kind: 'closing', command: '/wcag-audit', size: 'H', conditional: true, planned: true },
   'upkeep:architecture-review': { kind: 'recurring', command: '/architecture-review', size: 'M', conditional: false, planned: true },
   'upkeep:cleanup-workflow': { kind: 'recurring', command: '/maintain:cleanup-workflow', size: 'M', conditional: false, planned: true },
   'upkeep:refresh-brief': { kind: 'reminder', command: '/maintain:refresh-brief', size: 'M', conditional: false, planned: false },

@@ -62,11 +62,11 @@ STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-
   starter-fork-commit-test team-starter-land-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test
-  portable-userland-test)
+  portable-userland-test wcag-audit-test)
 ALL=()
 [ ! -f "$TESTS/team-smoke.sh" ] \
   || read -r -a ALL <<<"$(sed -n 's/^ *all) parts=(\(.*\)) ;;$/\1/p' "$TESTS/team-smoke.sh")"
-KNOWN=" self-test purity agent-mail-unittest session-profiles ${STANDALONE[*]} "
+KNOWN=" self-test purity agent-mail-unittest session-profiles wcag-audit-browser-test ${STANDALONE[*]} "
 if [ -n "$PARALLEL" ]; then KNOWN="$KNOWN smoke-parallel "
 else for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" = purity ] || KNOWN="$KNOWN smoke-$p "; done; fi
 for n in ${TEAM_SUITE_SKIP:-}; do
@@ -498,6 +498,15 @@ sserial() { grep -qx '# team-suite: serial' "$TESTS/$1.sh" 2>/dev/null; }
 for s in "${STANDALONE[@]}"; do
   if sserial "$s"; then add 1 "$s" bash "$TESTS/$s.sh"; else add 0 "$s" bash "$TESTS/$s.sh"; fi
 done
+
+# ---- 3b. /wcag-audit browser test: needs the per-machine engine cache; skipped only when absent ---
+# An explicit TEAM_SUITE_ONLY selection always runs it (serial: timing-sensitive).
+if want wcag-audit-browser-test && ! skipped wcag-audit-browser-test && [ -z "${TEAM_SUITE_ONLY:-}" ] \
+  && [ "$(node "$ROOT/.claude/skills/wcag-audit/runner/audit.mjs" doctor --json 2>/dev/null | jq -r .install 2>/dev/null)" = absent ]; then
+  add_note wcag-audit-browser-test "skip wcag-audit-browser-test — engine cache not installed (bash .claude/skills/wcag-audit/install.sh)"
+else
+  add 1 wcag-audit-browser-test bash "$TESTS/wcag-audit-browser-test.sh"
+fi
 
 # ---- 4. agent-mail unittest --------------------------------------------------------------------
 add 0 agent-mail-unittest python3 -I -B -m unittest discover -s tools/agent_mail/tests -t .

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabs widget</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Tabs widget</h1>
+  <div role="tablist" aria-label="Sections">
+    <button role="tab" id="t1" aria-selected="true" aria-controls="p1" tabindex="0">One</button>
+    <button role="tab" id="t2" aria-selected="false" aria-controls="p2" tabindex="-1">Two</button>
+    <button role="tab" id="t3" aria-selected="false" aria-controls="p3" tabindex="-1">Three</button>
+  </div>
+  <div role="tabpanel" id="p1" aria-labelledby="t1"><p>Panel one</p></div>
+  <div role="tabpanel" id="p2" aria-labelledby="t2" hidden><p>Panel two</p></div>
+  <div role="tabpanel" id="p3" aria-labelledby="t3" hidden><p>Panel three</p></div>
+</main>
+<script>
+  const tabs = [...document.querySelectorAll('[role=tab]')];
+  function select(i) {
+    tabs.forEach((t, k) => {
+      t.setAttribute('aria-selected', String(k === i));
+      t.tabIndex = k === i ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = k !== i;
+    });
+    tabs[i].focus();
+  }
+  tabs.forEach((t, i) => t.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); select((i + 1) % tabs.length); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); select((i + tabs.length - 1) % tabs.length); }
+  }));
+</script>
+</body>
+</html>

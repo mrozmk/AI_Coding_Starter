@@ -10,7 +10,7 @@ import {
   renderStoryMap, replaceRegion, locateRegions, main, chainPaths, impactOf,
   loadPlanTasks, staleTaskWarnings, SCOPES, PRE_SCOPE_MESSAGE, NO_CORE_WARNING,
   PRE_DETAIL_MESSAGE, EPIC_DIR, readBacklogFiles, backlogFingerprint, epicSlug, epicFileName,
-  renderMeta, renderEpicFile, checkAgainstRoot, fenceScanner,
+  renderMeta, renderEpicFile, checkAgainstRoot, fenceScanner, QUALITY_MARKERS,
 } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
@@ -1728,7 +1728,7 @@ const QUALITY_ROWS = [
   '| E3-4 | E3 | [upkeep:cleanup-workflow] Run /maintain:cleanup-workflow — occurrence 2 | tech | M | 4 | E1-1, E1-3, E2-1, E3-3 | MUST | — | — | TODO | — | — |',
   '| E3-5 | E3 | [audit:security] Run /audit-security | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
   '| E3-6 | E3 | [audit:seo-geo] Run /seo-geo-audit | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
-  '| E3-7 | E3 | [audit:wcag] Run /wcag | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
+  '| E3-7 | E3 | [audit:wcag] Run /wcag-audit | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
 ];
 const qepic = (pts) => QUALITY_EPIC.replace('| 40 |', `| ${pts} |`);
 /** The backlog text of a quality fixture; `outOfScope` lines are appended under `## Consciously out of scope`. */
@@ -1740,6 +1740,10 @@ const qrow = (id, cell) => QUALITY_ROWS.map((r) => (r.startsWith(`| ${id} |`) ? 
 const qdrop = (rows, ...ids) => rows.filter((r) => !ids.some((id) => r.startsWith(`| ${id} |`)));
 const auditError = (res, id) => res.errors.filter((e) => e.startsWith(`Task ${id} [audit:`));
 const ALL_UNPLANNED = 'quality Tasks not planned: [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only [audit:seo-geo] and [audit:wcag] may be ruled out under ## Consciously out of scope';
+
+test('audit:wcag names /wcag-audit', () => {
+  assert.equal(QUALITY_MARKERS['audit:wcag'].command, '/wcag-audit');
+});
 
 test('quality: a fresh backlog with the full quality Epic raises no quality warning and no trace warning', () => {
   const res = quality();

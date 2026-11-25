@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lockdown</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Lockdown</h1>
+  <button type="button" aria-expanded="false" aria-controls="m" id="menu">Menu</button>
+  <ul id="m" hidden><li><a href="lockdown.html">Item</a></li></ul>
+  <div style="height:3000px"></div>
+  <img id="lazy" data-src="lazy.png" alt="Lazy picture" width="10" height="10">
+</main>
+<script>
+  let scrolled = false;
+  window.addEventListener('scroll', () => {
+    if (!scrolled) { scrolled = true; fetch('/canary-scroll').catch(() => {}); }
+  });
+  new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) e.target.src = e.target.dataset.src;
+  }).observe(document.getElementById('lazy'));
+  const btn = document.getElementById('menu');
+  btn.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!open));
+    document.getElementById('m').hidden = open;
+    fetch('/canary-click').catch(() => {});
+    setTimeout(() => fetch('/canary-late').catch(() => {}), 1500);
+  });
+  try { new WebSocket('ws://' + location.host + '/ws'); } catch (e) { /* blocked */ }
+</script>
+</body>
+</html>

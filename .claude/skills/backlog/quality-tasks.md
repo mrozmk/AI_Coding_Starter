@@ -13,7 +13,7 @@ A quality Task's `Task` cell **begins** with one marker:
 |---|---|---|---|---|
 | `[audit:security]` | `/audit-security` | closing | `H` | always |
 | `[audit:seo-geo]` | `/seo-geo-audit` | closing | `H` | when the product has a public website — pages served without login that search engines or AI assistants should find |
-| `[audit:wcag]` | `/wcag` — not in this workflow yet | closing | `H` | when the product has a user interface people operate |
+| `[audit:wcag]` | `/wcag-audit` | closing | `H` | when the product has a user interface people operate |
 | `[upkeep:architecture-review]` | `/architecture-review` | recurring | `M` | always, `n` numbered occurrences |
 | `[upkeep:cleanup-workflow]` | `/maintain:cleanup-workflow` | recurring | `M` | always, `n` numbered occurrences |
 | `[upkeep:refresh-brief]` | `/maintain:refresh-brief` | reminder | `M` | never planned — only `/check-backlog` adds one, when the PRD changed after the brief (Reminder Tasks) |
@@ -81,8 +81,11 @@ occurrence starts when its prefix is done instead of drifting to the end.
   a backlog Task through `/update-backlog`, or an accepted risk recorded with its reason.*
 - `[audit:seo-geo]` adds: *It audits a reachable deployment of the release candidate —
   `<the environment>`, or the outside row that provides it.*
-- `[audit:wcag]` adds: *`/wcag` is not in this workflow yet — until it is, audit against WCAG 2.2 AA
-  by hand or with an external tool and keep the report with the others.*
+- `[audit:wcag]` adds: *`/wcag-audit` scans the reachable web pages of a deployment of the release
+  candidate (or a localhost build). Surfaces it cannot reach — native apps, pages behind a login (v1
+  has no `--auth`), complete processes — are audited by hand or with an external tool; the Task
+  names which evidence closes each part. The report's not-tested criteria and manual tasks are part
+  of the outcome to triage.*
 - **Upkeep occurrence:** *Run `<command>` in a person's own session — not a team run and not a
   `/brainstorm` topic: the command writes `.agents/memory/`, which team roles cannot. Act on its
   report and commit the result.* `[upkeep:architecture-review]` adds: *Each candidate chosen for
@@ -121,8 +124,8 @@ answers **Add the Task** (`refresh-brief`, `cleanup-workflow` or `architecture-r
   - *Given the report, when it is triaged, then every confirmed finding and every coverage gap it
     names is a backlog Task, a rerun of the missing part, or an accepted risk recorded with its
     reason.*
-  - `[audit:wcag]`, while `/wcag` is not in this workflow, replaces "when `<command>` runs" with
-    *when the product is audited against WCAG 2.2 AA (by hand or with an external tool)*.
+  - `[audit:wcag]` splits the first criterion: *when `/wcag-audit` runs on the reachable web surface
+    and the remaining surfaces are audited by hand or with an external tool, then …*.
   - `[audit:seo-geo]` replaces the first criterion's revision clause with: *it audits
     `<the environment or staging row id>`, and the report names the deployed revision (a deployment
     id or build sha the environment shows), which contains every one of those Tasks.*

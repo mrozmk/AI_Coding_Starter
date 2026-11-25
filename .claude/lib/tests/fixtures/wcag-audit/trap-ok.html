@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard trap</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <h1>Keyboard trap</h1>
+  <dialog id="box" open aria-label="Options">
+    <button id="a" type="button">First</button>
+    <button id="b" type="button">Second</button>
+  </dialog>
+  <p style="margin-top:120px"><a href="trap-ok.html">After the dialog</a></p>
+</main>
+<script>
+  const d = document.getElementById('box');
+  const a = document.getElementById('a');
+  const b = document.getElementById('b');
+  for (const el of [a, b]) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        (document.activeElement === a ? b : a).focus();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        d.close();
+      }
+    });
+  }
+</script>
+</body>
+</html>

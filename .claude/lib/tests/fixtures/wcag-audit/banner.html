@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cookie banner</title>
+<link rel="stylesheet" href="site.css">
+<style>
+  #cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; background: #f3f3f3; border-top: 2px solid #333; padding: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cookie banner</h1>
+  <p>Content behind a consent dialog.</p>
+</main>
+<div id="cookie-banner" role="dialog" aria-label="Cookie consent">
+  <p>We use cookies.</p>
+  <input type="text" name="pref">
+  <button type="button" id="accept">Accept all</button>
+  <button type="button" id="reject">Reject all</button>
+</div>
+<script>
+  const banner = document.getElementById('cookie-banner');
+  document.getElementById('reject').addEventListener('click', () => {
+    document.cookie = 'consent=no; path=/';
+    banner.hidden = true;
+  });
+  document.getElementById('accept').addEventListener('click', () => {
+    document.cookie = 'consent=yes; path=/';
+    banner.hidden = true;
+  });
+  if (document.cookie.includes('consent=')) banner.hidden = true;
+</script>
+</body>
+</html>
