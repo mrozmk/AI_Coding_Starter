@@ -79,6 +79,10 @@ The global opt-in skips steps 1–3 (see **Global opt-in**).
 Every scripted caller survives a missing or failing `touches.sh`: one `warn: touch not recorded
 (<source>)` line, the caller's own result unchanged.
 
+**Not a touch:** an answer the Supervisor gives as a delegate under the Operator's mandate
+(`team-lead.sh decision answer --delegated`). No human acted, so it writes no entry here and no
+`operator-touches` line; `bash .claude/lib/team-mandate.sh answers` lists those answers on their own.
+
 ## Readers
 
 - `touches.sh report [--since YYYY-MM-DD|<n>d] [--who U] [--reason R]` (default the last 30 days):

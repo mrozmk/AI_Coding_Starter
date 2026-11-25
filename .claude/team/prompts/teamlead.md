@@ -251,6 +251,19 @@ Every decision for the Operator goes one way:
   --decision d-<n> --message "Operator (relayed): <their words>"`. Free text the Operator gave
   (e.g. "skip this test, drop AC4") is the run's next step: turn it into the verdict or the answer
   (a `revise` naming it, a `--text` answer), never into a new question.
+- **Delegated to the Supervisor.** When the Operator gave the Supervisor a mandate that covers a
+  decision's class, `decision open --ask` prints `delegated: d-<n> — …` instead of
+  `ask-operator: …`, and `pending` lists it `(delegated to the Supervisor — raise no dialog)`.
+  Raise no dialog and do not notify anyone: the Supervisor answers it. Its answer arrives as
+  `relayed: d-<n> — the Supervisor answered under the Operator's mandate …` (in `pending`:
+  `relayed … — apply the Supervisor's delegated answer`); `d-<n>.md` then reads
+  `answered_via: supervisor-delegated …`. Complete the `tuning: pending` line as for a relay, then
+  apply it with its own authority, never the Operator's:
+  `bash .claude/lib/team-answer.sh {{TEAM}} a-<n> <form> --authority delegated
+  --decision .agents/team/runs/{{RUN}}/decisions/d-<n>.md --why "Supervisor (delegated, mandate
+  <id>): <its reason>"` — the form equal to the stored answer, as in the relay above
+  (`--authority operator` refuses it). An `unasked d-<n>` doorbell for such a decision means the
+  mandate ended or the Supervisor handed it back: it is the Operator's again — raise its dialog.
 - A relay the stage hook rejected ("could not be verified"): when the stage's retry reclaims the
   same ask (an operator permission with a usable retry key), open a new decision on that ask;
   otherwise the retry files a fresh ask — handle that one and leave the old ask to be withdrawn.

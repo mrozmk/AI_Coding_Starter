@@ -11,6 +11,9 @@
 #       <since> addressed to that decision (`<team> <d-n>` first); nothing when none. A multi-line
 #       newest message prints an empty text: it still wins, so no older one-line reply matches.
 #   team_evidence_machine_line <text> → 0 when the text is a machine line.
+#   team_evidence_tool_call <transcript> <since> <script> <args> [<uuid>] → the uuid of the
+#     session's newest own Bash tool call that is exactly `bash [<dir>/]<script> <args>…` (with
+#     <uuid>: that entry only)
 #   team_evidence_dialog_extract <transcript> <since> → the AskUserQuestion calls and answer entries
 #     at or after <since>, one compact JSON line each (a half-written last line is dropped)
 #   team_evidence_dialog_norm <dialog json> <d-n> → the call's <d-n> questions in full and in order,
@@ -65,6 +68,31 @@ team_evidence_latest() {
     | ($m | sub("^\\s+"; "") | sub("\\s+$"; "")) as $t
     | select($t | test("^" + $team + "[[:space:]]+" + $id + "([[:space:]]|$)"))
     | "\($uid)\t\(if ($t | contains("\n")) then "" else $t end)"' "$1" 2>/dev/null | tail -n 1
+}
+
+# team_evidence_tool_call <transcript> <since> <script> <args> [<uuid>] → the uuid of the newest
+# assistant entry of the session itself (no sub-agent) at or after <since> — or, with <uuid>, that
+# entry alone — whose Bash tool call IS the invocation: the command, trimmed, reads
+# `bash [<dir>/]<script> <args>…`, the script its first word and <args> the exact text that follows
+# (the whole answer, up to and including the opening of the last option). A command that merely
+# quotes the invocation, or carries a longer or different answer, does not match. Nothing when
+# none. A delegated answer's evidence (team-lead-decision.sh decision_delegated, and the stage
+# hook's re-check with the pinned uuid): the Supervisor session's own call, never a typed message,
+# so it can never read as the Operator's words. A half-written last line is skipped (jq stops there).
+team_evidence_tool_call() {
+  [ -f "$1" ] && [ -n "$3" ] && [ -n "$4" ] || return 0
+  jq -r --arg since "$2" --arg script "$3" --arg args "$4" --arg u "${5:-}" '
+    select(type == "object" and .type == "assistant" and ((.isSidechain // false) | not)
+      and ((.timestamp // "") >= $since) and ($u == "" or (.uuid // "") == $u)) | . as $e
+    | first(($e.message.content // []) | if type == "array" then .[] else empty end
+        | select(type == "object" and .type == "tool_use" and .name == "Bash")
+        | (.input.command // "" | tostring | sub("^\\s+"; "")) as $c
+        | select($c | startswith("bash "))
+        | ($c[5:] | sub("^\\s+"; "")) as $r
+        | ($r | index(" ")) as $i | select($i != null)
+        | $r[:$i] as $p | select($p == $script or ($p | endswith("/" + $script)))
+        | select($r[$i:] | sub("^\\s+"; "") | startswith($args)))
+    | $e.uuid // empty' "$1" 2>/dev/null | tail -n 1
 }
 
 # The normalised <d-n> questions of a call input: exactly {"questions": [...]}, every field the

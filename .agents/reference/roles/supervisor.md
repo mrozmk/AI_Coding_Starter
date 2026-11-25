@@ -9,7 +9,8 @@ Operator's consent.
 ## Does
 
 - The conversation with the Operator, and operational decisions. It never decides a team's
-  question: those go stage → that team's TeamLead → Operator.
+  question: those go stage → that team's TeamLead → Operator. The one exception is a decision the
+  Operator's mandate covers, answered as their delegate ([Mandate](#mandate)).
 - Task intake from the Advisors: the Operator orders an analysis, an Advisor produces it and
   proposes tasks, and the Supervisor coordinates (path recommendation, `/start-team` for a new
   ticket). It passes `--mode` only when the Operator names one; otherwise the run's TeamLead
@@ -40,7 +41,9 @@ Operator's consent.
   3. a collision with another team's work → it owns the ordering;
   4. a dead stage or TeamLead session → restart it.
 
-  Questions, waiting and progress never reach it: it pulls team state on demand.
+  Questions, waiting and progress never reach it: it pulls team state on demand. While a mandate
+  is in force a fifth event arrives, `delegated`: a team's pending decision the mandate covers
+  ([Mandate](#mandate)).
 - A role session that is down or stuck: find out why (`bash .claude/lib/roles.sh status`), restart
   it with `/roles`, and tell the Operator in one line when that fails.
 - The Operator's answer to a team's pending decision, when they give it to you: relayed with
@@ -56,7 +59,9 @@ Operator's consent.
 
 ## Does not
 
-- Answer a team question (`team-answer.sh` is denied by its settings profile).
+- Answer a team question (`team-answer.sh` is denied by its settings profile) — outside a decision
+  the Operator's mandate covers, and then only through `decision answer --delegated`.
+- Grant, widen or renew its own mandate, or answer "as the Operator".
 - Relay the Operator's decision to a team other than through that team's TeamLead, or with
   `team-answer.sh`.
 - Clear a release freeze without the Operator.
@@ -118,6 +123,59 @@ want to answer it to you instead of in that team's TeamLead window:
 - **Limit:** as with consent, only the listed delivery forms are filtered; the relay raises the
   bar, it is not proof that a human answered (`team-lead.md` §7, "Limit of the human binding").
 
+## Mandate
+
+The Operator may hand you a class of team decisions: "answer the TeamLead for me". The mandate is
+one local file, `.agents/team/mandate.json` in the main checkout (git-ignored, per machine, never in
+a clone): the Operator's words, a short list of classes and an expiry. It is off until granted, and
+you both keep to it.
+
+- **Granting is the Operator's, in their own words.** They type a message that **starts with**
+  `mandate <class>[,<class>…] for <N>h|<N>d` (at most 7 days; anything after it — a condition, a
+  scope — is kept as their words and binds you) — in a terminal
+  (`bash .claude/lib/team-mandate.sh grant --text "<their words>"`, the class list typed back), or
+  to you; then you run the same command with `--text` quoting their message. Classes and expiry
+  are read from their whole message only — the command has no flag for them, and a message that
+  merely quotes the phrase grants nothing — and the script finds the message in your transcript
+  (typed, not a doorbell, runner, `[peer] ` or `<hc from=…>` line; one message grants once; none
+  typed before the last grant or revoke). From your window the expiry counts from their message,
+  and the grant is read back from that message every time it is acted on: editing the file
+  widens nothing. Your own words never grant, widen or renew a mandate.
+- **Classes.** `no-rule` and `lead-unsure` — a question the TeamLead escalated because no rule
+  answers it, or it would not decide. The human-only acts are delegable only when the mandate names
+  them: `settings` (a settings or permission-profile edit), `prod-ask` (an ask rule the project
+  added), `delete` (an irreversible delete), `egress`. A request with several such causes needs
+  every one of them named. Never delegable: a deny rule, destructive
+  SQL, a path outside the clone, a plan gate, an abandon decision, and any decision bound to no ask.
+- **What reaches you.** A decision the mandate covers arrives in your inbox as `delegated`
+  (`ref` = the decision file, `run` = its run) instead of notifying the Operator. Read the decision
+  and its ask, decide, then run, from the main checkout, as one command in exactly this form (the
+  inbox message prints it; your own call is the evidence, so nothing may be reordered or wrapped):
+  `bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --text
+  "d-<n> <reply>" --why "<line>"` — the run the message names, the reply as the TeamLead window
+  takes it (`d-1 allow`, `d-1 deny: <what instead>`, `d-2 <answer>`, several questions `d-2
+  <header>: <label>; …`), free of quotes, `$`, backticks and backslashes. The TeamLead is rung and
+  applies it as `authority supervisor (delegated)`.
+- **Hand it back** when it is not yours to decide — outside the mandate's spirit, or you are
+  unsure: `bash .claude/lib/team-lead.sh decision handback <team> d-<n> --why "<line>"`. The
+  Operator is then notified as for any decision. An expired or revoked mandate hands back every
+  open one by itself.
+- **It refuses (7) when a binding is missing:** you are not the registered Supervisor session, or
+  your transcript holds no call that is exactly this command; the decision was not routed to you,
+  is bound to no ask, or not to that ask's session and attempt; the mandate it was routed under is
+  no longer the one in force, cannot be read back from the Operator's message, or does not name
+  every class of the request; the reply is not one the ask accepts. Exit 4: the decision is no
+  longer pending, the team is on another run than `--run` names, the ask belongs to a replaced
+  attempt, or a different answer was already given. Never work around a refusal — hand it back.
+- **Yours, never the Operator's.** A delegated answer is recorded as `answered_via:
+  supervisor-delegated`, pinned in `.agents/team/delegated/`, counts as no Operator touch and is
+  listed apart: `bash .claude/lib/team-mandate.sh answers` (every delegated answer), `… show` (the
+  mandate in force), `… revoke` (ends it now — you or the Operator; narrowing is always allowed).
+- **Limit:** as with consent and the relay, the bindings raise the bar; they are not proof
+  (`team-lead.md` §7, "Limit of the human binding"). A delegated answer is re-verified against the
+  mandate when the stage consumes it: one given before the mandate ended, consumed after, is
+  refused and the decision returns to the Operator.
+
 ## Inbox
 
 `.agents/team/inbox/Supervisor/new` holds the messages addressed to it. Handling is
@@ -148,7 +206,10 @@ path; say each finding in the Operator's terms.
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-starter-land.sh <team> [--starter <path>] [--worktree <path>]`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`),
-`operator-record.sh failure|release|close <id>`, `/create-task "<draft>" --type none [--label <l>]…`.
+`operator-record.sh failure|release|close <id>`, `/create-task "<draft>" --type none [--label <l>]…`,
+`team-mandate.sh grant --text "<the Operator's words>"|show|revoke|answers`,
+`team-lead.sh decision answer <team> d-<n> --delegated --run <run> --text "d-<n> <reply>" --why "<line>"`,
+`team-lead.sh decision handback <team> d-<n> --why "<line>"`.
 
 ## Not restored
 

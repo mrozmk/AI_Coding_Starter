@@ -440,12 +440,12 @@ def run_checks(root, main, extra, pane, strict, transcript, block_only):
 
 def args(argv):
     o = {"root": os.getcwd(), "extra": [], "block": False, "strict": False, "transcript": None,
-         "classes": False, "report": False, "main": None, "input_json": None}
-    flags = {"--block": "block", "--strict": "strict", "--classes": "classes", "--report": "report"}
+         "classes": False, "report": False, "main": None, "input_json": None, "causes": False}
+    flags = ("--block", "--strict", "--classes", "--report", "--causes")
     while argv:
         a = argv.pop(0)
         if a in flags:
-            o[flags[a]] = True
+            o[a[2:]] = True
         elif a == "--settings" and argv:
             o["extra"].append(argv.pop(0))
         elif a == "--input-json" and argv:
@@ -464,14 +464,14 @@ def args(argv):
 def main(argv):
     o = args(argv)
     if o is None or ((o["classes"] or o["report"]) and not o["strict"]):
-        print("usage: team_prompt_check.py <clone> --input-json <file> [--main <root>]"
+        print("usage: team_prompt_check.py <clone> --input-json <file> [--main <root>] [--causes]"
               " | [<root>] [--settings <file>]... [--block]"
               " [--strict [--transcript <file>] [--classes [--report] [--main <root>]]]",
               file=sys.stderr)
         return 2
     if o["input_json"]:
-        line = team_prompt_authority.input_tier(sys.modules[__name__], o["root"],
-                                                o["main"] or o["root"], o["extra"], o["input_json"])
+        line = team_prompt_authority.input_tier(sys.modules[__name__], o["root"], o["main"] or o["root"],
+                                                o["extra"], o["input_json"], o["causes"])
         print(line or "error: could not read %s" % o["input_json"],
               file=sys.stdout if line else sys.stderr)
         return 0 if line else 2

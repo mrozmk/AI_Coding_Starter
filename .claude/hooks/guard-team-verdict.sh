@@ -16,6 +16,10 @@
 # decisions/ is the lead's too; a stage may only run `bash <abs>/.claude/lib/team-ask.sh wait a-<n>`.
 # `team-lead.sh decision relay` and a command naming the relay ledger (.agents/team/relays/) are the
 # Supervisor's, from the main checkout: refused for every session in a clone, the lead included.
+# So are the Operator's mandate (team-mandate.sh grant|revoke, .agents/team/mandate.json), the
+# Supervisor's delegated answer (decision answer --delegated, decision handback) and its ledger
+# (.agents/team/delegated/). An answer relayed with `team-answer.sh --authority delegated` stays
+# the lead's.
 #
 # Problem rule 2 solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
@@ -31,7 +35,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
 case "$PAYLOAD" in
-  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*|*relays*) ;;
+  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*|*relays*|*delegated*|*mandate*) ;;
   *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*|*team-starter-land.sh*) ;;
   *) exit 0 ;;
 esac
@@ -72,6 +76,14 @@ RELAY='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+[
 RELAYS='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/relays|[^[:space:]]*/\.agents/team/relays)(/|[[:space:]]|$)'
 if [[ "$CMD" =~ $RELAY ]] || [[ "$CMD" =~ $RELAYS ]]; then
   refuse "team-lead.sh decision relay and the relay ledger (.agents/team/relays/) are the Supervisor's, from the main checkout — never from a team clone (refused)"
+fi
+# The Operator's mandate (team-mandate.sh grant|revoke, its file and log), the Supervisor's delegated
+# answer and handback, and the delegation ledger: the main checkout's, never a clone's — a stage or
+# a lead must not grant itself a mandate or mint a delegated answer.
+MANDATE='team-mandate\.sh["'"'"']?[[:space:]]+["'"'"']?(grant|revoke)|team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?handback|team-lead\.sh.*[[:space:]]--delegated([[:space:]]|$)'
+MANDATES='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/|[^[:space:]]*/\.agents/team/)(delegated(/|[[:space:]]|$)|mandate(\.json|-log\.jsonl))'
+if [[ "$CMD" =~ $MANDATE ]] || [[ "$CMD" =~ $MANDATES ]]; then
+  refuse "the Operator's mandate, the Supervisor's delegated answer and the delegation ledger (.agents/team/mandate.json, .agents/team/delegated/) belong to the main checkout — never from a team clone (refused)"
 fi
 ASKCMD=""
 [[ "$CMD" =~ $ASKS ]] && ! [[ "$CMD" =~ $WAITF ]] && ASKCMD=1

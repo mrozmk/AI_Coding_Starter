@@ -185,6 +185,10 @@ Exactly four events reach the Supervisor from a team, each an atomic file, then 
 | `collision` | lead | another team's in-flight work collides with this run (`team-verdict.sh event collision`) |
 | `session_dead` | runner | the lead died, or a stage died with partial work (`ref` = its `.session`) |
 
+Only while the Operator's mandate is in force (§7, **Delegated to the Supervisor**) a fifth event
+exists: `delegated`, sent by the lead's `decision open` for a pending decision the mandate covers
+(`ref` = the decision file).
+
 Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`, files
 `<UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md`, written to `tmp/` and hard-linked into `new/` (never over an existing name: a clash takes the next `-n`). Frontmatter
 `id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body and an
@@ -432,8 +436,9 @@ TeamLead again"; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh 
 the `Notification` line reaches the runner).
 
 **Answering.** `team-answer.sh <team> a-<n> --answers '<json>' | --pick "<label>" | --text "<free
-text>" | --allow | --deny "<instead>" --authority teamlead|operator --why "<line>" [--decision
-<answered d-<n>.md>]`, run from the team's clone (its `team.json` must name `<team>` and
+text>" | --allow | --deny "<instead>" --authority teamlead|operator|delegated --why "<line>"
+[--decision <answered d-<n>.md>]` (`delegated`: a decision the Supervisor answered under the
+Operator's mandate, §7), run from the team's clone (its `team.json` must name `<team>` and
 `$TEAM_RUN_TEAM`). It refuses: 6 the team stopped or closing, no such ask, an ask of a replaced
 session or attempt, an ask already answered, delivered or withdrawn, an unclassified ask; 7 a
 caller that is not the run's lead, a form the ask's kind or payload refuses (a `--pick` label that
@@ -727,6 +732,84 @@ decision in plain text and the Operator types the reply.
   refuses with 4 — answer in its window, or end the lead and relaunch it first
   (`team-lead.sh end <team>`, then `team-lead.sh relaunch <team>`; a relaunch of a running lead
   replaces its identity while the old session keeps running, without authority).
+- **Delegated to the Supervisor** (`team-mandate.sh`, [roles/supervisor.md](roles/supervisor.md) →
+  Mandate). The Operator may grant the Supervisor a mandate: `<main>/.agents/team/mandate.json`
+  (`id, classes, granted_at, expires_at, granted_via, session_id, cwd, words, revoked_at`; mode
+  600, git-ignored, never in a clone), written only by `team-mandate.sh grant --text "<the
+  Operator's words>"` from a message that **starts with** `mandate <class>[,<class>…] for
+  <N>h|<N>d` (≤ 7 days; `mandate_parse` — a message that only quotes the phrase grants nothing)
+  — bound like `team-lineage.sh consent`: a terminal with the class list typed back, or the
+  Operator's typed message in the Supervisor's transcript that holds the text (no machine line,
+  one message one grant, never one from before the last grant or revoke in `mandate-log.jsonl`);
+  from the window the whole message is parsed and stored as `words`, and the expiry counts from
+  it. `show`, `revoke`, `covers <classes>`, `answers`. `mandate_current` reads the file (well-formed,
+  known classes, not revoked, not expired); `mandate_verified` — used wherever the mandate is acted
+  on, the delegated answer and the stage hook — also reads a window grant back from the message at
+  the recorded uuid and requires the same classes, expiry and words, so a file edit cannot widen,
+  extend or reword it (a terminal grant has no message to read back: the same-account limit
+  below — a session that writes the file itself could claim one). `grant` and `revoke` share one
+  lock (`mandate.lock`), so a revoke is never undone by a grant that started before it.
+  **Class** (`mandate_class`, `mandate_ask_classes`): a permission by the main checkout's checker
+  run on the request (`team_prompt_check.py --input-json … --causes`, which lists **every** cause,
+  not only the one the tier names) — `egress: …` → `egress`, `settings edit: …` → `settings`,
+  `production ask: …` → `prod-ask`, `irreversible delete …` → `delete`; a `refuse…` cause, a failed
+  egress guard or any other cause among them → none; several causes give several classes
+  (`egress,settings`) and the mandate must name each. A lead-tier ask by the decision's
+  `touch_reason` — `no-rule`, `lead-unsure`, any other → none. No class, no delegation.
+  **Routing.** `decision open --ask` (a lead whose prompt carries the delegation rule) asks the main
+  checkout's mandate: covered → the decision gets `delegate: supervisor`, `delegate_class`,
+  `delegate_mandate`, an inbox message `delegated` to the Supervisor (§3) and the line
+  `delegated: d-<n> — …` instead of `ask-operator: …`; the inbox write failing sets `delegate:
+  lapsed`. A decision bound to no ask (a gate, an abandon decision, an attention line) is never
+  routed. While `delegate: supervisor` stands and that same mandate (`delegate_mandate`) is in
+  force and covers the class, the runner
+  sends no `human_decision` and no `unasked` reminder; when it no longer does, the runner sets
+  `delegate: lapsed` and both go out as for any decision. The Operator may still answer a
+  delegated decision themselves (window, terminal, relay).
+  **Answer.** The Supervisor, from the main checkout, as one command in this exact form:
+  `bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --text
+  "d-<n> <reply>" --why "<line>"` (`--run`: the run the inbox message names; a reply with a quote,
+  `$`, backtick, backslash or padding is refused, 2). Refused (3) outside the Supervisor role or in
+  a clone; (7) when a binding is missing — the caller's `CLAUDE_CODE_SESSION_ID` is not the
+  registry's Supervisor session, or that session's transcript (the declared profile) holds no own
+  Bash call that **is** this invocation (`team_evidence_tool_call`: the command reads `bash
+  [<dir>/]team-lead.sh` + the exact argument text `team_delegate_args` builds, so a quoted
+  command, a longer reply or another run does not match), made after the decision opened and the
+  run started (a short wait covers a late flush); the decision is not `delegate: supervisor`, is
+  bound to no ask, or its `bind_session_id` / `bind_attempt` are not the ask's; the request's
+  classes, computed then by the main checkout's checker, are not the routed `delegate_class`; the
+  mandate it was routed under (`delegate_mandate`) is not in force, does not read back
+  (`mandate_verified`) or does not name every class; the reply is not one `ask_parse_reply`
+  accepts; (4) when the decision is not pending, its ask not open or of a replaced session or
+  attempt, the team on another run than `--run`, the lead older than the rule, or the ledger holds
+  another answer. Under the ask
+  lock it pins the answer once in `<main>/.agents/team/delegated/<team>-<run>-<d-n>.json` (`team,
+  run, decision, ask, attempt, ask_session, class, mandate, session_id, cwd, config_dir, uuid,
+  reply, why, created_at, answered_at, request` — `request` the ask's filed payload, the very
+  request the Supervisor answered; `ln`, never replaced; one call answers one decision), then
+  records `status: answered`, `answered_via: supervisor-delegated <uuid>`, `delegated_by:
+  Supervisor`, `delegated_session`, `delegate_why`, and rings the lead `relayed: d-<n> — the
+  Supervisor answered under the Operator's mandate <id>; apply it with --authority delegated`. It
+  writes no `operator-touches` line and no touch-log entry, and is never dialog evidence. A retry
+  with the same text re-rings; another text refuses with 4.
+  `team-lead.sh decision handback <team> d-<n> --why "<line>"` (the Supervisor) sets `delegate:
+  handed-back`: the decision is the Operator's again.
+  **Consumption.** The lead relays it with `team-answer.sh … --authority delegated --decision
+  <d-n.md>`: accepted only for `answered_via: supervisor-delegated …` (and `--authority operator`
+  refuses such a decision, 7), the answer file's authority and the `answers.md` line read
+  `supervisor (delegated)`. The stage hook then re-verifies from main-checkout code
+  (`verify_delegated`): the anchor's team and active run; the ledger entry for this run, decision,
+  ask and call, with the ask's session and attempt, which must still be the stage's active ones
+  (`session.json`); the pinned `request` equal to what is decided now (the live call for a
+  permission, else the filed ask); the mandate in force now — the same id, not
+  expired or revoked, read back from the Operator's message, still naming every class, which for a
+  permission are the classes the checker gives the very call the hook is deciding; the
+  Supervisor's own tool call at that uuid, exactly the answer command for this run; the pinned
+  reply parsed to this very answer. An authority and an evidence form that disagree (`delegated`
+  with an Operator's decision, or the reverse) are refused, and a decision with a ledger entry is
+  never delivered as the Operator's, whatever its `answered_via` reads now (the sender refuses it
+  too). Anything missing → "could not be
+  verified", the ask is rejected and recovers as after a rejected relay — to the Operator.
 - **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
   `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
   stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,

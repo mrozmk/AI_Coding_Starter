@@ -1484,6 +1484,209 @@ vg "bash $MAIN/.claude/lib/team-lead.sh decision relay beta d-1 --text x"
 ok '[ "$VRC" = 2 ]' "the verdict guard refuses decision relay in a clone"
 pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
 
+# ================================================================================================
+# the Operator's mandate and the Supervisor's delegated answer (team-mandate.sh, team-lead.md §7)
+# ================================================================================================
+MF="$MAIN/.agents/team/mandate.json"; DLG="$MAIN/.agents/team/delegated"; SINBOX="$MAIN/.agents/team/inbox/Supervisor/new"
+# stdin is never a terminal here: the grant has only the Supervisor-window binding to go on.
+TM() { (cd "$MAIN" && env TEAM_SESSION_ROLE=Supervisor bash "$MAIN/.claude/lib/team-mandate.sh" "$@") > "$T/tm.out" 2>&1 < /dev/null; TMRC=$?; }
+mand() {  # mand <classes json> [expires] — a mandate file as a grant would have written it
+  mkdir -p "$(dirname "$MF")"
+  jq -n --argjson c "$1" --arg e "${2:-2099-01-01T00:00:00Z}" '{id: "m-20200101T000000Z", classes: $c,
+    granted_at: "2020-01-01T00:00:00Z", expires_at: $e, granted_via: "terminal", words: "w", revoked_at: null}' > "$MF"
+}
+say_call() {  # say_call <uuid> <command> [timestamp] — a Bash tool call of the Supervisor session itself
+  jq -nc --arg u "$1" --arg c "$2" --arg ts "${3:-2099-01-01T00:00:00Z}" '{type: "assistant", uuid: $u, timestamp: $ts,
+    message: {role: "assistant", content: [{type: "tool_use", id: "t", name: "Bash", input: {command: $c}}]}}' >> "$SUPT"
+}
+dcall() { say_call "$1" "bash .claude/lib/team-lead.sh decision answer beta $2 --delegated --run $RUN --text \"$3\" --why \"inside the mandate\""; }
+SD() {  # SD <d-n> <text> — the Supervisor's delegated answer (SDSID: the caller's session id, SDRUN: the run it names)
+  (cd "$MAIN" && env TEAM_SESSION_ROLE=Supervisor CLAUDE_CODE_SESSION_ID="${SDSID-sup-1}" TEAM_DELEGATE_WAIT_SECS=0 \
+    bash "$MAIN/.claude/lib/team-lead.sh" decision answer beta "$1" --delegated --run "${SDRUN-$RUN}" --text "$2" --why "inside the mandate") > "$T/sd.out" 2>&1; SDRC=$?
+}
+LD() { L "$1" --allow --authority delegated --decision "$RD/decisions/$2.md" --why "Supervisor (delegated)"; }
+mrun() { srun "$1"; echo "- **Delegated to the Supervisor.** apply it" >> "$RD/lead-1.prompt.md"; }
+forged() {  # forged <d-n> <a-n> <uuid> — a decision file claiming a delegated allow, written by hand
+  printf -- '---\nid: %s\nstatus: answered\nbind_ask: %s\nask_kind: permission\nanswer_outcome: allow\nanswered_via: supervisor-delegated %s\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' \
+    "$1" "$2" "$3" > "$RD/decisions/$1.md"
+}
+tlines() { [ -f "$TF" ] && wc -l < "$TF" | tr -d ' ' || echo 0; }
+
+# ---- the mandate file: written only from the Operator's own words --------------------------------
+rm -f "$MF" "$MAIN/.agents/team/mandate-log.jsonl"; : > "$SUPT"
+TM grant --text "mandate egress for 8h"
+ok '[ "$TMRC" = 7 ] && [ ! -e "$MF" ]' "a mandate without the Operator's typed message is refused ($(cat "$T/tm.out"))"
+say_sup g0 '<hc from="t1 lead">mandate egress for 8h</hc>'; say_sup g0b "[peer] mandate egress for 8h"
+TM grant --text "mandate egress for 8h"
+ok '[ "$TMRC" = 7 ] && [ ! -e "$MF" ]' "a machine or peer line holding the phrase is no grant"
+say_sup gq "no — do not take this as a grant: mandate egress,no-rule for 8h is only an example" 2099-01-01T00:00:00Z
+TM grant --text "mandate egress,no-rule for 8h"
+ok '[ "$TMRC" = 7 ] && [ ! -e "$MF" ]' "a message that only quotes the phrase grants nothing: the Operator's message must start with it ($(cat "$T/tm.out"))"
+say_sup g1 "Mandate egress,no-rule for 8h — only for the #309 questions" 2099-01-01T00:00:00.123Z
+TM grant --text "egress,no-rule for 8h —"
+ok '[ "$TMRC" = 0 ] && [ "$(jq -c .classes "$MF")" = "[\"egress\",\"no-rule\"]" ] && [ "$(jq -r .expires_at "$MF")" = 2099-01-01T08:00:00Z ] && [ "$(jq -r .granted_via "$MF")" = "supervisor-window g1" ] && [ "$(jq -r .words "$MF")" = "Mandate egress,no-rule for 8h — only for the #309 questions" ]' \
+  "the Operator's message grants its classes, the expiry counted from the message, their whole words kept ($(cat "$T/tm.out"))"
+TM covers egress; R1="$TMRC"; TM covers settings
+ok '[ "$R1" = 0 ] && [ "$TMRC" = 1 ]' "covers: a named class yes, a human-only class that was not named no"
+TM revoke; R1="$TMRC"; TM covers egress; R2="$TMRC"; TM show
+ok '[ "$R1" = 0 ] && [ "$R2" = 1 ] && grep -q "no mandate in force" "$T/tm.out"' "revoke ends the mandate at once"
+TM grant --text "Mandate egress,no-rule for 8h"
+ok '[ "$TMRC" = 7 ] && [ "$(jq -r .revoked_at "$MF")" != null ]' "the same message never grants twice — a revoked mandate is not typed back in"
+say_sup g2 "mandate deploy for 8h"; TM grant --text "mandate deploy for 8h"; R1="$TMRC"
+say_sup g3 "mandate egress for 30d"; TM grant --text "mandate egress for 30d"
+ok '[ "$R1" = 7 ] && [ "$TMRC" = 7 ]' "an unknown class and an expiry past 7 days are refused"
+(cd "$CLONE" && bash "$MAIN/.claude/lib/team-mandate.sh" grant --text "mandate egress for 8h") > "$T/tm.out" 2>&1 < /dev/null; TMRC=$?
+ok '[ "$TMRC" = 2 ] && [ ! -e "$CLONE/.agents/team/mandate.json" ]' "team-mandate.sh refuses a team clone"
+# A window grant is read back from the Operator's message wherever it is acted on: an edited file
+# cannot widen it.
+say_sup g5 "mandate egress for 8h" 2099-01-02T00:00:00Z; TM grant --text "mandate egress for 8h"; R1="$TMRC"
+mrun mgw; say_sup g5 "mandate egress for 8h" 2099-01-02T00:00:00Z; sopask w1 1; dcall cw1 d-1 "d-1 allow"
+jq '.classes += ["settings"]' "$MF" > "$T/mf" && cp "$T/mf" "$MF"; SD d-1 "d-1 allow"; R2="$SDRC"
+jq '.classes = ["egress"] | .expires_at = "2099-06-01T00:00:00Z"' "$MF" > "$T/mf" && cp "$T/mf" "$MF"; SD d-1 "d-1 allow"; R3="$SDRC"
+jq '.expires_at = "2099-01-02T08:00:00Z"' "$MF" > "$T/mf" && cp "$T/mf" "$MF"; SD d-1 "d-1 allow"
+ok '[ "$R1" = 0 ] && [ "$(dfm_t d-1 delegate)" = supervisor ] && [ "$R2" = 7 ] && [ "$R3" = 7 ] && [ "$SDRC" = 0 ]' \
+  "a window grant widened or extended by a file edit no longer reads back from the Operator's message → refused ($(cat "$T/sd.out"))"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null
+
+# ---- no mandate: nothing changes ----------------------------------------------------------------
+rm -f "$MF" "$SINBOX"/*; mrun mg0; sopask n0 1
+ok '! grep -q "^delegate" "$RD/decisions/d-1.md" && ! grep -q "^delegated:" "$T/tl.out" && ! ls "$SINBOX" 2>/dev/null | grep -q "beta-delegated"' \
+  "no mandate: the decision opens for the Operator as before"
+dcall c0 d-1 "d-1 allow"; SD d-1 "d-1 allow"
+ok '[ "$SDRC" = 7 ] && [ "$(dst d-1)" = pending ] && [ ! -e "$DLG/beta-$RUN-d-1.json" ]' "no mandate: a delegated answer is refused ($(cat "$T/sd.out"))"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null
+
+# ---- a covered class: routed to the Supervisor, answered and delivered as supervisor (delegated) --
+mand '["egress"]'; mrun mg1; : > "$RINGS"; sopask m1 1
+ok '[ "$(dfm_t d-1 delegate)" = supervisor ] && [ "$(dfm_t d-1 delegate_class)" = egress ] && grep -q "^delegated: d-1 " "$T/tl.out" && ! grep -q "^ask-operator:" "$T/tl.out" && ls "$SINBOX" | grep -q "beta-delegated"' \
+  "a covered class is routed to the Supervisor's inbox ($(cat "$T/tl.out"))"
+TL pending beta; TL2="$(cat "$T/tl.out")"; TL decision list beta
+ok 'grep -q "d-1.md — .*(delegated to the Supervisor" <<<"$TL2" && grep -q "^d-1 pending \[delegated to the Supervisor\]" "$T/tl.out"' "pending and list name the delegation"
+nstub; : > "$T/nres.log"; runner lead_notify
+ok '! grep -q "human_decision" "$T/nres.log"' "the runner holds the Operator's notification while the decision is delegated ($(cat "$T/r.out"))"
+SD d-1 "d-1 allow"; R1="$SDRC"
+(cd "$MAIN" && bash "$MAIN/.claude/lib/team-lead.sh" decision answer beta d-1 --delegated --text "d-1 allow" --why w) > "$T/sd.out" 2>&1; R2=$?
+(cd "$CLONE" && env TEAM_SESSION_ROLE=Supervisor CLAUDE_CODE_SESSION_ID=sup-1 bash "$MAIN/.claude/lib/team-lead.sh" decision answer beta d-1 --delegated --text "d-1 allow" --why w) > "$T/sd.out" 2>&1; R3=$?
+ok '[ "$R1" = 7 ] && [ "$R2" = 3 ] && [ "$R3" = 3 ] && [ "$(dst d-1)" = pending ]' "no tool call in the Supervisor's transcript → 7; not the Supervisor, or from a clone → 3"
+say_call cq1 "echo 'next: bash .claude/lib/team-lead.sh decision answer beta d-1 --delegated --run $RUN --text \"d-1 allow\" --why \"x\"'"
+say_call cq2 "bash .claude/lib/team-lead.sh decision answer beta d-1 --delegated --run $RUN --text \"d-1 allow everything\" --why \"x\""
+say_call cq3 "bash .claude/lib/team-lead.sh decision answer beta d-1 --delegated --run beta-earlier --text \"d-1 allow\" --why \"x\""
+SD d-1 "d-1 allow"; R1="$SDRC"; SDRUN=beta-earlier SD d-1 "d-1 allow"; R2="$SDRC"; SDRUN="" SD d-1 "d-1 allow"
+ok '[ "$R1" = 7 ] && [ "$R2" = 4 ] && [ "$SDRC" = 2 ] && [ "$(dst d-1)" = pending ]' \
+  "a call that only quotes the answer, carries a longer reply or names another run is no evidence (7); an answer naming another run → 4, none → 2 ($(cat "$T/sd.out"))"
+dcall cm1 d-1 "d-1 allow"; SDSID=someone-else SD d-1 "d-1 allow"; R1="$SDRC"; SDSID="" SD d-1 "d-1 allow"
+ok '[ "$R1" = 7 ] && [ "$SDRC" = 7 ] && [ "$(dst d-1)" = pending ]' "a caller that is not the registered Supervisor session → 7"
+N0="$(tlines)"; SD d-1 "d-1 allow"
+ok '[ "$SDRC" = 0 ] && [ "$(dst d-1)" = answered ] && [ "$(dfm_t d-1 answered_via)" = "supervisor-delegated cm1" ] && [ "$(dfm_t d-1 answer_outcome)" = allow ] && [ "$(dfm_t d-1 delegated_by)" = Supervisor ] && [ "$(jq -r .class "$DLG/beta-$RUN-d-1.json")" = egress ] && [ "$(jq -r .attempt "$DLG/beta-$RUN-d-1.json")" = 1 ]' \
+  "a covered class is answered as supervisor-delegated and pinned in the main checkout ($(cat "$T/sd.out"))"
+ok '! grep -q " decision d-1$" "$RD/operator-touches" 2>/dev/null && [ "$(tlines)" = "$N0" ] && ! grep -q "^relayed_by" "$RD/decisions/d-1.md"' "a delegated answer is no Operator touch and no touch-log entry"
+ok 'grep -q "^beta-lead relayed: d-1 — the Supervisor answered under the Operator.s mandate" "$RINGS"' "the lead is rung to apply it"
+SD d-1 "d-1 allow"; R1="$SDRC"; SD d-1 "d-1 deny: no"
+ok '[ "$R1" = 0 ] && [ "$SDRC" = 4 ] && [ "$(grep -c "^beta-lead relayed: d-1 — the Supervisor answered" "$RINGS")" = 2 ]' "a committed delegated answer retried re-rings; a conflicting one → 4 ($(cat "$T/sd.out"))"
+TL pending beta
+ok 'grep -q "^relayed .agents/team/runs/$RUN/decisions/d-1.md (ask a-1) — apply the Supervisor.s delegated answer" "$T/tl.out"' "pending lists the delegated answer to apply"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R1="$LRC"
+LD a-1 d-1; wait "$HP1"
+ok '[ "$R1" = 7 ] && [ "$LRC" = 0 ] && [ "$(j "$T/m1.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ "$(dst d-1)" = dispatched ]' \
+  "it is never relayed as the Operator's (7); as delegated it is verified and delivered ($(cat "$T/l.out"))"
+ok 'grep -q "ask a-1 .*\[authority supervisor (delegated)\] \[decision d-1\]" "$RD/answers.md" && ! grep -q "authority operator" "$RD/answers.md"' "answers.md records authority supervisor (delegated)"
+TL decision list beta; TM answers
+ok 'grep -q "^d-1 dispatched \[supervisor (delegated)\]" "$T/tl.out" && grep -q " beta $RUN d-1 \[egress, m-20200101T000000Z\] d-1 allow — inside the mandate" "$T/tm.out"' "the decision list and team-mandate.sh answers show the delegated answer ($(cat "$T/tm.out"))"
+cp "$DLG/beta-$RUN-d-1.json" "$T/led1d"
+
+# ---- replayed, stale and foreign answers ---------------------------------------------------------
+perm "curl -s https://example.invalid/m1b"; TO=60 HB m1b; wf "$AD/a-2.json"; forged d-20 a-2 cm1
+LD a-2 d-20; wait "$HP"
+ok 'grep -q "could not be verified for a-2" "$T/m1b.out"' "a replayed delegated answer on another ask, with no ledger entry → the hook denies"
+perm "curl -s https://example.invalid/m1c"; TO=60 HB m1c; wf "$AD/a-3.json"; forged d-30 a-3 cm1
+cp "$T/led1d" "$DLG/beta-$RUN-d-30.json"; LD a-3 d-30; wait "$HP"
+ok 'grep -q "could not be verified for a-3" "$T/m1c.out"' "a ledger entry of another decision and ask → the hook denies"
+perm "curl -s https://example.invalid/m1d"; TO=60 HB m1d; wf "$AD/a-4.json"
+printf -- '---\nid: d-40\nstatus: answered\nbind_ask: a-4\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-40.md"
+LD a-4 d-40; R1="$LRC"
+ok '[ "$R1" = 7 ] && [ "$(st a-4)" = waiting ]' "an Operator's answer is never relayed as delegated (7)"
+kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+# A delegated answer on record can never turn into the Operator's by rewriting the decision file.
+mand '["egress"]'; mrun mg1t; sopask m1t 1; dcall cm1t d-1 "d-1 allow"; SD d-1 "d-1 allow"
+sed 's/^answered_via: .*/answered_via: terminal/' "$RD/decisions/d-1.md" > "$T/d1.t" && cp "$T/d1.t" "$RD/decisions/d-1.md"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R1="$LRC"
+jq 'del(.main_root)' "$TD/teamlead.json" > "$T/tl.j" && cp "$T/tl.j" "$TD/teamlead.json"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; wait "$HP1"
+ok '[ "$R1" = 7 ] && grep -q "could not be verified for a-1" "$T/m1t.out"' \
+  "a pinned delegated answer rewritten to a terminal answer: the sender refuses it as the Operator's (7), and so does the hook ($(cat "$T/l.out"))"
+# Every cause of the request must be covered: egress and a settings edit need both classes.
+mand '["egress"]'; mrun mg1m; perm "curl -s https://example.invalid/m -o .claude/settings.json"; TO=60 HB m1m; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --options "allow|deny"; R1="$(dfm_t d-1 delegate)"
+TL decision withdraw beta d-1 --why "again under a wider mandate"; mand '["egress","settings"]'
+TL decision open beta --ask a-1 --options "allow|deny"
+ok '[ -z "$R1" ] && [ "$(dfm_t d-2 delegate_class)" = "egress,settings" ]' \
+  "a request with two human-only causes is delegated only under a mandate naming both ($(cat "$T/tl.out"))"
+kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+mrun mg5; perm "curl -s https://example.invalid/m5"; TO=60 HB m5; wf "$AD/a-1.json"; forged d-1 a-1 cm1
+dcall cm1 d-1 "d-1 allow"; cp "$T/led1d" "$DLG/beta-$RUN-d-1.json"; LD a-1 d-1; wait "$HP"
+ok 'grep -q "could not be verified for a-1" "$T/m5.out"' "an answer pinned for another run → the hook denies"
+mrun mg6; sopask m6 1; TL decision withdraw beta d-1 --why "the stage went another way"; dcall cm6 d-1 "d-1 allow"; SD d-1 "d-1 allow"
+ok '[ "$SDRC" = 4 ] && [ ! -e "$DLG/beta-$RUN-d-1.json" ]' "a stale answer to a withdrawn decision → 4"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null
+
+# ---- an uncovered class --------------------------------------------------------------------------
+mand '["no-rule"]'; mrun mg2; sopask m2 1
+ok '! grep -q "^delegate" "$RD/decisions/d-1.md" && grep -q "^human-only\|^\[d-1\]" "$T/tl.out" && ! grep -q "^delegated:" "$T/tl.out"' "a class the mandate does not name stays the Operator's"
+awk '{ print } /^status: pending$/ { print "delegate: supervisor"; print "delegate_class: egress"; print "delegate_mandate: m-20200101T000000Z" }' "$RD/decisions/d-1.md" > "$T/d1.f" && cp "$T/d1.f" "$RD/decisions/d-1.md"
+dcall cm2 d-1 "d-1 allow"; SD d-1 "d-1 allow"
+ok '[ "$SDRC" = 7 ] && grep -q "does not cover class egress" "$T/sd.out" && [ "$(dst d-1)" = pending ]' "an uncovered class is refused even when the decision file claims the delegation ($(cat "$T/sd.out"))"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null
+
+# ---- an expired mandate: at the answer, and when the answer is consumed --------------------------
+mand '["egress"]'; mrun mg3; sopask m3 1; dcall cm3 d-1 "d-1 allow"
+mand '["egress"]' 2020-06-01T00:00:00Z; SD d-1 "d-1 allow"
+ok '[ "$SDRC" = 7 ] && [ "$(dst d-1)" = pending ] && [ ! -e "$DLG/beta-$RUN-d-1.json" ]' "an expired mandate → the delegated answer is refused"
+: > "$T/nres.log"; runner lead_notify
+ok '[ "$(dfm_t d-1 delegate)" = lapsed ] && grep -q "^human_decision .*--decision d-1" "$T/nres.log"' "… and the runner lapses the delegation and notifies the Operator ($(cat "$T/r.out"))"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null
+mand '["egress"]'; mrun mg4; sopask m4 1; dcall cm4 d-1 "d-1 allow"; SD d-1 "d-1 allow"; R1="$SDRC"
+mand '["egress"]' 2020-06-01T00:00:00Z; LD a-1 d-1; wait "$HP1"
+ok '[ "$R1" = 0 ] && grep -q "could not be verified for a-1" "$T/m4.out"' "a mandate that expired before the answer is consumed → the hook denies"
+mand '["egress"]'; mrun mg4r; sopask m4r 1; dcall cm4r d-1 "d-1 allow"; SD d-1 "d-1 allow"
+jq '.revoked_at = "2020-06-01T00:00:00Z"' "$MF" > "$T/mf" && cp "$T/mf" "$MF"; LD a-1 d-1; wait "$HP1"
+ok 'grep -q "could not be verified for a-1" "$T/m4r.out"' "a mandate revoked before the answer is consumed → the hook denies"
+
+# ---- handback, a question (class no-rule), an unbound decision -----------------------------------
+mand '["egress"]'; mrun mg7; sopask m7 1; : > "$T/nres.log"
+(cd "$MAIN" && env TEAM_SESSION_ROLE=Supervisor bash "$MAIN/.claude/lib/team-lead.sh" decision handback beta d-1 --why "the Operator should see this one") > "$T/sd.out" 2>&1; R1=$?
+runner lead_notify; dcall cm7 d-1 "d-1 allow"; SD d-1 "d-1 allow"
+ok '[ "$R1" = 0 ] && [ "$(dfm_t d-1 delegate)" = handed-back ] && grep -q "^human_decision .*--decision d-1" "$T/nres.log" && [ "$SDRC" = 7 ]' \
+  "a handed-back decision is the Operator's again: notified, and no delegated answer ($(cat "$T/sd.out"))"
+kill "$HP1" 2>/dev/null; wait "$HP1" 2>/dev/null; nrestore
+mand '["no-rule"]'; mrun mg9; pl question-one; TO=60 HB mq; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+ok '[ "$(dfm_t d-1 delegate_class)" = no-rule ] && [ "$(j "$AD/a-1.json" .requires_decision)" = d-1 ]' "an escalated question with no rule is routed under a no-rule mandate ($(cat "$T/tl.out"))"
+dcall cm9 d-1 "d-1 Remove it"; SD d-1 "d-1 Remove it"; R1="$SDRC"
+L a-1 --pick "Remove it" --authority delegated --decision "$RD/decisions/d-1.md" --why "Supervisor (delegated)"; wait "$HP"
+ok '[ "$R1" = 0 ] && [ "$LRC" = 0 ] && [ "$(j "$T/mq.out" ".hookSpecificOutput.updatedInput.answers[\"Keep the old endpoint?\"]")" = "Remove it" ]' \
+  "a delegated answer to a question is delivered with the stage's own label ($(cat "$T/sd.out") / $(cat "$T/l.out"))"
+# The answer is pinned to the request the Supervisor saw: an ask changed afterwards is not answered by it.
+mand '["no-rule"]'; mrun mg9b; pl question-one; TO=60 HB mqb; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+dcall cm9b d-1 "d-1 Remove it"; SD d-1 "d-1 Remove it"; R1="$SDRC"
+jq '.payload.tool_input.questions[0].options[1].description = "and drop its tests too"' "$AD/a-1.json" > "$T/a1.j" && cp "$T/a1.j" "$AD/a-1.json"
+L a-1 --pick "Remove it" --authority delegated --decision "$RD/decisions/d-1.md" --why "Supervisor (delegated)"; wait "$HP"
+ok '[ "$R1" = 0 ] && [ "$(jq -r .request.tool_input.questions[0].question "$DLG/beta-$RUN-d-1.json")" = "Keep the old endpoint?" ] && grep -q "could not be verified for a-1" "$T/mqb.out"' \
+  "the ledger pins the request; an ask changed after the answer → the hook denies ($(cat "$T/sd.out"))"
+mand '["no-rule","lead-unsure","egress","settings","prod-ask","delete"]'
+jq -n '{role: "coder", attempt: 1, verdict: "blocked", message: "m", written_at: "2026-01-01T00:00:00Z"}' > "$RD/coder-1-1.json"
+TL decision open beta --source coder-1-1.json --question "Keep the flaky test?" --options "keep|drop"; DU="$(did)"
+ok '[ "$TLRC" = 0 ] && [ -n "$DU" ] && ! grep -q "^delegate" "$RD/decisions/$DU.md"' "a decision bound to no ask is never delegated, whatever the mandate names ($(cat "$T/tl.out"))"
+
+# ---- the guards: a stage or a lead cannot mint a mandate or a delegated answer --------------------
+vg "bash $MAIN/.claude/lib/team-mandate.sh grant --text 'mandate egress for 8h'"; R1="$VRC"
+vg "echo '{}' > $MAIN/.agents/team/mandate.json"; R2="$VRC"
+vg "cp x $MAIN/.agents/team/delegated/beta-x.json"; R3="$VRC"
+vg "bash $MAIN/.claude/lib/team-lead.sh decision answer beta d-1 --delegated --text x --why w"
+ok '[ "$R1" = 2 ] && [ "$R2" = 2 ] && [ "$R3" = 2 ] && [ "$VRC" = 2 ]' "the verdict guard refuses the mandate, the ledger and a delegated answer in a clone"
+pl edit-asks "$MF"; H "$T/g8.out"; pl edit-asks "$DLG/beta-x.json"; H "$T/g9.out"
+ok '[ "$(j "$T/g8.out" .hookSpecificOutput.permissionDecision)" = deny ] && [ "$(j "$T/g9.out" .hookSpecificOutput.permissionDecision)" = deny ]' "a stage's write of the mandate or the delegation ledger is refused"
+rm -f "$MF"
+pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
+
 # … and before a start: team-lead.sh preflight refuses an unclean profile with the cause and the fix
 # (the main checkout's profiles above name the clone and the fixture config dir)
 SUBF=""; jq 'del(.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion")) | del(.hooks.PostToolUse[]? | select((.matcher // "") == ""))' "$T/local.keep" > "$CLONE/.claude/settings.local.json"

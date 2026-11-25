@@ -10,6 +10,9 @@
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh decision relay <team> d-<n> --text "<team> d-<n> <reply>"
 #          (the Supervisor, main checkout)
+#        bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run>
+#          --text "d-<n> <reply>" --why "<line>" | decision handback <team> d-<n> --why "<line>"
+#          (the Supervisor under the Operator's mandate, main checkout — team-mandate.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
 #   pending lists the lead's open items — pending decisions first, then mode (team.json mode
 #   `lead` with no mode verdict yet), then relayed (an answer the Supervisor relayed, not applied
@@ -33,12 +36,13 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lead-decision.sh"
+. "$LIB/team-mandate.sh"
 . "$LIB/team-ask.sh"
 . "$LIB/team-modes.sh"
 
@@ -75,12 +79,14 @@ pending_decision_for() {  # pending_decision_for <a-n> — a pending (or relayed
   done
   return 1
 }
-# relayed_unapplied <decision file> — the Supervisor relayed its answer and the lead has not applied
-# it yet: still answered, and (a plan-gate decision) no plan verdict names its source.
+# relayed_unapplied <decision file> — the Supervisor relayed the Operator's answer, or answered as a
+# delegate under the Operator's mandate, and the lead has not applied it yet: still answered, and
+# (a plan-gate decision) no plan verdict names its source.
 relayed_unapplied() {
   local v
   [ "$(dfm "$1" status)" = answered ] || return 1
-  v="$(dfm "$1" answered_via)"; [ "${v%% *}" = supervisor-window ] || return 1
+  v="$(dfm "$1" answered_via)"
+  case "${v%% *}" in supervisor-window|supervisor-delegated) ;; *) return 1 ;; esac
   [ "$(dfm "$1" gate)" != plan ] || ! gate_decided "$(basename "$(dfm "$1" source)")"
 }
 # ask_covers <role> <utc> — an ask of that stage is waiting, or was filed within 10 s of <utc>.
@@ -116,7 +122,8 @@ pending() {
       # Open human decisions sort before everything: the Operator's answers wait on them.
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
-        echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
+        l=""; [ "$(dfm "$f" delegate)" != supervisor ] || l=" (delegated to the Supervisor — raise no dialog)"
+        echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")$l"
       done
       # Mode lead: the choice comes before every stage (team-lead.md §1a); the runner applies it.
       if [ "$(team_mode "$TD/team.json" 2>/dev/null)" = lead ] && [ -z "$(team_mode_verdict "$TD" "$RUN")" ]; then
@@ -126,7 +133,10 @@ pending() {
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && relayed_unapplied "$f" || continue
         a="$(dfm "$f" bind_ask)"
-        echo "00000000000001 relayed .agents/team/runs/$RUN/decisions/$(basename "$f")${a:+ (ask $a)} — apply the stored answer"
+        case "$(dfm "$f" answered_via)" in
+          supervisor-delegated*) l="apply the Supervisor's delegated answer (--authority delegated)" ;;
+          *) l="apply the stored answer" ;; esac
+        echo "00000000000001 relayed .agents/team/runs/$RUN/decisions/$(basename "$f")${a:+ (ask $a)} — $l"
       done
       # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a
       # class ask is answered by the hook itself within the same call.

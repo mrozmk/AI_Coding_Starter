@@ -252,6 +252,7 @@ own .claude/lib/portable-lib.sh
 own .claude/lib/roles.sh
 own .claude/commands/roles.md
 own .claude/lib/team-lineage.sh
+own .claude/lib/team-mandate.sh
 own .claude/team/sessions/Advisor.settings.json
 own .agents/reference/roles/supervisor.md
 own .agents/reference/roles/advisor.md

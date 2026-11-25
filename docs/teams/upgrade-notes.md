@@ -3,6 +3,29 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The Operator can delegate team decisions to the Supervisor (mandate)
+
+**Before:** every decision the TeamLead escalated reached the Operator.
+
+**Now:** off by default, nothing changes until a mandate is granted. The Operator types a message
+starting with `mandate <class>[,<class>…] for <N>h|<N>d` (a terminal, or the Supervisor window) and
+`bash .claude/lib/team-mandate.sh grant --text "<their words>"` writes
+`.agents/team/mandate.json` in the main checkout (git-ignored, per machine). A pending decision
+bound to an ask whose class the mandate names goes to the Supervisor's inbox (`delegated`); the
+Supervisor answers with `team-lead.sh decision answer <team> d-<n> --delegated --run <run> …` or hands it back
+(`decision handback`). The answer is recorded as `supervisor (delegated)` and re-verified by the
+stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.md` → Mandate).
+
+**Do:**
+- Run `/setup:teams` (the manifest adds `.claude/lib/team-mandate.sh`).
+- A TeamLead launched before this change has no delegation rule: its decisions are not routed
+  until its next run.
+- The Supervisor profile (`.claude/team/sessions/Supervisor.settings.json`) has no allow rule for
+  the three new commands; add them by hand if the Supervisor should run them without a prompt:
+  `Bash(bash .claude/lib/team-mandate.sh *)`,
+  `Bash(bash .claude/lib/team-lead.sh decision answer * --delegated *)`,
+  `Bash(bash .claude/lib/team-lead.sh decision handback *)`.
+
 ## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
 
 **Before:** `/start-team` without `--mode` started `brainstorm`; the cli role was a separate

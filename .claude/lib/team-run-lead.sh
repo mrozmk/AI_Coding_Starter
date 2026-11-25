@@ -232,6 +232,20 @@ lead_notify() {
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     # Answered (a relay, a terminal) or withdrawn before the first tick: nothing to tell the Operator.
     if [ -f "$d" ] && [ "$(sed -n 's/^status: //p' "$d" | head -n 1)" != pending ]; then LEAD_NOTIFIED="$LEAD_NOTIFIED$k "; continue; fi
+    # Delegated to the Supervisor under the Operator's mandate (team-mandate.sh): the Operator is
+    # not told while the mandate in force still covers its class. A mandate that ended or no
+    # longer names the class lapses the delegation, and the notification below goes out.
+    if [ -f "$d" ] && [ "$(lfm "$d" delegate)" = supervisor ]; then
+      command -v mandate_covers >/dev/null 2>&1 || . "$root/.claude/lib/team-mandate.sh" 2>/dev/null || true
+      if command -v mandate_covers >/dev/null 2>&1 \
+          && [ -n "$(lfm "$d" delegate_mandate)" ] \
+          && mandate_covers "$root" "$(lfm "$d" delegate_class)" "$(lfm "$d" delegate_mandate)" >/dev/null 2>&1; then continue; fi
+      if ask_init "$TD" 2>/dev/null && ask_lock; then
+        [ "$(lfm "$d" status)" != pending ] || [ "$(lfm "$d" delegate)" != supervisor ] || lfm_set "$d" delegate lapsed
+        ask_unlock
+      fi
+      [ "$(lfm "$d" delegate)" != supervisor ] || continue
+    fi
     team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # only for the prefix; a broken channel block → the dir slug
     w="lead"  # every decision is answered in the lead's window
     h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The sender's authority path (team-answer.sh --authority teamlead|operator). Sourced by
+# The sender's authority path (team-answer.sh --authority teamlead|operator|delegated). Sourced by
 # team-answer.sh, never executed; every function uses its globals (TEAM, TD, AUTH, WHY, DECISION,
 # ASK, refuse). Bash 3.2. Contract: .agents/reference/team-lead.md §6
 
@@ -18,23 +18,38 @@ auth_fm_set() {  # auth_fm_set <file> <key> <value> — replace or add one front
 
 # auth_preflight — the caller and decision rules of the authority: only this run's TeamLead
 # answers, only its own team; an operator answer names an answered decision bound to this ask.
+# `delegated` relays a decision the Supervisor answered under the Operator's mandate
+# (answered_via: supervisor-delegated …) and no other; `operator` never relays such a one, so a
+# delegated answer is never recorded as the Operator's.
 auth_preflight() {
-  local d run
-  case "$AUTH" in teamlead|operator) ;;
-    *) echo "error: --authority must be teamlead or operator" >&2; exit 2 ;; esac
+  local d run mr
+  case "$AUTH" in teamlead|operator|delegated) ;;
+    *) echo "error: --authority must be teamlead, operator or delegated" >&2; exit 2 ;; esac
   [ -n "$WHY" ] && [[ "$WHY" != *$'\n'* ]] \
     || { echo "error: --authority needs --why \"<one line>\"" >&2; exit 2; }
   auth_lead_caller || refuse 7 "authority $AUTH is the run's TeamLead's"
   [ "$TEAM" = "${TEAM_RUN_TEAM:-}" ] || refuse 7 "a TeamLead answers only its own team"
-  [ "$AUTH" = operator ] || [ -z "$DECISION" ] \
-    || { echo "error: --decision goes with --authority operator" >&2; exit 2; }
-  [ "$AUTH" = operator ] || return 0
+  [ "$AUTH" != teamlead ] || [ -z "$DECISION" ] \
+    || { echo "error: --decision goes with --authority operator or delegated" >&2; exit 2; }
+  [ "$AUTH" != teamlead ] || return 0
   run="$(cat "$TD/run" 2>/dev/null || true)"
   d="$(cd "$(dirname "$DECISION")" 2>/dev/null && pwd -P)/$(basename "$DECISION")" || d=""
   [ -n "$DECISION" ] && [ -f "$d" ] \
     && [ "$(dirname "$d")" = "$(cd "$TD/runs/$run/decisions" 2>/dev/null && pwd -P)" ] \
     && [ "$(auth_fm "$d" status)" = answered ] \
-    || refuse 7 "authority operator needs --decision <an answered runs/$run/decisions/d-<n>.md>"
+    || refuse 7 "authority $AUTH needs --decision <an answered runs/$run/decisions/d-<n>.md>"
+  case "$AUTH:$(auth_fm "$d" answered_via)" in
+    delegated:"supervisor-delegated "*) ;;
+    delegated:*) refuse 7 "decision $(auth_fm "$d" id) is not the Supervisor's delegated answer — relay it with --authority operator" ;;
+    operator:"supervisor-delegated "*) refuse 7 "decision $(auth_fm "$d" id) is the Supervisor's delegated answer, not the Operator's — relay it with --authority delegated" ;;
+  esac
+  # … whatever the decision file says now: an answer pinned in the main checkout's delegation
+  # ledger is never relayed as the Operator's (the stage hook refuses it too).
+  if [ "$AUTH" = operator ]; then
+    mr="$(jq -r '.main_root // empty' "$TD/teamlead.json" 2>/dev/null || true)"
+    [ -z "$mr" ] || [ ! -e "$mr/.agents/team/delegated/$TEAM-$run-$(auth_fm "$d" id).json" ] \
+      || refuse 7 "decision $(auth_fm "$d" id) has a delegated answer on record — relay it with --authority delegated"
+  fi
   # A decision about an ask binds that ask: a successor ask is never answered with it.
   [ "$(auth_fm "$d" bind_ask)" = "$ASK" ] \
     || refuse 7 "decision $(auth_fm "$d" id) is bound to $(auth_fm "$d" bind_ask), not $ASK"

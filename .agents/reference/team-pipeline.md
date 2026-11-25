@@ -282,6 +282,7 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
    | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next` or `clone free` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; else abandon the named PR (if any) and free the clone with `team-next` |
    | `collision` | the lead found another team's in-flight work touching this run | answer the lead: `bash .claude/lib/team-inbox.sh write <team> collision-answer --from Supervisor --ticket <k> --run <run> --message "<line>"` |
    | `session_dead` | the lead died, or a stage died with partial work (`ref` = its `.session`) | `/start-team <team>` (it relaunches the lead, or resumes the stage) |
+   | `delegated` (only under the Operator's mandate) | a team's pending decision the mandate covers (`ref` = the decision file) | answer it as a delegate or hand it back (`roles/supervisor.md` → Mandate) |
 
 3. **Exit 8.** `closed.json` is written first, so a resume is refused (`run closed (<reason>)`);
    the next ticket is `team-next`, a remode is `team-remode.sh`.
