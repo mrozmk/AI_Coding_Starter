@@ -979,6 +979,40 @@ sub '[ "${F1%% *}" = clean ] && [ "${F2%% *}" = clean ] && [ "$F1" != "$F2" ] &&
 printf -- '---\nname: t\ndescription: >\n  one\n  two\n---\n' > "$PD/skills/s/SKILL.md"; ahk; F3="$AH"
 printf -- '---\nname: t\ndescription: >\n  two\n  one\n---\n' > "$PD/skills/s/SKILL.md"; ahk
 sub '[ "${F3%% *}" = clean ] && [ "${AH%% *}" = clean ] && [ "$AH" != "$F3" ]' "(g) two frontmatter lines swapped change the digest ($F3 $AH)"
+rm -rf "$PLG"; rm -f "$US"
+# A relative plugin directory: the checker runs in $T (pd1 there is hookless), the lead in the
+# clone (a pd1 there is a mod) — the same string names two trees, so it is never inventoried.
+mkdir -p "$CLONE/pd1/.claude-plugin" "$CLONE/pd1/hooks"; echo '{"name": "m"}' > "$CLONE/pd1/.claude-plugin/plugin.json"
+echo '{"modules": ["./r.js"]}' > "$CLONE/pd1/hooks/hooks.json"
+AH="$(cd "$T" && CLAUDE_CODE_PLUGIN_DIRS=pd1 team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean plugin directory pd1 (CLAUDE_CODE_PLUGIN_DIRS, environment): not an absolute path, the tree it names depends on the working directory" ]' "(h) a relative plugin directory, checker cwd unlike the lead's ($AH)"
+AH="$(cd "$T" && CLAUDE_CODE_PLUGIN_DIRS="$T/pd1:./pd1" team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 1 ] && grep -q "plugin directory ./pd1 .*not an absolute path" <<<"$AH"' "(h) … beside an absolute one ($AH)"
+jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: "pd1"}}' > "$US"; AH="$(cd "$T" && team_evidence_ask_hooks "$MAIN" "$CLONE" "$T/cc")"; AHRC=$?
+sub '[ "$AHRC" = 1 ] && grep -q "plugin directory pd1 (CLAUDE_CODE_PLUGIN_DIRS, user settings.json env): not an absolute path" <<<"$AH"' "(h) … from a settings env ($AH)"
+jq -n '{env: {CLAUDE_CODE_PLUGIN_DIRS: "~"}}' > "$US"; ahk
+sub '[ "$AHRC" = 1 ] && grep -q "not an absolute path" <<<"$AH"' "(h) a bare ~ is not expanded ($AH)"
+rm -rf "$CLONE/pd1"; rm -f "$US"; ahk
+sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(h) restored: clean, the same digest ($AH)"
+# A clone mod: one inventory of each tree decides the comparison and feeds the digest.
+MOD="$(cd "$MAIN/.claude/skills" && for d in */hooks; do [ -d "$d" ] && echo "${d%/hooks}" && break; done)"
+sub '[ -n "$MOD" ] && [ -d "$CLONE/.claude/skills/$MOD/hooks" ]' "(i) the fixture has a project mod ($MOD)"
+MF="$(cd "$CLONE/.claude/skills/$MOD" && find . -type f | LC_ALL=C sort | sed -n 1p)"
+sub '[ "$(team_evidence_inv "$MAIN/.claude/skills/$MOD")" = "$(team_evidence_inv "$CLONE/.claude/skills/$MOD")" ] && team_evidence_inv "$MAIN/.claude/skills/$MOD" | grep -q "^$MF [0-9a-f]\{64\}$"' "(i) the inventory lists each file with its sha256"
+echo x >> "$CLONE/.claude/skills/$MOD/$MF"; ahk
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean clone mod $MOD" ]' "(i) a changed file of a clone mod ($AH)"
+cp "$MAIN/.claude/skills/$MOD/$MF" "$CLONE/.claude/skills/$MOD/$MF"; echo x > "$CLONE/.claude/skills/$MOD/extra.txt"; ahk
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean clone mod $MOD" ]' "(i) an added file ($AH)"
+rm -f "$CLONE/.claude/skills/$MOD/extra.txt"; ln -s /etc/hosts "$CLONE/.claude/skills/$MOD/link"; ahk
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean clone mod $MOD" ]' "(i) an added link ($AH)"
+rm -f "$CLONE/.claude/skills/$MOD/link"
+ln -s "$MF" "$CLONE/.claude/skills/$MOD/same"; ln -s "$MF" "$MAIN/.claude/skills/$MOD/same"; ahk
+sub '[ "$AHRC" = 1 ] && [ "$AH" = "unclean clone mod $MOD" ]' "(i) the same link on both sides has no inventory ($AH)"
+rm -f "$CLONE/.claude/skills/$MOD/same" "$MAIN/.claude/skills/$MOD/same"
+cp "$MAIN/.claude/skills/$MOD/$MF" "$T/mf.keep"; echo x >> "$MAIN/.claude/skills/$MOD/$MF"; echo x >> "$CLONE/.claude/skills/$MOD/$MF"; ahk
+sub '[ "$AHRC" = 0 ] && [ "${AH%% *}" = clean ] && [ "$AH" != "$CLEAN" ]' "(i) the same change on both sides is clean with another digest: the mod is in it ($AH)"
+cp "$T/mf.keep" "$MAIN/.claude/skills/$MOD/$MF"; cp "$T/mf.keep" "$CLONE/.claude/skills/$MOD/$MF"; ahk
+sub '[ "$AHRC" = 0 ] && [ "$AH" = "$CLEAN" ]' "(i) restored: clean, the same digest ($AH)"
 sub '[ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name "team-evidence.*" 2>/dev/null)" ]' "(g) the captures are removed"
 rm -rf "$PLG"; rm -f "$US"
 ok '[ -z "$SUBF" ]' "settings sources: plugin variables in env, PostToolUse and the pinned session-state hook$SUBF"

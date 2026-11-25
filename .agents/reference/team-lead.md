@@ -639,14 +639,19 @@ decision in plain text and the Operator types the reply.
   established — with or without an enabled plugin. Every directory of every
   `CLAUDE_CODE_PLUGIN_DIRS` (colon-separated, `~/` expanded) is inventoried as a plugin tree by
   the rules above: it must hold `.claude-plugin/plugin.json`, and a mod there (`modules`) is
-  unclean; the cause names the source. A value that is no plain one-line string (a newline, a tab,
+  unclean; the cause names the source. After the `~/` expansion an entry that is not an absolute
+  path is unclean: it resolves against the working directory, which is the checker's here and the
+  clone for the lead, so the same string can name two trees. A value that is no plain one-line string (a newline, a tab,
   another JSON type) is unclean: its directories cannot be established. Plugin content (a manifest, a hooks file, an `.md`) under
   `<config dir>/plugins/synced` is unclean, it has no inventory. Not read: a policy delivered
   another way (MDM, a server), and a lead whose own environment differs from the runner's.
 - **Same bytes.** Each input — a settings file, a plugin manifest, a hooks file, the install and
   marketplace records, the two pinned scripts — is captured once into a private temporary
   directory, and that copy is both inspected and hashed; the frontmatter of every plugin `.md` is
-  captured in one pass, tested and hashed from that capture. The digest takes the matched settings
+  captured in one pass, tested and hashed from that capture. A clone mod is judged the same way:
+  one inventory of each tree (`team_evidence_inv`: every file's sha256; a tree with a
+  symbolic link has no inventory and is unclean, because equal link text can point at different
+  bytes) is taken, the two are compared, and main's same inventory joins the digest. The digest takes the matched settings
   entries, the pinned scripts' bytes, each plugin install path with its manifest's and every hooks
   file's sha256, the frontmatter capture's sha256, the marketplace entry's `hooks` and `strict`,
   and each resolved `CLAUDE_CODE_PLUGIN_DIRS` directory once, in path order and without its source

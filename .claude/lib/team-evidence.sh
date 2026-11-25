@@ -298,8 +298,23 @@ team_evidence_ask_hooks() {
   return "$rc"
 }
 
+# team_evidence_inv <dir> → the inventory of a tree, one line per file, sorted: `<path> <sha256>`.
+# rc 1 when the tree or a file cannot be read, or the tree holds a link: a link's text can be equal
+# in two checkouts while it points at different bytes, so a tree with one has no inventory.
+team_evidence_inv() {
+  local f s l out=""
+  l="$(cd "$1" 2>/dev/null && find . \( -type f -o -type l \) 2>/dev/null)" || return 1
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ ! -L "$1/$f" ] || return 1
+    s="$(team_evidence_sha < "$1/$f")" && [ -n "$s" ] || return 1
+    out="$out$f $s"$'\n'
+  done <<<"$(LC_ALL=C sort <<<"$l")"
+  printf '%s' "$out"
+}
+
 team_evidence_ask_hooks_in() {
-  local main="$1" clone="$2" cfg="${3:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs=""
+  local main="$1" clone="$2" cfg="${3:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs="" mods=""
   [ -n "$cfg" ] || cfg="$HOME/.claude"
   # The process environment first: it reaches the lead through the runner's launch.
   [ -z "${CLAUDE_CODE_PLUGIN_CACHE_DIR:-}" ] \
@@ -381,6 +396,10 @@ team_evidence_ask_hooks_in() {
     while IFS= read -r d; do
       [ -n "$d" ] || continue
       case "$d" in "~/"*) d="$HOME/${d#\~/}" ;; esac
+      # A relative entry resolves against the working directory of whoever reads it: here the
+      # checker's, in the session the lead's (the clone). The same string, two trees: unclean.
+      case "$d" in /*) ;; *)
+        echo "unclean plugin directory $d (CLAUDE_CODE_PLUGIN_DIRS, $name): not an absolute path, the tree it names depends on the working directory"; return 1 ;; esac
       list="$list$d"$'\t'"$name"$'\n'
     done <<<"$(printf '%s\n' "$x" | tr ':' '\n')"
   done <<<"$dirs"
@@ -424,18 +443,17 @@ team_evidence_ask_hooks_in() {
   for d in "$clone"/.claude/skills/*/hooks; do
     [ -d "$d" ] || continue
     d="${d%/hooks}"; d="${d##*/}"
-    [ -d "$main/.claude/skills/$d" ] && diff -r -q "$main/.claude/skills/$d" "$clone/.claude/skills/$d" >/dev/null 2>&1 \
-      || { echo "unclean clone mod $d"; return 1; }
-    list="$list $d"
+    # One inventory of each tree (every file read once): the two are compared, and main's same
+    # inventory is what the digest takes.
+    x="$(team_evidence_inv "$main/.claude/skills/$d")" && e="$(team_evidence_inv "$clone/.claude/skills/$d")" \
+      && [ -n "$x" ] && [ "$x" = "$e" ] || { echo "unclean clone mod $d"; return 1; }
+    mods="$mods$(awk -v p="$d/" '{ print p $0 }' <<<"$x")"$'\n'
   done
   h="$( { printf '%s' "$ents" | jq -cS -s 'sort_by(.src, .event, .matcher)'
     [ -z "$m" ] || cat "$m"
     [ -z "$st" ] || cat "$st"
     [ -z "$pd" ] || printf '%s\n' "$pd"
-    for d in $list; do
-      ( cd "$main/.claude/skills/$d" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
-          printf '%s %s\n' "$d/$f" "$(team_evidence_sha < "$f")"; done )
-    done; } | team_evidence_sha)" && [ -n "$h" ] || { echo "unclean no sha256 tool"; return 1; }
+    printf '%s' "$mods"; } | team_evidence_sha)" && [ -n "$h" ] || { echo "unclean no sha256 tool"; return 1; }
   echo "clean $h"
 }
 
