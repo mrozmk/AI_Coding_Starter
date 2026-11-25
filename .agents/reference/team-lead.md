@@ -749,7 +749,10 @@ decision in plain text and the Operator types the reply.
   instruction governs — a later grant replaces, the typed `revoke mandate` cancels, any other
   message starting with `mandate` or `revoke mandate` cancels too; a replaced Supervisor session
   means no mandate, and so does a history that does not read whole (`mandate_history`, rc 3: a
-  read error, a line naming the word that does not parse, an instruction with no uuid or time) —
+  read error, any record of the transcript that does not parse — every record is validated
+  before a message is looked at, so a tail cut before its content counts — a last record with no
+  line end, an instruction with no uuid or time; a record still being written is retried
+  briefly) —
   nothing is taken from the part that did read. `team-mandate.sh grant` binds each named team to its
   current run (an absent run refuses), shows it and writes `<main>/.agents/team/mandate.json`
   (`id` = `m-<message uuid>`, `classes, teams, runs, granted_at, expires_at, words`; mode 600,
@@ -777,7 +780,8 @@ decision in plain text and the Operator types the reply.
   **Answer.** The Supervisor, from the main checkout, as one standalone command:
   `bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --ask a-<n>
   --attempt <n> --session <stage session> --request <sha256 of the ask's canonical request>
-  --text "d-<n> <reply>" --why "<line>"` (`team_delegate_args`; a reply or reason with a quote,
+  --mandate m-<uuid of the Operator's message> --class <class> --text "d-<n> <reply>" --why
+  "<line>"` (`team_delegate_args`; the call itself names the grant it answers under; a reply or reason with a quote,
   `$`, backtick, backslash or padding is refused, 2). Refused (3) outside the Supervisor role or in
   a clone; (7) when a binding is missing — the caller's `CLAUDE_CODE_SESSION_ID` is not the
   registry's Supervisor session; that session's transcript holds no own Bash call that **is** this
@@ -785,8 +789,8 @@ decision in plain text and the Operator types the reply.
   <argv>` with the entry's cwd the main checkout, or `bash <main>/.claude/lib/team-lead.sh <argv>`,
   the full canonical argv and nothing after the closing quote — a compound command, another
   directory, a quoted command, a longer or differently bound argv does not match), made after the
-  decision opened, the run started and the mandate was typed (`mandate_since`; a short wait
-  covers a late flush); the decision is not
+  decision opened and the run started (a short wait covers a late flush); `--mandate` and
+  `--class` are not the mandate in force and the decision's class; the decision is not
   `delegate: supervisor`, or its ask, `bind_session_id` or `bind_attempt` are not the ones named;
   `--request` is not the digest of the ask's filed request; the class computed then is not the
   routed `delegate_class`; the mandate it was routed under (`delegate_mandate`) is not in force
@@ -811,14 +815,15 @@ decision in plain text and the Operator types the reply.
   the anchor's team and active run; the **live input of this very event** (the question, the
   plan, the permission request the hook was called with — an event without one refuses
   delegation) and its digest; the stage's run, session and attempt read from `session.json` at
-  consumption (after the wait, never the values of the hook's entry); the **mandate the answer
-  was given under** — the ledger's `mandate`, equal to the decision's `delegate_mandate` — being
-  the one in force now, derived from the Operator's message, naming the class (the checker on the
-  live input) and bound to the team's run (a later mandate of the same class approves nothing
-  pending since the previous one); and, in the **registered** Supervisor session's transcript, a
-  standalone call whose argv is exactly that run, decision, ask, attempt, session, digest and the
-  reply, made no earlier than that mandate was typed; that reply parsed to this very answer. The
-  ledger only names the reply, the class and the mandate to look for. Anything missing
+  consumption (after the wait, never the values of the hook's entry); the **governing
+  instruction now**, derived from the Operator's message — its id and the class (the checker on
+  the live input), bound to the team's run; and, in the **registered** Supervisor session's
+  transcript, a standalone call whose argv is exactly that run, decision, ask, attempt, session,
+  digest, **that mandate id, that class** and the reply; that reply parsed to this very answer.
+  The call itself attests which grant it answered under, so a later mandate of the same class
+  approves nothing pending since the previous one — whatever the ledger and the decision file
+  say, and with no reliance on times (two grants in one second differ by id). The ledger only
+  names the reply, the class and the mandate to look for. Anything missing
   → "could not be verified", the ask is rejected and recovers as after a rejected relay — to the
   Operator.
   **Attribution.** `team-answer.sh` with a decision refuses (7) unless `teamlead.json.main_root`
@@ -826,7 +831,8 @@ decision in plain text and the Operator types the reply.
   names this clone). An authority and an evidence form that disagree (`delegated` with an
   Operator's decision, or the reverse) are refused by the sender and the hook; a decision with a
   ledger entry is never relayed or delivered as the Operator's, whatever its `answered_via` reads
-  now. In a run that has been delegation-capable at any point (`mandate_run_ever`), Operator
+  now. In a run that has been — or may have been — delegation-capable at any point
+  (`mandate_run_ever`), Operator
   authority is logged and delivered only on positive human evidence — the typed message in the
   lead's or the Supervisor's window, or the dialog answer (above) — for the rest of that run,
   whatever the mandate's state now (expired, paused, revoked, replaced) and never inferred from
@@ -835,7 +841,13 @@ decision in plain text and the Operator types the reply.
   (before delivery). Any one makes the run such: the marker `grant` left
   (`delegated/<team>-<run>.mandated`), a ledger entry of the run, a mandate bound to it now, or a
   grant in the registered Supervisor session's history that names the team and was typed once
-  the run had started (recorded or not); a history that does not read whole counts as capable.
+  the run had started (recorded or not). An uncertain lineage counts the same: no registered
+  Supervisor session, no transcript, a history that does not read whole, or a registered session
+  whose first record is later than the run's start (a rotation — the earlier session's history
+  is not read, and markers may be gone). A terminal answer is taken as the Operator's only when
+  the registered Supervisor session has been there since before the run started, its history
+  reads whole and holds no grant for the team — so **a checkout with no registered Supervisor
+  session takes no terminal answer through this path**.
 - **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
   `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
   stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,

@@ -13,7 +13,7 @@
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
 #   decision relay <team> d-<n> --text "<team> d-<n> <reply>"   (the Supervisor, main checkout)
 #   decision answer <team> d-<n> --delegated --run <run> --ask a-<n> --attempt <n> --session <sid>
-#     --request <digest> --text "d-<n> <reply>" --why "<line>"
+#     --request <digest> --mandate m-<uuid> --class <class> --text "d-<n> <reply>" --why "<line>"
 #   decision handback <team> d-<n> --why "<line>"     (both: the Supervisor, main checkout)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # Delegation (team-mandate.sh, team-lead.md §7): open marks an ask-bound decision whose class the
@@ -380,7 +380,7 @@ ask_kind: $kind"
   if [ -n "$dcls" ]; then
     if ! bash "$MAIN/.claude/lib/team-inbox.sh" --main "$MAIN" write Supervisor delegated \
         --from "$(jq -r .team "$TD/team.json")" --ticket "$(jq -r '.ticket // ""' "$TD/team.json")" \
-        --run "$RUN" --ref "$f" --message "d-$n [$dcls, mandate $dman]: ${q:0:120} — answer, from the main checkout, as one standalone command: bash .claude/lib/team-lead.sh $(team_delegate_args "$(jq -r .team "$TD/team.json")" "d-$n" "$RUN" "$ask" "$(ask_get "$ask" attempt)" "$(ask_get "$ask" session_id)" "$(d_request_digest "$ASK_D/$ask.json")" "d-$n <reply>")<line>\"" >/dev/null 2>&1; then
+        --run "$RUN" --ref "$f" --message "d-$n [$dcls, mandate $dman]: ${q:0:120} — answer, from the main checkout, as one standalone command: bash .claude/lib/team-lead.sh $(team_delegate_args "$(jq -r .team "$TD/team.json")" "d-$n" "$RUN" "$ask" "$(ask_get "$ask" attempt)" "$(ask_get "$ask" session_id)" "$(d_request_digest "$ASK_D/$ask.json")" "d-$n <reply>" "$dman" "$dcls")<line>\"" >/dev/null 2>&1; then
       dfm_set "$f" delegate lapsed; dcls=""
     fi
   fi
@@ -446,7 +446,7 @@ d_from_ask() {
 
 decision_answer() {
   local id="${1:-}" text="" outcome="" tuning="" why="" f how ev c fromask="" uuid="" r esid=""
-  local delegated="" drun="" dask="" datt="" dsess="" dreq=""
+  local delegated="" drun="" dask="" datt="" dsess="" dreq="" dmand="" dclass=""
   [ -n "$id" ] || usage; shift
   while [ $# -gt 0 ]; do
     [ "$1" != --from-ask ] || { fromask=1; shift; continue; }
@@ -454,16 +454,17 @@ decision_answer() {
     [ $# -ge 2 ] || usage
     case "$1" in --text) text="$2" ;; --outcome) outcome="$2" ;; --tuning) tuning="$2" ;;
       --why) why="$2" ;; --run) drun="$2" ;; --ask) dask="$2" ;; --attempt) datt="$2" ;;
-      --session) dsess="$2" ;; --request) dreq="$2" ;; *) usage ;; esac
+      --session) dsess="$2" ;; --request) dreq="$2" ;; --mandate) dmand="$2" ;; --class) dclass="$2" ;;
+      *) usage ;; esac
     shift 2
   done
   if [ -n "$delegated" ]; then
     # The Supervisor's own answer under the Operator's mandate: its own path, none of the
     # Operator's evidence forms.
     [ -z "$fromask$outcome$tuning" ] || d_bad 2 "decision answer --delegated takes only its bindings, --text and --why"
-    decision_delegated "$id" "$text" "$why" "$drun" "$dask" "$datt" "$dsess" "$dreq"; return
+    decision_delegated "$id" "$text" "$why" "$drun" "$dask" "$datt" "$dsess" "$dreq" "$dmand" "$dclass"; return
   fi
-  [ -z "$drun$dask$datt$dsess$dreq" ] || d_bad 2 "--run, --ask, --attempt, --session and --request go with --delegated"
+  [ -z "$drun$dask$datt$dsess$dreq$dmand$dclass" ] || d_bad 2 "--run, --ask, --attempt, --session, --request, --mandate and --class go with --delegated"
   if [ -n "$fromask" ]; then
     [ -z "$text" ] || d_bad 2 "decision answer takes --text or --from-ask, not both"
   else
@@ -551,9 +552,11 @@ decision_answer() {
     # A run that has been under the Operator's mandate at any point can hold delegated answers:
     # for the rest of it a terminal answer, which leaves no evidence a hook can read back, is not
     # taken as the Operator's.
-    ! { command -v mandate_run_ever >/dev/null 2>&1 \
-        && mandate_run_ever "$MAIN" "$(jq -r .team "$TD/team.json")" "$RUN"; } \
-      || d_bad 7 "run $RUN is or was under the Operator's mandate — an Operator answer needs evidence here: answer in the TeamLead's dialog or window, or relay it through the Supervisor (a terminal answer is refused)"
+    # The same when that cannot be ruled out (no Supervisor session on record, a rotated one, an
+    # unreadable history, no mandate library).
+    command -v mandate_run_ever >/dev/null 2>&1 \
+        && ! mandate_run_ever "$MAIN" "$(jq -r .team "$TD/team.json")" "$RUN" \
+      || d_bad 7 "run $RUN is, was or may have been under the Operator's mandate — an Operator answer needs evidence here: answer in the TeamLead's dialog or window, or relay it through the Supervisor (a terminal answer is refused)"
     printf 'Operator answer to %s: %s\nconfirm by typing %s: ' "$id" "$text" "$id" > /dev/tty
     IFS= read -r c < /dev/tty || c=""
     [ "$c" = "$id" ] || d_bad 7 "not confirmed — nothing applied"
@@ -714,7 +717,7 @@ d_request_digest() {
 # accepts. Pinned once in <main>/.agents/team/delegated/ (never replaced), so a replayed, stale
 # or conflicting answer is refused here and by the stage hook.
 decision_delegated() {
-  local id="$1" text="$2" why="$3" run="$4" aask="$5" aatt="$6" asess="$7" areq="$8"
+  local id="$1" text="$2" why="$3" run="$4" aask="$5" aatt="$6" asess="$7" areq="$8" aman="$9" acls="${10}"
   local f team ask kind lf u sid cwd cfg tx floor uuid="" p cls m x i=0 tmp args mainp
   local outcome="" aval="" amap="" wait="${TEAM_DELEGATE_WAIT_SECS:-6}"
   d_supervisor_caller || d_bad 3 "a delegated answer is the Supervisor's, from the main checkout"
@@ -724,8 +727,8 @@ decision_delegated() {
   for x in "$text" "$why"; do
     case "$x" in *'"'*|*'$'*|*'`'*|*'\'*|" "*|*" ") d_bad 2 "--text and --why of a delegated answer take no quotes, \$, backticks or backslashes and no padding" ;; esac
   done
-  [ -n "$run" ] && [ -n "$aask" ] && [ -n "$aatt" ] && [ -n "$asess" ] && [ -n "$areq" ] \
-    || d_bad 2 "decision answer --delegated needs --run, --ask, --attempt, --session and --request (the delegated inbox message prints the command)"
+  [ -n "$run" ] && [ -n "$aask" ] && [ -n "$aatt" ] && [ -n "$asess" ] && [ -n "$areq" ] && [ -n "$aman" ] && [ -n "$acls" ] \
+    || d_bad 2 "decision answer --delegated needs --run, --ask, --attempt, --session, --request, --mandate and --class (the delegated inbox message prints the command)"
   # The run the inbox message named: a d-<n> of the team's next run is never answered by an
   # answer meant for the last one.
   [ "$run" = "$RUN" ] || d_bad 4 "team $(jq -r .team "$TD/team.json") is on run $RUN, not $run — nothing applied"
@@ -774,6 +777,10 @@ decision_delegated() {
     || d_bad 7 "$id was routed as class $(dfm "$f" delegate_class) but now reads $cls — hand it back"
   m="$(mandate_covers "$MAIN" "$cls" "$team" "$RUN" "$(dfm "$f" delegate_mandate)")" && [ -n "$m" ] \
     || d_bad 7 "the mandate $id was routed under ($(dfm "$f" delegate_mandate)) is no longer in force for class $cls, team $team, run $RUN (bash .claude/lib/team-mandate.sh show) — hand $id back"
+  # The mandate and the class the call itself names: the Supervisor's own argv attests which
+  # grant it answers under, and it is the governing one.
+  [ "$aman" = "$m" ] && [ "$acls" = "$cls" ] \
+    || d_bad 7 "--mandate $aman --class $acls are not the mandate in force ($m) and the class ($cls) of $id — nothing applied"
   # The permitted resolution: only a reply the ask's own parser accepts.
   if ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
     case "$kind" in
@@ -793,11 +800,9 @@ decision_delegated() {
   [ -n "$cfg" ] && [ -f "$tx" ] || d_bad 7 "no Supervisor transcript to bind the answer to — nothing applied"
   floor="$(team_run_floor "$RUN" "$(dfm "$f" created_at)")"
   [ -n "$floor" ] || d_bad 7 "$id has no creation time to bind the answer to — nothing applied"
-  # … and no earlier than the Operator typed the mandate: a call made under another one is none.
-  floor="$(mandate_since "$MAIN" "$m" "$floor")" || d_bad 7 "mandate $m is no longer in force — hand $id back"
   . "$LIB/team-evidence.sh" && command -v team_evidence_tool_call >/dev/null 2>&1 \
     || d_bad 7 "no evidence matcher (team-evidence.sh)"
-  args="$(team_delegate_args "$team" "$id" "$RUN" "$ask" "$aatt" "$asess" "$areq" "$text")"
+  args="$(team_delegate_args "$team" "$id" "$RUN" "$ask" "$aatt" "$asess" "$areq" "$text" "$m" "$cls")"
   # The call is written to the transcript as it starts; a short wait covers a late flush.
   while :; do
     uuid="$(team_evidence_tool_call "$tx" "$floor" "$MAIN" "$args")"

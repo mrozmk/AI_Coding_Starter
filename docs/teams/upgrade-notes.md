@@ -30,6 +30,12 @@ stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.m
 - In a run that has been under a mandate at any point, an Operator answer needs evidence for the
   rest of that run, also after the mandate ended: the lead's dialog or window, or the
   Supervisor's relay. `decision answer` from a terminal is refused there.
+- **Behaviour change without a mandate:** a terminal answer (`decision answer` typed in a
+  terminal) is taken as the Operator's only when a Supervisor session is registered, has been
+  running since before the team's run started, and its history reads whole with no mandate for
+  the team. With no registered Supervisor session, or after the Supervisor restarts mid-run, a
+  terminal answer is refused for that run — answer in the TeamLead's dialog or window, or
+  through the Supervisor's relay.
 
 ## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
 

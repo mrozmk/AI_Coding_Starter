@@ -266,8 +266,10 @@ Every decision for the Operator goes one way:
   mandate ended: it is the Operator's again — raise its dialog. `handed back: d-<n> — …` means
   the Supervisor returned it: that decision is withdrawn — open a new one on the same ask
   (`decision open … --ask a-<n>`, it is not delegated again) and raise its dialog. Once a mandate
-  has covered this run — also after it ended — the Operator's answer needs evidence: the dialog,
-  their typed words in your window, or the Supervisor's relay; a terminal answer is refused.
+  has covered this run — also after it ended, and whenever that cannot be ruled out (no
+  Supervisor session on record, or one restarted since the run began) — the Operator's answer
+  needs evidence: the dialog, their typed words in your window, or the Supervisor's relay; a
+  terminal answer is refused.
 - A relay the stage hook rejected ("could not be verified"): when the stage's retry reclaims the
   same ask (an operator permission with a usable retry key), open a new decision on that ask;
   otherwise the retry files a fresh ask — handle that one and leave the old ask to be withdrawn.

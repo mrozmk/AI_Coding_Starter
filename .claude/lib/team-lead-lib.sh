@@ -102,14 +102,16 @@ team_relay_pins() {
     "$1" >/dev/null 2>&1
 }
 
-# team_delegate_args <team> <d-n> <run> <ask> <attempt> <stage session> <request digest> <text> —
-# the canonical argument text of the Supervisor's delegated answer (`team-lead.sh decision answer
-# … --delegated`), up to the opening of --why: what its own tool call must read, binding the run,
-# the decision, the ask, the stage's attempt and session, the request and the reply. One spelling
+# team_delegate_args <team> <d-n> <run> <ask> <attempt> <stage session> <request digest> <text>
+# <mandate id> <class> — the canonical argument text of the Supervisor's delegated answer
+# (`team-lead.sh decision answer … --delegated`), up to the opening of --why: what its own tool
+# call must read, binding the run, the decision, the ask, the stage's attempt and session, the
+# request, the mandate it answers under (m-<uuid of the Operator's message>), the class and the
+# reply. One spelling
 # for the inbox message, the writer and the stage hook's re-check.
 team_delegate_args() {
-  printf 'decision answer %s %s --delegated --run %s --ask %s --attempt %s --session %s --request %s --text "%s" --why "' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+  printf 'decision answer %s %s --delegated --run %s --ask %s --attempt %s --session %s --request %s --mandate %s --class %s --text "%s" --why "' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$9" "${10}" "$8"
 }
 
 # team_lead_shell_word <path> — the path as the lead types it and as its permission rules spell it:

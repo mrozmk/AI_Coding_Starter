@@ -16,7 +16,8 @@
 #   one, the typed message `revoke mandate` cancels it for good, and any other message that
 #   starts with `mandate` or `revoke mandate` cancels it too (an unclear instruction grants
 #   nothing). A replaced Supervisor session, or a history that cannot be read whole (a read
-#   error, a line that does not parse), means no mandate — never the last grant that did read.
+#   error, any record that does not parse or is cut), means no mandate — never the last grant
+#   that did read.
 #   grant: reads that governing message, binds each team to its current run (an absent run
 #   refuses), shows the result and writes <main>/.agents/team/mandate.json (git-ignored, mode
 #   600, never in a clone). That file is the local record and a cache: every use of the mandate
@@ -76,17 +77,12 @@ mandate_run_start() {
     "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}"
 }
 
-# mandate_history <main> → every mandate instruction the Operator typed in the registered
-# Supervisor session, one compact JSON row {uuid, ts, m} per line, in transcript order. The
-# transcript comes from the registration (<main>/.agents/team/registry/Supervisor.json) and the
-# declared Claude profile — never from mandate.json. Typed user messages only (no machine line: a
-# doorbell, runner, [peer] or <hc from=…> line). rc 1 (reason on stderr): no registered session
-# or no transcript. rc 3: the history is unreadable or incomplete — a read error, a line naming
-# the word that does not parse (a half-written one too), an instruction with no uuid or time, a
-# library not loaded. Nothing is then taken from the part that did read: an instruction that
-# cannot be read may be the revoke.
-mandate_history() {
-  local sid cwd cfg t raw rc rows row m bad="the Supervisor session's history cannot be read whole — no mandate is taken from a partial history"
+# mandate_transcript <main> → the path of the registered Supervisor session's transcript: the
+# registration (<main>/.agents/team/registry/Supervisor.json) and the declared Claude profile.
+# rc 1 (reason on stderr): a clone, no registered session, no profile, no transcript; rc 3: a
+# library not loaded.
+mandate_transcript() {
+  local sid cwd cfg t
   command -v team_evidence_machine_line >/dev/null 2>&1 || . "$MANDATE_LIB/team-evidence.sh" 2>/dev/null || true
   command -v team_supervisor_home >/dev/null 2>&1 && command -v team_role_transcript >/dev/null 2>&1 \
     && command -v team_evidence_machine_line >/dev/null 2>&1 \
@@ -98,22 +94,59 @@ mandate_history() {
   cfg="$(team_supervisor_home "$1")" || { echo "the Supervisor's Claude profile cannot be resolved" >&2; return 1; }
   t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
   [ -f "$t" ] || { echo "the registered Supervisor session has no transcript" >&2; return 1; }
-  [ -r "$t" ] || { echo "$bad" >&2; return 3; }
-  # Every line naming the word must parse; then the typed ones among them.
-  raw="$(LC_ALL=C grep -ai 'mandate' "$t" 2>/dev/null)"; rc=$?
-  [ "$rc" -le 1 ] || { echo "$bad" >&2; return 3; }
-  [ -n "$raw" ] || return 0
-  # One row out per line in (null for a line that is no typed message): a parse error, or a
-  # count that differs (a cut line, lines run together), is an incomplete history.
-  rows="$(printf '%s\n' "$raw" | jq -c 'if type == "object" and .type == "user" and ((.isMeta // false) | not)
+  printf '%s\n' "$t"
+}
+
+# mandate_read <transcript> → the typed user messages naming the word, one {uuid, ts, m} row per
+# line; rc 1 unless the WHOLE transcript reads: every record parses (one value out per line in —
+# a cut record, lines run together or a blank line change the count) and the last one ends its
+# line. Every record is validated before any message is looked at.
+mandate_read() {
+  local out lines
+  [ -r "$1" ] || return 1
+  [ -s "$1" ] || return 0
+  [ -z "$(tail -c 1 "$1" 2>/dev/null)" ] || return 1
+  lines="$(wc -l < "$1")" || return 1
+  out="$(jq -c 'if type == "object" and .type == "user" and ((.isMeta // false) | not)
       and ((.toolUseResult // null) == null)
     then {uuid: (.uuid // "" | tostring), ts: ((.timestamp // "" | tostring) | sub("\\.[0-9]+Z$"; "Z")),
        m: (.message.content | if type == "string" then . elif type == "array"
          then (map(select(type == "object" and .type == "text") | .text | tostring) | join(" ")) else "" end)}
-    else null end' 2>/dev/null)" || { echo "$bad" >&2; return 3; }
-  [ "$(printf '%s\n' "$rows" | wc -l)" -eq "$(printf '%s\n' "$raw" | wc -l)" ] || { echo "$bad" >&2; return 3; }
+      | if (.m | test("mandate"; "i")) then . else 0 end
+    else 0 end' "$1" 2>/dev/null)" || return 1
+  [ "$(printf '%s\n' "$out" | wc -l)" -eq "$lines" ] || return 1
+  printf '%s\n' "$out" | grep -v '^0$' || true
+}
+
+# mandate_session_start <transcript> → the time of the session's first record (seconds, Z); rc 1
+# when none can be read.
+mandate_session_start() {
+  local s
+  s="$(head -n 40 "$1" 2>/dev/null | jq -r 'select(type == "object") | .timestamp // empty | tostring' 2>/dev/null | head -n 1)"
+  [[ "$s" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2} ]] || return 1
+  printf '%sZ\n' "${BASH_REMATCH[0]}"
+}
+
+# mandate_history <main> → every mandate instruction the Operator typed in the registered
+# Supervisor session, one compact JSON row {uuid, ts, m} per line, in transcript order. The
+# transcript comes from the registration (<main>/.agents/team/registry/Supervisor.json) and the
+# declared Claude profile — never from mandate.json. Typed user messages only (no machine line: a
+# doorbell, runner, [peer] or <hc from=…> line). rc 1 (reason on stderr): no registered session
+# or no transcript. rc 3: the history is unreadable or incomplete — a read error, ANY record of
+# the transcript that does not parse (whatever it holds: a record cut before its message is one
+# too), a last record with no line end, an instruction with no uuid or time, a library not
+# loaded. Nothing is then taken from the part that did read: a record that cannot be read may be
+# the revoke. A record still being written is retried briefly (TEAM_MANDATE_READ_TRIES, 0.3 s
+# apart), and refuses until it reads whole.
+mandate_history() {
+  local t n=0 rows row m bad="the Supervisor session's history cannot be read whole — no mandate is taken from a partial history"
+  t="$(mandate_transcript "$1")" || return
+  while ! rows="$(mandate_read "$t")"; do
+    n=$((n + 1)); [ "$n" -lt "${TEAM_MANDATE_READ_TRIES:-4}" ] || { echo "$bad" >&2; return 3; }
+    sleep 0.3
+  done
   while IFS= read -r row; do
-    [ -n "$row" ] && [ "$row" != null ] || continue
+    [ -n "$row" ] || continue
     m="$(jq -r .m <<<"$row")"
     ! team_evidence_machine_line "$m" || continue
     mandate_instruction "$m" || continue
@@ -177,16 +210,6 @@ mandate_covers() {
     select(($i == "" or .id == $i) and (.classes | index($c) != null)) | .id' <<<"$m" 2>/dev/null || return 1
 }
 
-# mandate_since <main> <mandate id> <floor> → the later of <floor> and the time the Operator typed
-# that mandate; rc 1 unless it is the one in force. An answer's evidence is looked up from there:
-# a call made under an earlier mandate is no answer under this one.
-mandate_since() {
-  local m g
-  [ -n "$2" ] && m="$(mandate_verified "$1" 2>/dev/null)" || return 1
-  g="$(jq -er --arg i "$2" 'select(.id == $i) | .granted_at' <<<"$m" 2>/dev/null)" || return 1
-  if [[ "$g" > "$3" ]]; then printf '%s\n' "$g"; else printf '%s\n' "$3"; fi
-}
-
 # mandate_run_capable <main> <team> <run> → 0 when the mandate in force is bound to that team's
 # run, whatever the class: a run in which a delegated answer can exist now.
 mandate_run_capable() {
@@ -194,24 +217,28 @@ mandate_run_capable() {
   m="$(mandate_verified "$1" 2>/dev/null)" && mandate_bound "$1" "$2" "$3" "$m"
 }
 
-# mandate_run_ever <main> <team> <run> → 0 when the run has been delegation-capable at any point,
-# whatever the mandate's state now (expired, paused, revoked, replaced). For the rest of such a
-# run the Operator's authority is taken only on positive human evidence (a typed message or a
-# dialog answer), never from a marker a file carries — team-lead.md §7. Any one is enough: the
-# marker `grant` left for the run, a delegated answer on record for it, a mandate bound to it
-# now, or a grant in the Supervisor session's history that names the team and was typed once the
-# run had started (recorded or not). A history that cannot be read whole counts as capable. An
-# empty <team> is read from the run id.
+# mandate_run_ever <main> <team> <run> → 0 unless it is KNOWN that the run has never been
+# delegation-capable. For the rest of a run that was, or may have been, the Operator's authority
+# is taken only on positive human evidence (a typed message or a dialog answer), never from a
+# marker a file carries — team-lead.md §7. Capable, by any one: the marker `grant` left for the
+# run, a delegated answer on record for it, a mandate bound to it now, or a grant in the
+# Supervisor session's history that names the team and was typed once the run had started
+# (recorded or not). Uncertain, and counted the same: no registered Supervisor session, no
+# transcript, a history that does not read whole, a run id with no start time, or a registered
+# session that began after the run did (a rotation: what the earlier session held is not
+# readable here, and markers may be gone). rc 1 only when the registered session has been there
+# since before the run started, its history reads whole and holds no such grant. An empty <team>
+# is read from the run id.
 mandate_run_ever() {
-  local team="$2" start rows row p x rc=0
+  local team="$2" start rows row p x t s0
   [ -n "$team" ] || team="${3%-*-*}"
-  [ -n "$team" ] && [ -n "$3" ] || return 1
+  [ -n "$team" ] && [ -n "$3" ] || return 0
   [ ! -e "$1/.agents/team/delegated/$team-$3.mandated" ] || return 0
   for x in "$1/.agents/team/delegated/$team-$3"-d-*.json; do [ ! -e "$x" ] || return 0; done
   ! mandate_run_capable "$1" "$team" "$3" || return 0
-  start="$(mandate_run_start "$3")" || return 1
-  rows="$(mandate_history "$1" 2>/dev/null)" || rc=$?
-  [ "$rc" != 3 ] || return 0
+  start="$(mandate_run_start "$3")" || return 0
+  t="$(mandate_transcript "$1" 2>/dev/null)" && rows="$(mandate_history "$1" 2>/dev/null)" || return 0
+  s0="$(mandate_session_start "$t")" && [[ ! "$s0" > "$start" ]] || return 0
   while IFS= read -r row; do
     [ -n "$row" ] && p="$(mandate_parse "$(jq -r .m <<<"$row")")" || continue
     case ",$(cut -f3 <<<"$p")," in *",$team,"*) ;; *) continue ;; esac
@@ -245,7 +272,7 @@ mandate_ask_class() {
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 set -euo pipefail
 
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 [ $# -ge 1 ] || usage
 MAIN="$(git rev-parse --show-toplevel 2>/dev/null)" || die 2 "not inside a git checkout"

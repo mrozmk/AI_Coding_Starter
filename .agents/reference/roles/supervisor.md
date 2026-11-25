@@ -146,9 +146,10 @@ they grant it; you both keep to it.
   message `revoke mandate` cancels it for good. Any other message starting with `mandate` or
   `revoke mandate` cancels it too — an unclear instruction grants nothing. A new Supervisor
   session (a restart; `/clear` when it changes the session) ends it: the Operator types it again.
-  A history that cannot be read whole (a read error, a line naming the word that does not parse,
-  an instruction with no id or time) means no mandate at all — never the last grant that did
-  read, because the part that failed may be the revoke.
+  A history that cannot be read whole (a read error, any record of your transcript that does
+  not parse or is still being written, an instruction with no id or time) means no mandate at
+  all — never the last grant that did read, because the part that failed may be the revoke.
+  A record caught mid-write is retried for about a second; run the command again after that.
 - **Record it:** after their message run `bash .claude/lib/team-mandate.sh grant`. It reads that
   message from your transcript, binds each team to its current run (a team with no run going
   refuses), prints the result — show that to the Operator — and writes
@@ -163,8 +164,9 @@ they grant it; you both keep to it.
   run the command the message prints, from the main checkout, as one standalone command with
   nothing before or after it — your own call is the evidence, and it carries every binding:
   `bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --ask a-<n>
-  --attempt <n> --session <stage session> --request <digest> --text "d-<n> <reply>" --why "<line>"`.
-  Fill in only the reply (as the TeamLead window takes it: `d-1 allow`, `d-1 deny: <what
+  --attempt <n> --session <stage session> --request <digest> --mandate m-<id> --class <class> --text
+  "d-<n> <reply>" --why "<line>"`. The command names the mandate and the class you answer under;
+  copy them as printed. Fill in only the reply (as the TeamLead window takes it: `d-1 allow`, `d-1 deny: <what
   instead>`, `d-2 <answer>`, several questions `d-2 <header>: <label>; …`) and the reason; no
   quotes, `$`, backticks or backslashes in either. The TeamLead is rung and applies it as
   `authority supervisor (delegated)`.
@@ -175,8 +177,8 @@ they grant it; you both keep to it.
 - **It refuses (7) when a binding is missing:** you are not the registered Supervisor session; your
   transcript holds no standalone call that is exactly this command; the decision was not routed to
   you, is bound to another ask, session or attempt; the request digest is not the ask's; the
-  mandate it was routed under is no longer in force for that class, team and run, or your call
-  predates it. An answer is consumed only under the very mandate it was given under: a later
+  mandate it was routed under is no longer in force for that class, team and run, or is not the
+  one your call names. An answer is consumed only under the very mandate it was given under: a later
   mandate, even of the same class, approves nothing that was pending — hand it back. Exit 4: the
   decision is no longer pending, the team is on another run than `--run` names, the attempt was
   replaced, or a different answer was already given. Never work around a refusal — hand it back.
@@ -188,7 +190,11 @@ they grant it; you both keep to it.
   never because delegation markers are absent; a terminal answer is refused there. The run counts
   as such by any one of: the marker `grant` left (`.agents/team/delegated/<team>-<run>.mandated`),
   a delegated answer on record, a mandate bound to it now, or a grant in your session's history
-  naming the team, typed once the run had started; an unreadable history counts too.
+  naming the team, typed once the run had started. Anything uncertain counts too: an unreadable
+  history, no registered Supervisor session, no transcript, or a session of yours that began
+  after the run did (a restart mid-run). So after you restart, and in a checkout where no
+  Supervisor session is registered, a terminal answer is not taken as the Operator's for the
+  runs already going — they answer in the TeamLead's dialog or window, or through your relay.
 - **Threat model (the Operator's decision, 2026-11-25): the same-account model.** Every writer
   runs under the Operator's macOS account. These checks are aimed at the clone-side roles (a
   TeamLead, a stage) and at a Supervisor model that drifts while running ordinary commands. A

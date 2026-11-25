@@ -1503,14 +1503,14 @@ say_call() {  # say_call <uuid> <command> [cwd] [timestamp] — a Bash tool call
 }
 dig() { jq -cS .payload "$AD/$1.json" | shasum -a 256 | cut -d' ' -f1; }
 dargs() {  # dargs <d-n> <a-n> <text> — the canonical argv of a delegated answer, up to the reason
-  printf 'decision answer beta %s --delegated --run %s --ask %s --attempt 1 --session sid-1 --request %s --text "%s" --why "inside the mandate"' \
-    "$1" "$RUN" "$2" "$(dig "$2")" "$3"
+  printf 'decision answer beta %s --delegated --run %s --ask %s --attempt 1 --session sid-1 --request %s --mandate %s --class no-rule --text "%s" --why "inside the mandate"' \
+    "$1" "$RUN" "$2" "$(dig "$2")" "${SDMAN-m-g$GN}" "$3"
 }
 dcall() { say_call "$1" "bash .claude/lib/team-lead.sh $(dargs "$2" "$3" "$4")"; }  # dcall <uuid> <d-n> <a-n> <text>
 SD() {  # SD <d-n> <a-n> <text> — the Supervisor's delegated answer (SDSID, SDRUN, SDREQ override a binding)
   (cd "$MAIN" && env TEAM_SESSION_ROLE=Supervisor CLAUDE_CODE_SESSION_ID="${SDSID-sup-1}" TEAM_DELEGATE_WAIT_SECS=0 \
     bash "$MAIN/.claude/lib/team-lead.sh" decision answer beta "$1" --delegated --run "${SDRUN-$RUN}" --ask "$2" --attempt 1 \
-      --session sid-1 --request "${SDREQ-$(dig "$2")}" --text "$3" --why "inside the mandate") > "$T/sd.out" 2>&1; SDRC=$?
+      --session sid-1 --request "${SDREQ-$(dig "$2")}" --mandate "${SDMAN-m-g$GN}" --class no-rule --text "$3" --why "inside the mandate") > "$T/sd.out" 2>&1; SDRC=$?
 }
 LD() { L "$1" --pick "Remove it" --authority delegated --decision "$RD/decisions/$2.md" --why "Supervisor (delegated)"; }
 mrun() { srun "$1"; echo "- **Delegated to the Supervisor.** apply it" >> "$RD/lead-1.prompt.md"; }
@@ -1703,6 +1703,26 @@ jq -n '{id: "a-1", form: "pick", value: "Remove it", authority: "supervisor (del
 wait "$HP1"
 ok '[ "$R1" = 0 ] && grep -q "could not be verified for a-1" "$T/m21.out"' "a stage attempt replaced while the hook waited → the hook denies (session and attempt are read at consumption)"
 
+# ---- third review: every record validated, the grant named in the call ------------------------------
+# a tail cut before its message content, after an earlier grant: the word is not even there yet
+mrun 20990101-000023; G "$M1"; TM covers no-rule beta "$RUN"; R1="$TMRC"
+printf '{"type":"user","uuid":"xc","timestamp":"2099-01-01T13:00:00Z","message":{"role":"user","content":' >> "$SUPT"
+TM covers no-rule beta "$RUN"; R2="$TMRC"; TM show
+ok '[ "$R1" = 0 ] && [ "$R2" = 1 ] && grep -q "cannot be read whole" "$T/tm.out"' \
+  "a transcript tail cut before the message content, after an earlier grant → no mandate (every record is validated, not only those naming the word) ($(cat "$T/tm.out"))"
+# a replacement grant of the same class, after the answer, inside the same second
+mrun 20990101-000024; G "$M1"; qask m24 1
+say_call cm24 "bash .claude/lib/team-lead.sh $(dargs d-1 a-1 "d-1 Remove it")" "$MAIN" 2099-01-01T12:00:00Z; SD d-1 a-1 "d-1 Remove it"; R1="$SDRC"
+G "$M1" 2099-01-01T12:00:00.700Z; R2="$TMRC"
+jq --arg m "m-g$GN" '.mandate = $m' "$DLG/beta-$RUN-d-1.json" > "$T/led24" && cp "$T/led24" "$DLG/beta-$RUN-d-1.json"
+sed "s/^delegate_mandate: .*/delegate_mandate: m-g$GN/" "$RD/decisions/d-1.md" > "$T/d1.m" && cp "$T/d1.m" "$RD/decisions/d-1.md"
+LD a-1 d-1; wait "$HP1"
+ok '[ "$R1" = 0 ] && [ "$R2" = 0 ] && grep -q "could not be verified for a-1" "$T/m24.out"' \
+  "a replacement grant of the same class typed in the same second as the answer approves nothing: the call names the mandate it answered under ($(cat "$T/sd.out"))"
+mrun 20990101-000026; G "$M1"; qask m26 1; SDMAN=m-other dcall cm26 d-1 a-1 "d-1 Remove it"; SDMAN=m-other SD d-1 a-1 "d-1 Remove it"
+ok '[ "$SDRC" = 7 ] && [ "$(dst d-1)" = pending ]' "a call naming another mandate than the governing one → 7 ($(cat "$T/sd.out"))"
+stopq "$HP1"
+
 # ---- attribution: Operator authority only on positive human evidence -----------------------------
 # a delegated answer on record, the decision rewritten to a terminal answer
 mrun 20990101-000011; G "$M1"; qask m11 1; dcall cm11 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"
@@ -1731,8 +1751,22 @@ jq -n '{id: "a-1", form: "allow", value: "", authority: "operator", why: "Operat
 wait "$HP"
 ok '[ "$R0" = 1 ] && [ "$R1" = 7 ] && [ "$R3" = 0 ] && [ "$R2" = 7 ] && grep -q "could not be verified for a-1" "$T/m22.out" && ! grep -q "authority operator" "$RD/answers.md" 2>/dev/null' \
   "a run that was under the mandate stays one after it is paused and revoked: a terminal answer is refused by the sender (by the grant's marker, and by the history without it) and by the hook, nothing logged ($(cat "$T/l.out"))"
+# uncertain lineage: a rotated Supervisor session with the markers gone, no registration, no transcript
+mrun 20990101-000025; say_sup s0 "hello" 2000-01-01T00:00:00Z; G "$M1"; TM pause; rm -f "$DLG/beta-$RUN.mandated"
+cp "$SREG" "$T/sreg.keep"; jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"
+jq -nc '{type: "user", uuid: "r1", timestamp: "2099-01-01T14:00:00Z", message: {role: "user", content: "hello again"}}' > "$(dirname "$SUPT")/sup-2.jsonl"
+pl perm-wc; TO=90 HB m25; wf "$AD/a-1.json"
+printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R1="$LRC"
+jq '.session_id = "sup-3"' "$T/sreg.keep" > "$SREG"; L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R2="$LRC"
+rm -f "$SREG"; L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R3="$LRC"
+jq '.session_id = "sup-2"' "$T/sreg.keep" > "$SREG"
+jq -n '{id: "a-1", form: "allow", value: "", authority: "operator", why: "Operator", decision: "d-1", answered_at: "2099-06-01T00:00:00Z", lead_session_id: "lid-1"}' > "$T/a25.json" && mv "$T/a25.json" "$AD/a-1.answer.json"
+wait "$HP"; cp "$T/sreg.keep" "$SREG"; rm -f "$(dirname "$SUPT")/sup-2.jsonl"
+ok '[ "$R1" = 7 ] && [ "$R2" = 7 ] && [ "$R3" = 7 ] && grep -q "could not be verified for a-1" "$T/m25.out" && ! grep -q "authority operator" "$RD/answers.md" 2>/dev/null' \
+  "uncertain lineage — a rotated Supervisor session with the markers gone, a session with no transcript, no registration — a terminal answer is refused as the Operator's by the sender and the hook ($(cat "$T/l.out"))"
 # the sender needs the real main checkout
-mrun 20990101-000013; pl perm-wc; TO=60 HB m13; wf "$AD/a-1.json"
+mrun 20990101-000013; say_sup s0 "hello" 2000-01-01T00:00:00Z; pl perm-wc; TO=60 HB m13; wf "$AD/a-1.json"
 printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: terminal\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"
 cp "$TD/teamlead.json" "$T/tl.keep"; jq 'del(.main_root)' "$T/tl.keep" > "$TD/teamlead.json"
 L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator"; R1="$LRC"

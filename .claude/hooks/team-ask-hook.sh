@@ -260,13 +260,13 @@ verify_relay() {
 #   request) — an event with none refuses delegation — and its canonical digest;
 # - the stage's active run, session and attempt, read from session.json now (after the wait,
 #   never the values of this hook's entry), which must be the ask's;
-# - the mandate the answer was given under (the ledger's and the decision's id) is the one in
-#   force now, derived from the Operator's message in the registered Supervisor session, naming
-#   the class and bound to this run — a later mandate of the same class approves nothing;
+# - the governing instruction now, derived from the Operator's message in the registered
+#   Supervisor session: its id (m-<message uuid>) and the class, bound to this run;
 # - the registered Supervisor session's transcript (registry + declared profile, never the
 #   ledger) holds a standalone call whose argv is exactly run, decision, ask, attempt, session,
-#   request digest and reply, made no earlier than the decision opened, the run started or that
-#   mandate was typed;
+#   request digest, THAT mandate id, that class and the reply, made no earlier than the decision
+#   opened or the run started — the call itself attests the grant it answered under, so a later
+#   mandate of the same class approves nothing, whatever the files say and whatever the times;
 # - that reply, parsed by the writer's parser, is this answer.
 # The ledger only says which reply, class and mandate to look for and stops a second answer.
 verify_delegated() {
@@ -297,8 +297,8 @@ verify_delegated() {
   t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
   [ -f "$t" ] || return 1
   floor="$(team_run_floor "$RUN" "$(dfm_h created_at)")"
-  [ -n "$floor" ] && floor="$(mandate_since "$MAIN" "$mid" "$floor")" || return 1
-  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$att" "$ssid" "$dig" "$reply")"
+  [ -n "$floor" ] || return 1
+  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$att" "$ssid" "$dig" "$reply" "$mid" "$cls")"
   [ -n "$(team_evidence_tool_call "$t" "$floor" "$MAIN" "$args")" ] || return 1
   reply_matches "$1" "$2" "$reply" "$3" "$4" "$5"
 }

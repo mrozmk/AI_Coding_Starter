@@ -63,7 +63,7 @@ auth_preflight() {
       . "$mr/.claude/lib/team-lead-lib.sh" 2>/dev/null && . "$mr/.claude/lib/team-mandate.sh" 2>/dev/null \
         || refuse 7 "the main checkout's mandate library cannot be loaded — a terminal answer cannot be relayed as the Operator's"
       ! mandate_run_ever "$mr" "$TEAM" "$run" \
-        || refuse 7 "run $run is or was under the Operator's mandate — a terminal answer is not taken as the Operator's for the rest of the run; the Operator answers in the TeamLead's dialog or window, or through the Supervisor's relay"
+        || refuse 7 "run $run is, was or may have been under the Operator's mandate (no Supervisor session on record since the run began counts) — a terminal answer is not taken as the Operator's for the rest of the run; the Operator answers in the TeamLead's dialog or window, or through the Supervisor's relay"
     fi
   fi
   # A decision about an ask binds that ask: a successor ask is never answered with it.
