@@ -646,7 +646,15 @@ decision in plain text and the Operator types the reply.
   the rules above: it must hold `.claude-plugin/plugin.json`, and a mod there (`modules`) is
   unclean; the cause names the source. After the `~/` expansion an entry that is not an absolute
   path is unclean: it resolves against the working directory, which is the checker's here and the
-  clone for the lead, so the same string can name two trees. A value that is no plain one-line string (a newline, a tab,
+  clone for the lead, so the same string can name two trees. The value the lead's host applies is
+  the highest source's that sets the key: managed settings, then the lead's `--settings` file
+  (`teamlead.settings.json`, which overrides the user, project and local `env` and the inherited
+  environment), and only below those the union of the rest (fails closed). `materialize` writes
+  `CLAUDE_CODE_PLUGIN_DIRS = ""` there, so the lead loads none of the Operator's plugin directories:
+  a mod in the user settings (a status band, `/hc`) keeps working in every other session and never
+  blocks a lead start. `preflight` (and only it, by an explicit argument) takes that value before the launch has written
+  the file; the launch and every answer check read the actual file (#316).
+  A value that is no plain one-line string (a newline, a tab,
   another JSON type) is unclean: its directories cannot be established. Plugin content (a manifest, a hooks file, an `.md`) under
   `<config dir>/plugins/synced` is unclean, it has no inventory. Not read: a policy delivered
   another way (MDM, a server), and a lead whose own environment differs from the runner's.

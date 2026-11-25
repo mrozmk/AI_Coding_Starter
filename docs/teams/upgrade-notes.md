@@ -37,6 +37,15 @@ stage hook against the mandate in force (`team-lead.md` §7, `roles/supervisor.m
   terminal answer is refused for that run — answer in the TeamLead's dialog or window, or
   through the Supervisor's relay.
 
+## The TeamLead runs without your plugin directories (#316)
+
+`team-lead.sh materialize` now writes `env.CLAUDE_CODE_PLUGIN_DIRS = ""` into
+`teamlead.settings.json`. The lead therefore loads no mod that you load through
+`CLAUDE_CODE_PLUGIN_DIRS`, whether it comes from your settings `env` or from your environment. Since
+#311 such a mod (hooks registered in code) refused every lead start; now it keeps working in your
+own sessions and the lead starts clean. No action needed. A mod you want inside the lead as well is
+not supported. The ASK provenance guard cannot vet code-registered hooks.
+
 ## The TeamLead picks the mode; cli is the TeamLead; quick has no wrapup
 
 **Before:** `/start-team` without `--mode` started `brainstorm`; the cli role was a separate

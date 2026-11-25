@@ -29,7 +29,9 @@
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
-#   registered for Edit|Write|NotebookEdit and guard-teamlead-bash.sh for Bash.
+#   registered for Edit|Write|NotebookEdit and guard-teamlead-bash.sh for Bash, and
+#   env.CLAUDE_CODE_PLUGIN_DIRS = "" — the lead loads none of the Operator's plugin directories (a
+#   mod with hooks in code would make every dialog answer unverifiable; team-lead.md §7).
 #   It refuses a profile that is not the per-run one (env role TeamLead, deny git commit and
 #   team-record.sh) — the retired global TeamLead.settings.json a partial sync left behind.
 #   e.g. bash .claude/lib/team-lead.sh materialize alfa
@@ -361,7 +363,7 @@ materialize() {
       | ($tp.permissions.allow // []) as $a0
       | [$all[] | .permissions.deny // [] | .[]] as $d0
       | [$all[] | .permissions.ask // [] | .[]] as $k0
-      | {env: $tp.env, _main_lib: $L,
+      | {env: (($tp.env // {}) + {CLAUDE_CODE_PLUGIN_DIRS: ""}), _main_lib: $L,
          permissions: {
            allow: ([$a0[] | if cloned then twin
                     elif . == "Bash(*.claude/lib/codex-bg.sh)" then "Bash(*" + $L + "codex-bg.sh)"
@@ -397,7 +399,8 @@ preflight() {
   [ -d "$clone/.claude" ] || clone="$r"
   cfg="$(team_claude_home "$r")" || { echo "$cfg" >&2; exit 1; }
   . "$LIB/team-evidence.sh"
-  if ah="$(team_evidence_ask_hooks "$r" "$clone" "$cfg")"; then echo "ask provenance: clean"; return 0; fi
+  # The env the launch materializes (CLAUDE_CODE_PLUGIN_DIRS = ""), not a stale profile's.
+  if ah="$(team_evidence_ask_hooks "$r" "$clone" "$cfg" lead-profile)"; then echo "ask provenance: clean"; return 0; fi
   echo "error: ask provenance unclean — ${ah#unclean }" >&2
   echo "fix: $(team_evidence_fix "${ah#unclean }"), then start again" >&2
   exit 3

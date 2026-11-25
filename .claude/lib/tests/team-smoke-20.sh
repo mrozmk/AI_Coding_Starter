@@ -283,7 +283,7 @@ if [ -e "$WORK/cls.keep" ]; then cp "$WORK/cls.keep" "$CLS"; else rm -f "$CLS"; 
 [ "$(ls -l "$P" | cut -c1-10)" = "-rw-------" ] || fail "(g) profile is not mode 600"
 jq -e '(.permissions.deny | index("Bash(az repos pr update*)")) and
   (.permissions.deny | index("Bash(git push*)")) and (.permissions.ask | index("Bash(git tag*)"))
-  and .env.TEAM_SESSION_ROLE == "TeamLead"
+  and .env.TEAM_SESSION_ROLE == "TeamLead" and .env.CLAUDE_CODE_PLUGIN_DIRS == ""
   and (.hooks.PreToolUse[0].hooks[0].command | contains("guard-teamlead-write.sh"))
   and .hooks.PreToolUse[1].matcher == "Bash"
   and (.hooks.PreToolUse[1].hooks[0].command | contains("guard-teamlead-bash.sh"))

@@ -23,9 +23,10 @@
 #     entry under the same checks: one question → reply "<d-n> <answer>"; several → map keyed by the
 #     stage question texts, reply a display string only
 #   team_evidence_dialog_raised <transcript> <since> → the d-<n> ids any AskUserQuestion call named
-#   team_evidence_ask_hooks <main> <clone> <config dir> → "clean <digest>" (rc 0) or
+#   team_evidence_ask_hooks <main> <clone> <config dir> [lead-profile] → "clean <digest>" (rc 0) or
 #     "unclean <cause>" (rc 1): the effective AskUserQuestion hook registrations of a lead session,
-#     with the hooks of every enabled plugin (team_evidence_plugins) in the digest
+#     with the hooks of every enabled plugin (team_evidence_plugins) in the digest; `lead-profile`
+#     (team-lead.sh preflight only) takes the plugin directories materialize will write ("")
 #   team_evidence_fix <cause> → one line naming what makes that cause go away
 #   team_evidence_snapshot <ask hooks line> → {clean, digest, cause}: that line as a launch snapshot
 #   team_evidence_anchor <main> <clone> → the main checkout's anchor of that clone (by physical path)
@@ -347,7 +348,7 @@ team_evidence_inv() {
 }
 
 team_evidence_ask_hooks_in() {
-  local main="$1" clone="$2" cfg="${3:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs="" mods=""
+  local main="$1" clone="$2" cfg="${3:-}" proj="${4:-}" src f k name ents="" e x plugins m g="" st="" list="" d h plist="" pd="" dirs="" mods="" mset="" mval="" fset="" fval=""
   [ -n "$cfg" ] || cfg="$HOME/.claude"
   # The process environment first: it reaches the lead through the runner's launch.
   [ -z "${CLAUDE_CODE_PLUGIN_CACHE_DIR:-}" ] \
@@ -378,7 +379,13 @@ team_evidence_ask_hooks_in() {
     case $'\n'"$x" in *$'\n'baddirs*)
       echo "unclean $name: env.CLAUDE_CODE_PLUGIN_DIRS is no plain one-line string, its directories cannot be established"; return 1 ;; esac
     # One line by construction: no newline in the value, and a `cache` line has returned above.
-    case "$x" in "dirs "*) dirs="$dirs$name env"$'\t'"${x#dirs }"$'\n' ;; esac
+    case "$x" in "dirs "*)
+      dirs="$dirs$name env"$'\t'"${x#dirs }"$'\n'
+      case "$name" in
+        "managed settings") mset=1; mval="${x#dirs }" ;;
+        teamlead.settings.json) fset=1; fval="${x#dirs }" ;;
+      esac ;;
+    esac
     # A plugin brings its own hooks: every id any source enables (anything but `false`: a version
     # constraint enables too) is inventoried below, whichever source would win the merge.
     plugins="$(jq -r '(.enabledPlugins // {}) | if type == "object" then to_entries[] | select(.value != false and .value != null) | .key
@@ -416,6 +423,16 @@ team_evidence_ask_hooks_in() {
     echo "unclean $(jq -r '"\(.src): \(.event) \(if .matcher == "" then "(no matcher)" else .matcher end) \(.cmds | join(" ; "))"' <<<"$e")"
     return 1
   done <<<"$ents"
+  # The value the host applies is the highest source's that sets the key: managed settings, then
+  # the lead's --settings file (teamlead.settings.json; it overrides the user/project/local `env`
+  # and the inherited process environment — checked on Claude Code 2026-11-25), and only below
+  # those the union of everything else (fails closed). materialize writes "" there, so the lead
+  # loads none of the Operator's plugin directories. Only the preflight passes `lead-profile` (an
+  # argument, never the environment) to take that value before the launch has written the file;
+  # the launch and every answer check read the actual file.
+  [ "$proj" != lead-profile ] || { fset=1; fval=""; }
+  if [ -n "$mset" ]; then dirs="managed settings env"$'\t'"$mval"$'\n'
+  elif [ -n "$fset" ]; then dirs="teamlead.settings.json env"$'\t'"$fval"$'\n'; fi
   # Plugins the host loads with no enabledPlugins entry: each plugin directory named by
   # CLAUDE_CODE_PLUGIN_DIRS (colon-separated; the environment or a settings file's env) is
   # inventoried as a plugin tree, its resolved path in the digest; plugin content synced from the
