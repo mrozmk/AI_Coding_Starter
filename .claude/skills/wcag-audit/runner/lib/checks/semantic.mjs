@@ -10,7 +10,10 @@ const PER_KIND = 15;
 
 export const brokenImage = { id: 'broken-image', sc: ['1.1.1'] };
 
-export async function collectSemantic(page, { responses, failed = new Map(), cdp }) {
+// Refusals by the run's own browser boundary: the route lockdown and the proxy (CONNECT 403 for https).
+const NOT_ORIGIN_ERRORS = /ERR_BLOCKED_BY_CLIENT|ERR_TUNNEL_CONNECTION_FAILED/;
+
+export async function collectSemantic(page, { responses, failed = new Map(), proxyBlocked = new Set(), cdp }) {
   const raw = await inPage(page, `
     const all = W.all();
     const imgs = all.filter((el) => el.tagName === 'IMG').map((el) => ({ sel: W.sel(el), src: el.currentSrc || el.src, alt: el.getAttribute('alt'), loaded: el.complete && el.naturalWidth > 0, visible: W.visible(el) }));
@@ -29,9 +32,11 @@ export async function collectSemantic(page, { responses, failed = new Map(), cdp
   const broken = [];
   const items = [];
   for (const img of raw.imgs) {
+    // An image the run itself refused is a coverage limit, never a verified failure.
+    if (proxyBlocked.has(img.src)) continue;
     const status = responses.get(img.src);
     const netError = failed.get(img.src);
-    const loadFailed = !img.loaded && !!img.src && !!netError && !/ERR_BLOCKED_BY_CLIENT/.test(netError);
+    const loadFailed = !img.loaded && !!img.src && !!netError && !NOT_ORIGIN_ERRORS.test(netError);
     if ((status && status >= 400) || loadFailed) {
       broken.push({ selector: img.sel, data: { status: status ?? null, url: redactUrl(img.src) } });
       continue;

@@ -1,8 +1,8 @@
 // browser.mjs — one sandboxed headless Chrome per run behind the pinned proxy, a fresh context per
 // load, method enforcement and the per-page network lockdown in route, WebSockets and WebRTC blocked,
 // and a guaranteed close (finally, SIGINT/SIGTERM, time limits).
-import http from 'node:http';
 import { load as loadDeps, browserChoice } from './deps.mjs';
+import { canaryServer } from './proxy.mjs';
 import { redactUrl } from './redact.mjs';
 
 export const VIEWPORTS = {
@@ -54,15 +54,6 @@ export function registerClose(fn) {
   return () => open.delete(fn);
 }
 
-// The runner-owned probe origin: a loopback listener outside the given origins that counts connections.
-async function probeServer() {
-  let hits = 0;
-  const srv = http.createServer((q, s) => s.end('probe'));
-  srv.on('connection', () => { hits += 1; });
-  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-  return { port: srv.address().port, hits: () => hits, close: () => new Promise((r) => srv.close(r)) };
-}
-
 export async function launch({ proxyPort, ledger, env = process.env }) {
   installSignalHandlers();
   const deps = loadDeps();
@@ -87,7 +78,7 @@ export async function launch({ proxyPort, ledger, env = process.env }) {
   } catch { /* experimental — best effort, never the sandbox proof */ }
   if ((info.commandLine || []).some((a) => a === '--no-sandbox')) throw new Error('the browser runs without its sandbox');
   // Live probe: the proxy must refuse a loopback origin outside the given origins.
-  const probe = await probeServer();
+  const probe = await canaryServer();
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   let status = 0;
@@ -114,7 +105,7 @@ export async function freshPage(browser, viewportName, { ledger, context: ctxInf
   const vp = VIEWPORTS[viewportName];
   const context = await browser.newContext({ ...vp, reducedMotion: 'reduce', serviceWorkers: 'block', ...(userAgent ? { userAgent } : {}) });
   const unregister = registerClose(() => context.close());
-  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, responses: new Map(), failed: new Map() };
+  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, responses: new Map(), failed: new Map(), proxyBlocked: new Set() };
   await context.routeWebSocket(/.*/, (ws) => {
     ledger.push({ kind: 'websocket-blocked', url: redactUrl(ws.url()), ...ctxInfo });
     ws.close({ code: 1008, reason: 'blocked by wcag-audit' });
@@ -139,7 +130,11 @@ export async function freshPage(browser, viewportName, { ledger, context: ctxInf
     return route.continue();
   });
   page = await context.newPage();
-  page.on('response', (r) => { state.responses.set(r.url(), r.status()); });
+  page.on('response', (r) => {
+    state.responses.set(r.url(), r.status());
+    // The proxy's own refusal (destination policy) marks its 403; it says nothing about the origin.
+    if (r.headers()['x-wcag-audit'] === 'blocked') state.proxyBlocked.add(r.url());
+  });
   page.on('requestfailed', (r) => { state.failed.set(r.url(), r.failure()?.errorText || 'failed'); });
   const close = async () => { unregister(); await context.close().catch(() => {}); };
   return {

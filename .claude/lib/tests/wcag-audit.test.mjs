@@ -702,7 +702,7 @@ test('command contracts hold', () => { judgeAgentContract(); commandTextContract
 // ---- QA pins (round 1) ----------------------------------------------------------------------
 
 function scanner(Cls, run, opts = {}) {
-  return new Cls({ run, work: tmp(), ruleIds: [], profile: {}, ctxInfo: {}, persist: () => {}, ...opts });
+  return new Cls({ run, work: tmp(), ruleIds: [], ctxInfo: {}, ...opts });
 }
 
 test('an abandoned target settles before the scanner moves on', async () => {
@@ -734,13 +734,30 @@ test('the desktop user-agent retry never fires on the proxy refusal', async () =
 });
 
 test('a broken image needs an HTTP error or a failed load, never an image the lockdown kept unloaded', async () => {
-  const imgs = ['404', 'lazy', 'blocked', 'dns'].map((n, i) => ({ sel: `img:nth-of-type(${i + 1})`, src: `https://x.test/${n}.png`, alt: n, loaded: false, visible: true }));
+  const names = ['404', 'lazy', 'blocked', 'reset', 'policy', 'tunnel'];
+  const imgs = names.map((n, i) => ({ sel: `img:nth-of-type(${i + 1})`, src: `https://x.test/${n}.png`, alt: n, loaded: false, visible: true }));
   const page = { evaluate: async () => ({ imgs, groups: [], outline: [] }) };
-  const responses = new Map([['https://x.test/404.png', 404]]);
-  const failed = new Map([['https://x.test/blocked.png', 'net::ERR_BLOCKED_BY_CLIENT'], ['https://x.test/dns.png', 'net::ERR_NAME_NOT_RESOLVED']]);
-  const res = await collectSemantic(page, { responses, failed, cdp: null });
+  const responses = new Map([['https://x.test/404.png', 404], ['https://x.test/policy.png', 403]]);
+  const failed = new Map([['https://x.test/blocked.png', 'net::ERR_BLOCKED_BY_CLIENT'], ['https://x.test/reset.png', 'net::ERR_CONNECTION_RESET'], ['https://x.test/tunnel.png', 'net::ERR_TUNNEL_CONNECTION_FAILED']]);
+  const proxyBlocked = new Set(['https://x.test/policy.png']);
+  const res = await collectSemantic(page, { responses, failed, proxyBlocked, cdp: null });
   assert.deepEqual(res.broken.map((b) => b.selector), ['img:nth-of-type(1)', 'img:nth-of-type(4)']);
   assert.equal(res.items.filter((i) => i.kind === 'alt-vs-image').length, 0);
+});
+
+test('the disprove pack carries each candidate with its own evidence', () => {
+  const repo = mkRepo();
+  const run = llmRun();
+  run.model.items = [{ item_id: 's1', kind: 'alt-vs-image', allowed_sc: ['1.1.1'], evidence_id: 'e1' }];
+  run.model.candidates = [{ candidate_id: 'c-s1', item_id: 's1', kind: 'alt-vs-image', sc: '1.1.1', impact: 'moderate', rationale: 'the image shows people, alt says logo', false_positive_if: 'decorative' }];
+  const work = writeWork(repo, run);
+  fs.writeFileSync(path.join(work, 'evidence', 'e-1.png'), 'png');
+  proveGuard(repo, work);
+  const pack = JSON.parse(fs.readFileSync(writePack(work, 'disprove', repo).pack, 'utf8'));
+  const [row] = JSON.parse(pack.untrusted.split('\n')[1]);
+  assert.equal(row.data.text, 'Team photo');
+  assert.equal(row.rationale, 'the image shows people, alt says logo');
+  assert.equal(row.evidence_id, 'e1');
 });
 
 test('an IPv6 literal target is a given origin', () => {

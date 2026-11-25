@@ -3,11 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pick, remediation } from './strings.mjs';
-import { understandingUrl, criterionById } from './criteria.mjs';
+import { understandingUrl, criterionById, STATUS } from './criteria.mjs';
 import { evidencePath } from './paths.mjs';
 import { SKILL_DIR } from './deps.mjs';
 import { IMPACTS } from './contract.mjs';
-import { STATUS } from './evidence.mjs';
 
 export function esc(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

@@ -19,10 +19,19 @@ function defaultPort(protocol) {
   return protocol === 'https:' ? '443' : '80';
 }
 
+// An IPv6 literal keeps its brackets in URL.hostname; hosts and origins are compared bracket-free.
+export function bareHost(host) {
+  return String(host).toLowerCase().replace(/^\[|\]$/g, '');
+}
+
+// The one origin key both the given origins and decide() use.
+export function originKey(scheme, host, port) {
+  return `${scheme}://${bareHost(host)}:${port}`;
+}
+
 export function originOf(url) {
   const u = url instanceof URL ? url : new URL(url);
-  // An IPv6 literal keeps its brackets in URL.hostname; origins are compared bracket-free.
-  return `${u.protocol}//${u.hostname.toLowerCase().replace(/^\[|\]$/g, '')}:${u.port || defaultPort(u.protocol)}`;
+  return originKey(u.protocol.replace(/:$/, ''), u.hostname, u.port || defaultPort(u.protocol));
 }
 
 export function parseTarget(text) {
@@ -55,7 +64,7 @@ export function givenOrigins(urls) {
 // blocks the whole destination.
 export function decide({ scheme = 'http', host, port, addresses, runClass, origins }) {
   if (!addresses || !addresses.length) return { allow: false, reason: 'dns-failed' };
-  const given = origins.has(`${scheme}://${String(host).toLowerCase().replace(/^\[|\]$/g, '')}:${port}`);
+  const given = origins.has(originKey(scheme, host, port));
   for (const a of addresses) {
     const c = addressClass(a);
     if (ALWAYS_BLOCKED.has(c)) return { allow: false, reason: c };

@@ -25,6 +25,6 @@ export default {
     `);
     if (!hits.count) return [{ contributor: 'target-spacing', outcome: 'inapplicable' }];
     if (!hits.out.length) return [{ contributor: 'target-spacing', outcome: 'pass' }];
-    return hits.out.map((h) => ({ contributor: 'target-spacing', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: h.sel, cropSelector: h.sel, data: { width: h.w, height: h.h } }));
+    return hits.out.map((h) => ({ contributor: 'target-spacing', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: h.sel, data: { width: h.w, height: h.h } }));
   },
 };

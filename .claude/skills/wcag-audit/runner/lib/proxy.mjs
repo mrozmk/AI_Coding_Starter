@@ -3,7 +3,7 @@
 // Chrome never resolves and redirect hops cannot bypass the policy.
 import http from 'node:http';
 import net from 'node:net';
-import { decide, resolveAddresses } from './policy.mjs';
+import { decide, resolveAddresses, bareHost } from './policy.mjs';
 import { redactUrl } from './redact.mjs';
 
 function splitHostPort(text, defPort) {
@@ -42,14 +42,15 @@ export async function startProxy({ runClass, origins, ledger, context = () => ({
     try { url = new URL(req.url); } catch { res.writeHead(400); res.end(); return; }
     if (url.protocol !== 'http:') { record('destination-blocked', req.url, 'unsupported-scheme'); res.writeHead(403); res.end(); return; }
     const port = url.port || '80';
-    const verdict = await judge('http', url.hostname.replace(/^\[|\]$/g, ''), port);
+    const host = bareHost(url.hostname);
+    const verdict = await judge('http', host, port);
     if (!verdict.allow) { record('destination-blocked', req.url, verdict.reason); res.writeHead(403, { 'content-type': 'text/plain', 'x-wcag-audit': 'blocked' }); res.end('blocked by wcag-audit'); return; }
     const headers = { ...req.headers };
     for (const h of Object.keys(headers)) if (h.startsWith('proxy-')) delete headers[h];
     const address = ordered(verdict.addresses)[0];
     const family = net.isIP(address);
     const up = http.request({
-      host: url.hostname.replace(/^\[|\]$/g, ''), port, method: req.method, path: `${url.pathname}${url.search}`, headers, agent: false,
+      host, port, method: req.method, path: `${url.pathname}${url.search}`, headers, agent: false,
       lookup: (h, opts, cb) => (opts?.all ? cb(null, [{ address, family }]) : cb(null, address, family)),
     }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
     up.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
@@ -103,17 +104,24 @@ export async function startProxy({ runClass, origins, ledger, context = () => ({
   return { port, close };
 }
 
-async function selfCheck(proxyPort) {
+// A loopback listener outside every given origin that counts connections: the proxy self-check's
+// canary and the browser's live probe.
+export async function canaryServer() {
   let hits = 0;
-  const canary = http.createServer((q, s) => s.end('canary'));
-  canary.on('connection', () => { hits += 1; });
-  await new Promise((r) => canary.listen(0, '127.0.0.1', r));
-  const cport = canary.address().port;
+  const srv = http.createServer((q, s) => s.end('canary'));
+  srv.on('connection', () => { hits += 1; });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  return { port: srv.address().port, hits: () => hits, close: () => new Promise((r) => srv.close(r)) };
+}
+
+async function selfCheck(proxyPort) {
+  const canary = await canaryServer();
+  const cport = canary.port;
   const status = await new Promise((resolve) => {
     const req = http.request({ host: '127.0.0.1', port: proxyPort, method: 'GET', path: `http://127.0.0.1:${cport}/self-check`, headers: { host: `127.0.0.1:${cport}` }, agent: false }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
     req.on('error', () => resolve(0));
     req.end();
   });
-  await new Promise((r) => canary.close(r));
-  if (status !== 403 || hits !== 0) throw new Error(`proxy self-check failed (status ${status}, canary hits ${hits})`);
+  await canary.close();
+  if (status !== 403 || canary.hits() !== 0) throw new Error(`proxy self-check failed (status ${status}, canary hits ${canary.hits()})`);
 }

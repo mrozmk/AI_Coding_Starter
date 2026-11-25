@@ -243,6 +243,8 @@ if (process.argv.includes('--serve')) {
     assert.ok(kinds.includes('non-get'));
     assert.ok(kinds.filter((k) => k === 'destination-blocked').length >= 4, JSON.stringify(res.run.ledger));
     assert.equal(res.run.browser.live_probe, 'refused');
+    // The images the proxy refused are a coverage limit, not broken images.
+    assert.ok(!findingsOf(res.run, 'egress.html').some((f) => f.contributors.some((c) => c.id === 'broken-image')), 'proxy-refused image reported as broken-image');
   });
 
   test('interaction lockdown: no runner-caused request reaches the server', LONG, async () => {
@@ -369,11 +371,15 @@ if (process.argv.includes('--serve')) {
 
   test('cross-origin frame is skipped and masked', LONG, async () => {
     const srv = await srvPromise;
-    const res = await scan(srv, [], { urls: [srv.url('frames.html'), srv.url('clean.html', 'localhost')] });
+    const res = await scan(srv, [], { urls: [srv.url('frames.html'), srv.url('nested-frame.html'), srv.url('clean.html', 'localhost')] });
     assert.equal(res.code, 0, res.stdout + res.stderr);
     assert.ok(res.run.ledger.some((l) => l.kind === 'cross-origin-frame-skipped'));
     const key = pageKeyOf(res.run, 'frames.html');
     assert.ok(!res.run.observations.some((o) => o.page === key && o.frame));
+    // A cross-origin frame nested inside a same-origin one is classified too: skipped, never analysed.
+    const nested = pageKeyOf(res.run, 'nested-frame.html');
+    assert.ok(res.run.ledger.some((l) => l.kind === 'cross-origin-frame-skipped' && l.page === nested), JSON.stringify(res.run.ledger));
+    assert.ok(!res.run.observations.some((o) => o.page === nested && o.frame));
     assert.ok(!JSON.stringify(res.run).includes('jan.kowalski'));
     const rec = res.run.pages.find((p) => p.page === key);
     const ev = res.run.evidence.find((e) => e.id === rec.page_evidence);

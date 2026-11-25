@@ -20,36 +20,54 @@ const PATH_FN = `function () {
   return 'html > ' + parts.join(' > ');
 }`;
 
-// The owner element of each frame in the top document's frame tree, from CDP (DOM.getFrameOwner),
-// with the frame's browser-reported security origin. A Playwright frame whose owner is not an
-// in-scope tree entry (opaque, other origin, or out-of-process) is skipped.
+// The owner element of every frame in the page's frame tree, nested ones included, from CDP
+// (DOM.getFrameOwner), with the frame's browser-reported security origin. A Playwright frame whose
+// owner is not an in-scope tree entry (opaque, other origin, or out-of-process) is skipped and its
+// subtree is not descended into (the owner covers it); every other frame is included.
+// `selector` is the owner's selector in its parent frame's document; `path` is the owner chain
+// from the top document.
 export async function classifyFrames(page) {
   const skipped = [];
+  const included = [];
   const entries = [];
   let topOrigin = null;
+  let topId = null;
   let cdp = null;
   try {
     cdp = await page.context().newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     topOrigin = frameTree.frame.securityOrigin;
+    topId = frameTree.frame.id;
     await cdp.send('DOM.getDocument', { depth: 0 });
-    for (const child of frameTree.childFrames || []) {
-      try {
-        const { backendNodeId } = await cdp.send('DOM.getFrameOwner', { frameId: child.frame.id });
-        const { object } = await cdp.send('DOM.resolveNode', { backendNodeId });
-        const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: PATH_FN, returnByValue: true });
-        entries.push({ sel: result.value, origin: child.frame.securityOrigin });
-      } catch { /* unresolved owner: the Playwright pass below skips it */ }
-    }
+    const collect = async (node) => {
+      for (const child of node.childFrames || []) {
+        try {
+          const { backendNodeId } = await cdp.send('DOM.getFrameOwner', { frameId: child.frame.id });
+          const { object } = await cdp.send('DOM.resolveNode', { backendNodeId });
+          const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: PATH_FN, returnByValue: true });
+          entries.push({ parent: node.frame.id, id: child.frame.id, sel: result.value, origin: child.frame.securityOrigin });
+        } catch { /* unresolved owner: the Playwright pass below skips it */ }
+        await collect(child);
+      }
+    };
+    await collect(frameTree);
   } catch { /* no CDP: every child frame is skipped */ }
   if (cdp) await cdp.detach().catch(() => {});
   const opaque = (o) => !o || o === 'null' || !/^https?:\/\//.test(o);
-  for (const frame of page.mainFrame().childFrames()) {
-    const sel = await ownerSelector(frame);
-    const entry = sel ? entries.find((e) => e.sel === sel) : null;
-    if (!entry || opaque(entry.origin) || entry.origin !== topOrigin) skipped.push({ frame, selector: sel, reason: entry ? 'other-origin' : 'owner-unresolved' });
-  }
-  return { skipped };
+  const walk = async (frame, id, path) => {
+    for (const child of frame.childFrames()) {
+      const sel = await ownerSelector(child);
+      const entry = sel && id ? entries.find((e) => e.parent === id && e.sel === sel) : null;
+      if (!entry || opaque(entry.origin) || entry.origin !== topOrigin) {
+        skipped.push({ frame: child, selector: sel, path: sel ? [...path, sel] : null, reason: entry ? 'other-origin' : 'owner-unresolved' });
+        continue;
+      }
+      included.push(child);
+      await walk(child, entry.id, [...path, sel]);
+    }
+  };
+  await walk(page.mainFrame(), topId, []);
+  return { skipped, included };
 }
 
 export async function ownerSelector(frame) {

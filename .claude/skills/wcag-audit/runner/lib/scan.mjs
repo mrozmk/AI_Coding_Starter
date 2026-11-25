@@ -3,7 +3,7 @@
 // mutating check on a freshly restored state. run.json is rewritten atomically after every target.
 import fs from 'node:fs';
 import path from 'node:path';
-import { Refusal, allocWork, assertIgnored, assertInputFile, writeRun, isInside } from './paths.mjs';
+import { Refusal, allocWork, assertIgnored, assertInputFile, writeRun, isInside, reportPaths } from './paths.mjs';
 import * as deps from './deps.mjs';
 import { parseTarget, targetClass, givenOrigins, resolveAddresses } from './policy.mjs';
 import * as ev from './evidence.mjs';
@@ -65,19 +65,18 @@ export async function scanCommand(opts) {
 
   const file = path.resolve(opts['urls-file']);
   assertInputFile(file);
-  let lines = fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  const lines = fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   if (!lines.length) throw new Refusal('bad-input-file', 'the URL file holds no URL');
   const parsed = lines.map((l) => parseTarget(l));
   const capped = parsed.length > maxPages ? parsed.length - maxPages : 0;
   const urls = parsed.slice(0, maxPages);
-  lines = null;
 
   const install = deps.assertReady();
   deps.browserChoice(install.dir);
 
   const slug = opts.slug || urls[0].hostname.replace(/^www\./, '');
   const work = allocWork(slug, today());
-  assertIgnored([work.dir, path.join(work.root, `${work.base}.html`)]);
+  assertIgnored([work.dir, reportPaths(work.dir).html]);
 
   // Each URL is resolved on its own: an unresolvable host is ledgered, never navigated.
   const dnsFail = testEnv('WCAG_AUDIT_TEST_DNS_FAIL');
@@ -123,7 +122,7 @@ export async function scanCommand(opts) {
   let browser = null;
   let interrupted = false;
   const ctxInfo = {};
-  const scanner = new Scanner({ run, work: work.dir, ruleIds, profile, ctxInfo, persist });
+  const scanner = new Scanner({ run, work: work.dir, ruleIds, ctxInfo });
   try {
     if (resolved.length) {
       proxy = await startProxy({ runClass, origins, ledger: run.ledger, context: () => ({ ...ctxInfo }) });
@@ -165,8 +164,8 @@ export async function scanCommand(opts) {
 }
 
 export class Scanner {
-  constructor({ run, work, ruleIds, profile, ctxInfo, persist, pageLimitMs = PAGE_LIMIT_MS }) {
-    Object.assign(this, { run, work, ruleIds, profile, ctxInfo, persist, pageLimitMs });
+  constructor({ run, work, ruleIds, ctxInfo, pageLimitMs = PAGE_LIMIT_MS }) {
+    Object.assign(this, { run, work, ruleIds, ctxInfo, pageLimitMs });
     this.evidenceCount = 0;
     this.siteLangSet = false;
     this.token = { dead: false };
@@ -204,8 +203,8 @@ export class Scanner {
     this.sessions = new Set();
     this.userAgent = undefined;
     this.evidenceCount = 0;
-    this.skippedOwners = [];
-    this.withholdCrops = false;
+    this.frameInfo = new WeakMap();
+    this.framesLedgered = new Set();
     this.banner = null;
     this.replay = null;
     this.page = page;
@@ -270,10 +269,7 @@ export class Scanner {
     const s0 = first.s;
     run.log.push({ at: new Date().toISOString(), phase: 'scroll', code: `${page}-${viewport}` });
     if (!this.siteLangSet) { run.site_lang = await siteLanguage(s0.page); this.siteLangSet = true; }
-    const frames = await classifyFrames(s0.page);
-    this.skippedOwners = frames.skipped.map((f) => f.selector).filter(Boolean);
-    this.withholdCrops = frames.skipped.some((f) => !f.selector);
-    for (const f of frames.skipped) run.ledger.push({ kind: f.selector ? 'cross-origin-frame-skipped' : 'frame-owner-unresolved', reason: f.reason, url: redactUrl(f.frame.url()), ...this.ctxInfo });
+    await this.frames(s0);
     const banner = await detectBanner(s0.page);
     rec.banner = { detected: !!banner, selector: banner, dismissed: false };
     this.banner = banner;
@@ -315,6 +311,25 @@ export class Scanner {
     }
   }
 
+  // The frame classification of one session's page — every state is a fresh load, so its frames can
+  // differ from the initial one. A skipped frame is excluded from axe (a nested one through its
+  // outermost owner) and masked by its owner element; a frame whose owner cannot be resolved
+  // withholds the session's crops. Each skipped frame is ledgered once per target.
+  async frames(session) {
+    let info = this.frameInfo.get(session);
+    if (info) return info;
+    const { skipped, included } = await classifyFrames(session.page);
+    info = { skipped, included, withhold: skipped.some((f) => !f.selector), exclude: [...new Set(skipped.filter((f) => f.path).map((f) => f.path[0]))] };
+    this.frameInfo.set(session, info);
+    for (const f of skipped) {
+      const key = f.path ? f.path.join(' | ') : `unresolved ${f.frame.url()}`;
+      if (this.framesLedgered.has(key)) continue;
+      this.framesLedgered.add(key);
+      this.run.ledger.push({ kind: f.selector ? 'cross-origin-frame-skipped' : 'frame-owner-unresolved', reason: f.reason, url: redactUrl(f.frame.url()), ...this.ctxInfo });
+    }
+    return info;
+  }
+
   async readonlyPass(session, state, { semantic }) {
     const { run, page, viewport } = this;
     const fault = testEnv('WCAG_AUDIT_TEST_FAULT');
@@ -322,7 +337,8 @@ export class Scanner {
     let axe = [];
     try {
       const url = new URL(session.page.url());
-      const res = await runAxe(session.page, { ruleIds: this.ruleIds, enableTargetSize: this.ruleIds.includes('target-size'), exclude: this.skippedOwners, testFault: !!faultPage && url.pathname.endsWith(`/${faultPage}`) });
+      const { exclude } = await this.frames(session);
+      const res = await runAxe(session.page, { ruleIds: this.ruleIds, enableTargetSize: this.ruleIds.includes('target-size'), exclude, testFault: !!faultPage && url.pathname.endsWith(`/${faultPage}`) });
       axe = res.results;
       run.engines.axe.executed = [...new Set([...run.engines.axe.executed, ...res.executed])].sort();
       if (res.version) run.engines.axe.version = res.version;
@@ -350,7 +366,7 @@ export class Scanner {
         const key = `${r.rule}|${r.outcome}`;
         if (passSeen.has(key)) continue;
         passSeen.add(key);
-        ev.addObservation(run, { source: 'axe', contributor: r.rule, sc: this.contributorSc('axe', r.rule).length ? this.contributorSc('axe', r.rule) : r.sc, outcome: r.outcome, page, viewport, state });
+        ev.addObservation(run, { source: 'axe', contributor: r.rule, sc: r.sc, outcome: r.outcome, page, viewport, state });
         continue;
       }
       let ancestor = null;
@@ -371,7 +387,7 @@ export class Scanner {
     let cdp = null;
     try { cdp = await session.context.newCDPSession(session.page); } catch { cdp = null; }
     try {
-      const res = await collectSemantic(session.page, { responses: session.state.responses, failed: session.state.failed, cdp: itemsToo ? cdp : null });
+      const res = await collectSemantic(session.page, { responses: session.state.responses, failed: session.state.failed, proxyBlocked: session.state.proxyBlocked, cdp: itemsToo ? cdp : null });
       for (const b of res.broken) {
         const evidence = await this.capture(session, { selector: b.selector }, 'initial');
         ev.addObservation(run, { source: 'runner', contributor: 'broken-image', sc: brokenImage.sc, outcome: 'violation', basis: '●', impact: 'serious', page, viewport, state: 'initial', selector: b.selector, data: b.data, evidence_ids: evidence ? [evidence] : [], remediation_key: 'broken-image',
@@ -423,7 +439,7 @@ export class Scanner {
         }
         let evidence = null;
         if (r.outcome === 'violation' || r.outcome === 'needs-review') {
-          const target = r.cropViewport ? { viewport: true } : r.cropBox ? { box: r.cropBox } : r.cropSelector ? { selector: r.cropSelector } : null;
+          const target = r.cropViewport ? { viewport: true } : r.cropBox ? { box: r.cropBox } : r.selector ? { selector: r.selector } : null;
           evidence = target ? await this.capture(p.s, target, state) : null;
         }
         ev.addObservation(run, { source: 'check', contributor: r.contributor, sc: this.contributorSc('check', r.contributor), outcome: r.outcome, basis: r.basis, impact: r.impact, page, viewport, state, selector: r.selector, data: r.data, steps: r.steps, evidence_ids: evidence ? [evidence] : [], remediation_key: r.contributor });
@@ -441,9 +457,9 @@ export class Scanner {
   }
 
   // A masked crop under <work>/evidence/: inputs, text areas, selects, editable regions, e-mail text
-  // (top document, open shadow roots, same-origin frames) and every skipped frame are painted #FF00FF.
+  // (top document, open shadow roots, every included frame at any depth) and every skipped frame are
+  // painted #FF00FF. A frame that cannot be masked withholds the crop.
   async capture(session, target, state, { pageCrop = false } = {}) {
-    if (this.withholdCrops) return null;
     if (this.evidenceCount >= MAX_EVIDENCE) {
       if (this.evidenceCount === MAX_EVIDENCE) this.run.ledger.push({ kind: 'evidence-cap', ...this.ctxInfo });
       this.evidenceCount += 1;
@@ -451,16 +467,15 @@ export class Scanner {
     }
     const { page } = session;
     try {
+      const info = await this.frames(session);
+      if (info.withhold) return null;
       await inPage(page, 'return W.markEmails();');
-      const frames = page.mainFrame().childFrames();
       const masks = [page.locator(MASK_SELECTOR)];
-      for (const f of frames) {
-        const skipped = await f.frameElement().then((el) => el.evaluate((node, list) => list.some((s) => { try { return node.matches(s); } catch { return false; } }), this.skippedOwners)).catch(() => true);
-        if (skipped) continue;
-        await inPage(f, 'return W.markEmails();').catch(() => {});
+      for (const f of info.included) {
+        await inPage(f, 'return W.markEmails();');
         masks.push(f.locator(MASK_SELECTOR));
       }
-      for (const s of this.skippedOwners) masks.push(page.locator(toLocator(s)));
+      for (const f of info.skipped) masks.push(f.frame.parentFrame().locator(toLocator(f.selector)));
       const vp = page.viewportSize();
       let clip;
       let elBox = null;
@@ -477,7 +492,7 @@ export class Scanner {
         clip = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
         elBox = { x: box.x - x0, y: box.y - y0, w: box.w, h: box.h };
       }
-      const masked = pageCrop ? await this.maskedBoxes(page) : null;
+      const masked = pageCrop ? await this.maskedBoxes(page, info) : null;
       const n = this.run.evidence.length + 1;
       const rel = `evidence/e-${n}.png`;
       const file = path.join(this.work, rel);
@@ -492,10 +507,12 @@ export class Scanner {
     }
   }
 
-  async maskedBoxes(page) {
+  // Boxes of the skipped frames owned by the top document (nested owners sit inside an included
+  // frame and are masked there).
+  async maskedBoxes(page, info) {
     const out = [];
-    for (const s of this.skippedOwners) {
-      const b = await inPage(page, 'const el = W.q(arg); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };', s).catch(() => null);
+    for (const f of info.skipped.filter((x) => x.path && x.path.length === 1)) {
+      const b = await inPage(page, 'const el = W.q(arg); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };', f.selector).catch(() => null);
       if (b) out.push({ kind: 'skipped-frame', ...b });
     }
     return out;

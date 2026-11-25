@@ -19,6 +19,6 @@ export default {
     const after = await inPage(page, CLIPPED);
     const fresh = after.filter((s) => !before.has(s)).slice(0, 10);
     if (!fresh.length) return [{ contributor: 'text-resize', outcome: 'pass' }];
-    return fresh.map((sel) => ({ contributor: 'text-resize', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: sel, cropSelector: sel }));
+    return fresh.map((sel) => ({ contributor: 'text-resize', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: sel }));
   },
 };

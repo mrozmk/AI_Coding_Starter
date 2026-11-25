@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Refusal, assertWork, readRun, writeRun, writeAtomic } from './lib/paths.mjs';
+import { Refusal, assertWork, readRun, writeRun, writeAtomic, reportPaths } from './lib/paths.mjs';
 
 const USAGE = 'usage: audit.mjs doctor [--json] [--launch] | scan --urls-file <f> [--level A|AA] [--wcag 2.2|2.1] [--viewports desktop,mobile] [--max-pages n] [--client public-sector|eaa-service|microenterprise|other|unknown] [--no-llm] [--slug s] | pack --work <dir> --phase probe|judge|disprove | ingest --work <dir> --phase judge|disprove --file <f> | render --work <dir> [--lang <code>]';
 
@@ -85,10 +85,7 @@ async function renderCmd(opts) {
   finalize(run);
   writeRun(work, run);
   const html = render(run, { lang: opts.lang || 'en', siteLang: run.site_lang ?? null, work, legal: loadLegal() });
-  const root = path.dirname(work);
-  const base = path.basename(work);
-  const htmlPath = path.join(root, `${base}.html`);
-  const jsonPath = path.join(root, `${base}.json`);
+  const { html: htmlPath, json: jsonPath } = reportPaths(work);
   writeAtomic(htmlPath, html);
   writeAtomic(jsonPath, `${JSON.stringify(run, null, 2)}\n`);
   releaseLock(work);

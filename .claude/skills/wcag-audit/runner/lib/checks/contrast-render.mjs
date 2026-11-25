@@ -72,7 +72,7 @@ export default {
       measured += 1;
       const threshold = info.large ? 3 : 4.5;
       if (worst < threshold) {
-        out.push({ contributor: 'contrast-render', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: n.selector, cropSelector: n.selector, data: { worst_ratio: Math.round(worst * 100) / 100, threshold } });
+        out.push({ contributor: 'contrast-render', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: n.selector, data: { worst_ratio: Math.round(worst * 100) / 100, threshold } });
       }
     }
     // Nothing sampled: the unit is missing, never a pass.

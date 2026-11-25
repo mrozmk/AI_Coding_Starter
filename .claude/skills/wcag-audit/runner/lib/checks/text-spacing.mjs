@@ -26,7 +26,7 @@ export default {
     const after = await inPage(page, CLIPPED);
     const fresh = after.filter((s) => !before.has(s)).slice(0, 10);
     if (!fresh.length) return [{ contributor: 'text-spacing', outcome: 'pass' }];
-    return fresh.map((sel) => ({ contributor: 'text-spacing', outcome: 'violation', basis: '●', impact: 'serious', selector: sel, cropSelector: sel,
+    return fresh.map((sel) => ({ contributor: 'text-spacing', outcome: 'violation', basis: '●', impact: 'serious', selector: sel,
       steps: ['Apply line-height 1.5, letter-spacing 0.12em, word-spacing 0.16em and paragraph spacing 2em (e.g. with a bookmarklet).', 'The text in this element is cut off.'] }));
   },
 };

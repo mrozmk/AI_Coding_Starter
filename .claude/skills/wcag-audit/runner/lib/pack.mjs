@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Refusal, handoffsRoot, readRun, writeRun, writeAtomic, evidencePath } from './paths.mjs';
+import { Refusal, handoffsRoot, readRun, writeRun, writeAtomic, evidencePath, reportPaths } from './paths.mjs';
 import { KINDS, RULES, SCHEMAS, allowedScFor } from './contract.mjs';
 import { inSet } from './evidence.mjs';
 
@@ -23,8 +23,7 @@ function readJson(p) {
 }
 
 function reportRendered(work) {
-  const root = path.dirname(work);
-  return fs.existsSync(path.join(root, `${path.basename(work)}.html`));
+  return fs.existsSync(reportPaths(work).html);
 }
 
 export function assertLlm(run) {
@@ -137,8 +136,11 @@ export function writePack(work, phase, cwd = process.cwd()) {
     }
     run.model.items = items.map(({ item_id, kind, allowed_sc, evidence_id, page, viewport, state, selector }) => ({ item_id, kind, allowed_sc, evidence_id, page, viewport, state, selector }));
   } else {
+    // Each candidate travels with its own sanitized evidence, so the disprove judge checks the
+    // evidence itself; the first judge's rationale is a separate field, never a substitute.
     const byId = new Map((run.model.items || []).map((i) => [i.item_id, i]));
-    items = run.model.candidates.map((c) => ({ candidate_id: c.candidate_id, item_id: c.item_id, kind: c.kind, sc: c.sc, evidence_id: byId.get(c.item_id)?.evidence_id ?? null, rationale: c.rationale, false_positive_if: c.false_positive_if }));
+    const evidence = new Map(judgeItems(run).map((i) => [i.item_id, i.data]));
+    items = run.model.candidates.map((c) => ({ candidate_id: c.candidate_id, item_id: c.item_id, kind: c.kind, sc: c.sc, evidence_id: byId.get(c.item_id)?.evidence_id ?? null, data: evidence.get(c.item_id) ?? null, rationale: c.rationale, false_positive_if: c.false_positive_if }));
     fpRows = Object.fromEntries([...new Set(items.map((i) => i.kind))].map((k) => [k, KINDS[k]?.false_positive_if ?? []]));
   }
   const crops = cropPaths(work, run, items);

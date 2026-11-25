@@ -32,7 +32,7 @@ export const staticHeuristics = {
       return { creds: creds.length, pasteBlocked, captcha, drags: drags.length, dragNoAlt, moving, movingAny: media.length + infinite.length, forms: forms.map((f) => W.sel(f)), live };
     `);
     const out = [];
-    const flag = (contributor, sel, impact = 'moderate') => out.push({ contributor, outcome: 'needs-review', basis: '◐', impact, selector: sel, cropSelector: sel });
+    const flag = (contributor, sel, impact = 'moderate') => out.push({ contributor, outcome: 'needs-review', basis: '◐', impact, selector: sel });
     if (!r.creds && !r.captcha.length) out.push({ contributor: 'accessible-auth', outcome: 'inapplicable' });
     else if (!r.pasteBlocked.length && !r.captcha.length) out.push({ contributor: 'accessible-auth', outcome: 'pass' });
     else [...r.pasteBlocked, ...r.captcha].slice(0, 5).forEach((s) => flag('accessible-auth', s, 'serious'));
@@ -73,7 +73,7 @@ export const skipLink = {
     await page.waitForTimeout(80);
     const moved = await inPage(page, `const t = document.getElementById(arg); const a = W.deepActive(); return !!t && !!a && a !== document.body && (a === t || t.contains(a));`, info.hash);
     if (moved) return [{ contributor: 'skip-link', outcome: 'pass' }];
-    return [{ contributor: 'skip-link', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: info.link, cropSelector: info.link, data: { reason: 'the skip link does not move focus to its target' },
+    return [{ contributor: 'skip-link', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: info.link, data: { reason: 'the skip link does not move focus to its target' },
       steps: ['Press Tab once to focus the skip link, then Enter.', 'Focus does not move to the main content.'] }];
   },
 };

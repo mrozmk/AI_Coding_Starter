@@ -26,8 +26,7 @@ export default {
       let exception = false;
       for (const el of items) {
         const rect = el.getBoundingClientRect();
-        if (rect.right <= de.clientWidth + 1 || rect.left + rect.width <= 0) continue;
-        if (rect.right < 0) continue;
+        if (rect.right <= de.clientWidth + 1) continue;
         if (rect.left >= de.clientWidth && fixedLayer(el)) continue;
         const sc = scroller(el);
         if (sc) { if (twoD(sc) || el.closest('table, pre')) exception = true; continue; }

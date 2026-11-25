@@ -1,5 +1,7 @@
 // manual.mjs — the manual task list: fixed tasks, one per manual-only criterion in the run's set,
 // and one per needs-review queue item. Each task carries steps and a pass/fail question in en and pl.
+import { STATUS } from './criteria.mjs';
+
 const FIXED = [
   {
     id: 'screen-reader', sc: ['1.3.1', '4.1.2', '2.4.3'],
@@ -53,7 +55,7 @@ export function manualTasks(run) {
   }
   const covered = new Set(tasks.flatMap((t) => t.sc));
   for (const c of run.criteria || []) {
-    if (c.ceiling !== 'manual-only' || c.status === 'n/a' || covered.has(c.id)) continue;
+    if (c.ceiling !== 'manual-only' || c.status === STATUS.NA || covered.has(c.id)) continue;
     tasks.push({
       id: `sc-${c.id}`, sc: [c.id],
       en: { title: `${c.id} ${c.title || ''}`.trim(), steps: ['No automated contributor covers this criterion — evaluate it by hand on the scanned pages.'], question: `Is ${c.id} met on every scanned page and state?` },

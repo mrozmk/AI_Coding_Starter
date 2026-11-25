@@ -75,7 +75,7 @@ export default {
           escStays = (await inside()) && (await inPage(page, `const q = W.q(arg); return !!q && W.visible(q);`, info.container).catch(() => true));
         }
         if (shiftStays && escStays) {
-          out.push({ contributor: 'keyboard-trap', outcome: 'violation', basis: '●', impact: 'blocker', selector: info.container, cropSelector: info.container,
+          out.push({ contributor: 'keyboard-trap', outcome: 'violation', basis: '●', impact: 'blocker', selector: info.container,
             steps: ['Press Tab from the top of the page until focus enters the component.', 'Press Tab and Shift+Tab 10 times each, then Escape.', 'Focus never leaves the component.'] });
         } else {
           out.push({ contributor: 'keyboard-trap', outcome: 'pass' });
@@ -99,7 +99,7 @@ export default {
       return [...native, ...clickable].map((el) => W.sel(el)).filter((s) => !seen.has(s)).slice(0, 10);
     `, visited);
     for (const sel of unreached) {
-      out.push({ contributor: 'keyboard-walk', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: sel, cropSelector: sel,
+      out.push({ contributor: 'keyboard-walk', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: sel,
         steps: ['Press Tab repeatedly from the top of the page through one full cycle.', 'This element never receives focus.'] });
     }
     if (!unreached.length) out.push({ contributor: 'keyboard-walk', outcome: visited.length ? 'pass' : 'inapplicable' });

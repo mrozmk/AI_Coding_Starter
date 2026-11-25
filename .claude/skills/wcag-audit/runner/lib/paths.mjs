@@ -102,6 +102,12 @@ export function evidencePath(work, rel) {
   return p;
 }
 
+// The rendered report sits next to its run directory: <work>.html and <work>.json.
+export function reportPaths(work) {
+  const base = path.join(path.dirname(work), path.basename(work));
+  return { html: `${base}.html`, json: `${base}.json` };
+}
+
 export function writeAtomic(file, text) {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, text);

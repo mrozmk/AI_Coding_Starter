@@ -6,7 +6,7 @@ source"; flip it only after reading the official text.
 
 | Fact id | Source | Supports | Verified |
 |---|---|---|---|
-| `wcag22-rec` | https://www.w3.org/WAI/standards-guidelines/wcag/ · https://www.iso.org/standard/91029.html | WCAG 2.2 Rec 2023-10-05, updated 2024-12-12; ISO/IEC 40500:2025; WCAG 3.0 WD | 2026-11-25 |
+| `wcag22-rec` | https://www.w3.org/TR/WCAG22/ · https://www.w3.org/TR/wcag-3.0/ · https://www.iso.org/standard/91029.html | WCAG 2.2 Rec 2023-10-05, updated 2024-12-12; ISO/IEC 40500:2025; WCAG 3.0 WD | 2026-11-25 |
 | `en301549-v411` | https://www.etsi.org/deliver/etsi_en/301500_301599/301549/04.01.01_60/en_301549v040101p.pdf | V4.1.1 adoption, announcement, normative WCAG 2.2 reference, Annex ZA/ZB; no OJ citation found | 2026-11-25 |
 | `en301549-beyond-wcag` | same ETSI PDF | clauses 4, 5.2–5.4, 6, 7, 9.7, 11, 12, 13 | 2026-11-25 |
 | `en301549-v321-wad` | https://eur-lex.europa.eu/eli/dec_impl/2021/1339/oj | V3.2.1 under the Web Accessibility Directive | 2026-11-25 |

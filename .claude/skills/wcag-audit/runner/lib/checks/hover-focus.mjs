@@ -27,7 +27,7 @@ export default {
       await page.waitForTimeout(60);
       const still = new Set(await inPage(page, VISIBLE_SET));
       if (shown.some((s) => still.has(s))) {
-        out.push({ contributor: 'hover-focus', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: t.sel, cropSelector: t.sel, data: { shown: shown.length } });
+        out.push({ contributor: 'hover-focus', outcome: 'needs-review', basis: '◐', impact: 'moderate', selector: t.sel, data: { shown: shown.length } });
       }
       await page.mouse.move(1, 1);
     }

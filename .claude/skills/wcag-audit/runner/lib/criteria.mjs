@@ -112,4 +112,13 @@ export function axeRuleSc(axe, ruleId, { wcag = '2.2', level = 'AA' } = {}) {
 }
 
 // The 4.1.1 status in a 2.1 run: obsolete per the W3C 2.1 errata.
-export const OBSOLETE_411 = 'obsolete — W3C 2.1 errata: always satisfied for HTML/XML';
+// Per-criterion statuses (a leaf module, so evidence.mjs, manual.mjs and render.mjs share one enum).
+export const STATUS = {
+  FAILS: 'fails',
+  SUSPECTED: 'suspected',
+  NA: 'n/a',
+  NO_FAILURE: 'no automated failure found',
+  NOT_TESTED: 'not tested',
+};
+
+export const OBSOLETE_411 ='obsolete — W3C 2.1 errata: always satisfied for HTML/XML';

@@ -1,17 +1,11 @@
 // evidence.mjs — the finding model, planned units, per-criterion status and the verdict. finalize()
 // is the only place that derives criteria, findings, barriers, manual tasks, the needs-review queue
 // and the verdict; it reads only the persisted units, observations and published model items.
-import { criteriaFor, criterionById, OBSOLETE_411 } from './criteria.mjs';
+import { criteriaFor, criterionById, OBSOLETE_411, STATUS } from './criteria.mjs';
 import { merge, barriers as clusterBarriers, fingerprint, nodeKey } from './cluster.mjs';
 import { manualTasks } from './manual.mjs';
 
-export const STATUS = {
-  FAILS: 'fails',
-  SUSPECTED: 'suspected',
-  NA: 'n/a',
-  NO_FAILURE: 'no automated failure found',
-  NOT_TESTED: 'not tested',
-};
+export { STATUS };
 
 export function newRun({ urls, viewports, wcag = '2.2', level = 'AA', client = 'unknown', llm = true, tool = {} }) {
   return {
@@ -101,14 +95,13 @@ export function missUnits(run, sel, reason) {
   for (const u of units(run, sel)) if (u.status !== 'completed') { u.status = 'missing'; u.reason = reason; }
 }
 
-let obsSeq = 0;
 // Observation: {source, contributor, sc[], outcome, basis, impact, page, viewport, state, selector, frame,
 // shadow, evidence_ids[], data, ancestor, remediation_key, steps[]}. SC outside the run's set is dropped.
 export function addObservation(run, o) {
   const sc = inSet(run, o.sc);
   if (!sc.length) return null;
   const contributor = `${o.source}:${o.contributor}`;
-  const id = `o${run.observations.length + 1}-${(obsSeq += 1)}`;
+  const id = `o${run.observations.length + 1}`;
   const obs = {
     id,
     source: o.source,

@@ -35,7 +35,7 @@ export default {
         if (after.active !== before.active || after.desc !== before.desc) { moved = true; break; }
       }
       if (!moved) {
-        out.push({ contributor: 'arrow-widgets', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: sel, cropSelector: sel,
+        out.push({ contributor: 'arrow-widgets', outcome: 'needs-review', basis: '◐', impact: 'serious', selector: sel,
           steps: ['Focus the widget with Tab.', 'Press ArrowRight and ArrowDown: neither focus nor the active descendant moves.'] });
       }
     }
