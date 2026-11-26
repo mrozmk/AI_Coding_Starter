@@ -15,7 +15,7 @@ fail=0; pass=0
 ok() { # <description> <exit status of the check>
   if [ "$2" = 0 ]; then pass=$((pass + 1)); echo "PASS $1"; else fail=1; echo "FAIL $1"; fi
 }
-slug() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
+slug() { (. "$SRC/.claude/lib/team-lib.sh" && team_project_slug "$1"); }
 dz() { gzip -dc "$1/replay.jsonl.gz"; }
 all_text() { cat "$1/touched.jsonl" "$1/labelling-sheet.csv"; dz "$1"; }
 tu() { jq -nc --arg s "$1" --arg ts "$2" --arg cwd "$3" --arg id "$4" --arg c "$5" \

@@ -24,14 +24,14 @@ sys.path.insert(0, HERE)
 import touches  # noqa: E402
 
 STAGE_ROLES = ("planner", "coder", "qa", "wrapup", "cli")
-REPLAY_TOOLS = ("Bash", "WebFetch")
+# The replayed tools and the tool_input field the guard reads for each.
+REPLAY_FIELD = {"Bash": "command", "WebFetch": "url"}
 REQUIRED = ("transcripts", "asks", "decisions", "touch-logs", "guard-corpus", "policy")
 CORPUS_FILES = ("touched.jsonl", "replay.jsonl.gz", "policy.json")
 TMP_ROOTS = ("/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/")
 POLICY_PREFIXES = ("Bash(gh", "Bash(python3", "WebFetch(domain:")
 SHEET = ("intervention", "ids", "source", "project", "ctx", "tool", "exact", "observed", "evidence",
          "input", "label", "note")
-ASK_NAME = re.compile(r"^a-\d+\.json$")
 DEC_NAME = re.compile(r"^d-\d+\.md$")
 SIDE = re.compile(r"^(a-\d+)\.answer(\.rejected-[0-9-]+)?\.json$")
 CHUNK = 1 << 20
@@ -55,13 +55,12 @@ def under(path, root):
     return isinstance(path, str) and bool(root) and (path == root or path.startswith(root.rstrip("/") + "/"))
 
 
+CTX = dict({r: "stage" for r in STAGE_ROLES}, TeamLead="teamlead", lead="teamlead", **{"-": "teamlead"},
+           Supervisor="supervisor", Advisor="advisor", solo="solo")
+
+
 def ctx_of(role):
-    r = str(role or "")
-    if r in STAGE_ROLES:
-        return "stage"
-    if r in ("TeamLead", "lead", "-", ""):
-        return "teamlead" if r else "unknown"
-    return {"Supervisor": "supervisor", "Advisor": "advisor", "solo": "solo"}.get(r, "unknown")
+    return CTX.get(str(role or ""), "unknown")
 
 
 def boundary(prefix):
@@ -84,7 +83,7 @@ class Acq:
     def _open(self, r, path):
         r["files_discovered"] += 1
         try:
-            f = os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC), "rb")
+            f = os.fdopen(os.open(path, touches.READ_FLAGS), "rb")
         except FileNotFoundError:
             r["skipped"].append({"path": path, "why": "vanished"})
             return None, 0
@@ -167,7 +166,8 @@ class Sources:
     def __init__(self, path):
         with open(path, encoding="utf-8") as fh:
             s = json.load(fh)
-        ex = lambda p: os.path.expanduser(p) if isinstance(p, str) else p  # noqa: E731
+        def ex(p):
+            return os.path.expanduser(p) if isinstance(p, str) else p
         self.checkouts = [dict(c, path=os.path.realpath(ex(c["path"]))) for c in s.get("checkouts", [])]
         self.former = {ex(k).rstrip("/"): os.path.realpath(ex(v)) for k, v in (s.get("former_paths") or {}).items()}
         self.transcripts = [dict(t, dir=ex(t["dir"])) for t in s.get("transcript_roots", [])]
@@ -248,8 +248,8 @@ def frontmatter(text):
 
 
 def masked_text(tool, ti):
-    v = ti.get("command") if tool == "Bash" else ti.get("url")
-    return touches._mask_value(v) if isinstance(v, str) else None
+    v = ti.get(REPLAY_FIELD[tool])
+    return touches.mask_value(v) if isinstance(v, str) else None
 
 
 class Builder:
@@ -257,7 +257,7 @@ class Builder:
         self.src, self.out, self.acq = src, out, Acq()
         self.touched, self.calls, self.session_roles = [], [], {}
         self.counts = {"touch_block_rows": 0}
-        self.ev = None
+        self.ev, self.policy = None, None
 
     # ---- readers ------------------------------------------------------------------------------
     def read_transcripts(self):
@@ -293,7 +293,7 @@ class Builder:
                 continue
             for item in c:
                 if not (isinstance(item, dict) and item.get("type") == "tool_use"
-                        and item.get("name") in REPLAY_TOOLS and isinstance(item.get("input"), dict)):
+                        and item.get("name") in REPLAY_FIELD and isinstance(item.get("input"), dict)):
                     continue
                 cwd = e.get("cwd") if isinstance(e.get("cwd"), str) else ""
                 home = home or (cwd if co is None else None)
@@ -311,23 +311,23 @@ class Builder:
             req = not co.get("removed")
             ra, rd = self.acq.root(td, "asks", required=req), self.acq.root(td, "decisions", required=req)
             ra["sessions"] = 0
+            # (run dir, its team dir, the archive entry name or None): an archived run's ticket is
+            # its archive entry's prefix (team-next.sh: archive/<ticket>-<UTC>/).
             runs = []
-            for base, arch in ((os.path.join(td, "runs"), None), (os.path.join(td, "archive"), True)):
-                if not os.path.isdir(base):
-                    continue
-                if arch:
-                    for a in sorted(os.listdir(base)):
-                        rr = os.path.join(base, a, "runs")
-                        if os.path.isdir(rr):
-                            runs += [(os.path.join(rr, n), os.path.join(base, a)) for n in sorted(os.listdir(rr))]
-                else:
-                    runs += [(os.path.join(base, n), td) for n in sorted(os.listdir(base))]
-            for rdir, tdir in runs:
+            live, arch = os.path.join(td, "runs"), os.path.join(td, "archive")
+            if os.path.isdir(live):
+                runs += [(os.path.join(live, n), td, None) for n in sorted(os.listdir(live))]
+            if os.path.isdir(arch):
+                for a in sorted(os.listdir(arch)):
+                    rr = os.path.join(arch, a, "runs")
+                    if os.path.isdir(rr):
+                        runs += [(os.path.join(rr, n), os.path.join(arch, a), a) for n in sorted(os.listdir(rr))]
+            for rdir, tdir, archive in runs:
                 if os.path.isdir(rdir):
-                    self.read_run(co, rdir, tdir, ra, rd, asks, decs)
+                    self.read_run(co, rdir, tdir, archive, ra, rd, asks, decs)
         return asks, decs
 
-    def read_run(self, co, rdir, tdir, ra, rd, asks, decs):
+    def read_run(self, co, rdir, tdir, archive, ra, rd, asks, decs):
         run = os.path.basename(rdir)
         tj = {}
         try:
@@ -336,7 +336,7 @@ class Builder:
         except (OSError, ValueError):
             pass
         team = run.split("-", 1)[0]
-        ticket = str(tj.get("ticket") or (os.path.basename(tdir).split("-", 1)[0] if tdir.endswith(tuple("0123456789Z")) else "?"))
+        ticket = str(tj.get("ticket") or (archive.split("-", 1)[0] if archive else "?"))
         dirs = [rdir] + [os.path.join(rdir, n) for n in sorted(os.listdir(rdir)) if re.match(r"^r\d+$", n)]
         for d in dirs:
             for n in sorted(os.listdir(d)):
@@ -358,7 +358,7 @@ class Builder:
                         except ValueError:
                             ra["parse_errors"] += 1
                 for n in sorted(os.listdir(ad)):
-                    if ASK_NAME.match(n):
+                    if touches.ASK_RE.match(n):
                         data = self.acq.read(ra, os.path.join(ad, n))
                         try:
                             a = json.loads(data or b"null")
@@ -366,7 +366,7 @@ class Builder:
                             ra["parse_errors"] += 1
                             continue
                         if isinstance(a, dict):
-                            asks.append(self.ask_record(co, run, team, ticket, n[:-5], a, side.get(n[:-5], [])))
+                            asks.append(self.ask_record(co, run, n[:-5], a, side.get(n[:-5], [])))
             if os.path.isdir(dd):
                 for n in sorted(os.listdir(dd)):
                     if DEC_NAME.match(n):
@@ -374,7 +374,7 @@ class Builder:
                         if data is not None:
                             decs.append(self.dec_record(co, run, team, ticket, n[:-3], data.decode("utf-8", "replace")))
 
-    def ask_record(self, co, run, team, ticket, aid, a, side):
+    def ask_record(self, co, run, aid, a, side):
         p = a.get("payload") if isinstance(a.get("payload"), dict) else {}
         tool, ti = p.get("tool_name"), p.get("tool_input") if isinstance(p.get("tool_input"), dict) else {}
         good = [s for rej, s in side if not rej and isinstance(s, dict)]
@@ -392,7 +392,7 @@ class Builder:
         if a.get("kind") == "permission" and isinstance(tool, str) and tool:
             self.set_input(rec, tool, ti, p.get("cwd"), co, None)
         else:
-            rec["input"] = {"text": touches._mask_value(p.get("text") or "")} if p.get("text") else {}
+            rec["input"] = {"text": touches.mask_value(p.get("text") or "")} if p.get("text") else {}
         return rec
 
     def dec_record(self, co, run, team, ticket, did, text):
@@ -404,8 +404,8 @@ class Builder:
         rec = self.record("decision", "%s/%s/%s" % (os.path.basename(co["path"]), run, did),
                           fm.get("answered_at") or fm.get("created_at") or "", co.get("project"),
                           "TeamLead" if stage in ("-", "") else stage, None)
-        rec.update(observed=observed, prompted=True, input={"text": touches._mask_value(q)},
-                   evidence={k: touches._mask_value(fm[k]) for k in ("touch_reason", "answer_outcome", "answer_value", "gate")
+        rec.update(observed=observed, prompted=True, input={"text": touches.mask_value(q)},
+                   evidence={k: touches.mask_value(fm[k]) for k in ("touch_reason", "answer_outcome", "answer_value", "gate")
                              if fm.get(k)},
                    _run=(co["path"], run), _bind=fm.get("bind_ask"), _gate=fm.get("gate"),
                    _where="team %s / %s / %s" % (team, ticket, "TeamLead" if stage in ("-", "") else stage), _q=q)
@@ -444,8 +444,8 @@ class Builder:
         if not role or (role == "solo" and not inp):
             rec["ctx"] = "unknown"
         rec.update(observed="operator", prompted=True,
-                   evidence={"reason": e["reason"], "kind": e["kind"], "what": touches._mask_value(e["what"]),
-                             "answer": touches._mask_value(e["answer"])},
+                   evidence={"reason": e["reason"], "kind": e["kind"], "what": touches.mask_value(e["what"]),
+                             "answer": touches.mask_value(e["answer"])},
                    _row=e, join="none")
         if inp:
             ti = {k: v for k, v in (inp.get("fields") or {}).items() if isinstance(v, str)}
@@ -466,7 +466,7 @@ class Builder:
                 if "Operator" in line:
                     rec = self.record("teamlead-log", "%s:teamlead-log.md:%d" % (t.get("project") or "?", no), "",
                                       t.get("project"), "TeamLead", None)
-                    rec.update(input={"text": touches._mask_value(line)}, observed="unknown", prompted=True)
+                    rec.update(input={"text": touches.mask_value(line)}, observed="unknown", prompted=True)
                     out.append(rec)
         return out
 
@@ -480,7 +480,7 @@ class Builder:
                 continue
             rec = self.record("guard-corpus", "guard-corpus.txt:%d" % no, "", "fixture", "Supervisor", "Bash")
             rec.update(prompted=False, observed="unknown", evidence={"expected": want}, fixture="guard-corpus",
-                       _orig={"command": cmd}, input={"tool_input": {"command": touches._mask_value(cmd)}, "cwd": ""},
+                       _orig={"command": cmd}, input={"tool_input": {"command": touches.mask_value(cmd)}, "cwd": ""},
                        exact=True, replayable=True, cwd_class="main", cwd_rel=".", paths=[])
             out.append(rec)
         return out
@@ -505,7 +505,7 @@ class Builder:
 
     def set_input(self, rec, tool, ti, cwd, co, home):
         rec["_orig"] = ti
-        rec["input"] = {"tool_input": touches.mask_obj(ti), "cwd": touches._mask_value(cwd) if isinstance(cwd, str) else ""}
+        rec["input"] = {"tool_input": touches.mask_obj(ti), "cwd": touches.mask_value(cwd) if isinstance(cwd, str) else ""}
         rec.update(exact=True, replayable=True, tool=tool)
         rec.update(zip(("cwd_class", "cwd_rel", "paths"), place(self.src, cwd, co, home)))
         if rec["ctx"] == "stage" and foreign(self.src, json.dumps(ti, ensure_ascii=False), rec["paths"]):
@@ -585,18 +585,17 @@ class Builder:
     def evaluator(self):
         if self.ev is None:
             import prompt_replay
-            self.ev = prompt_replay.Evaluator(os.path.dirname(os.path.dirname(HERE)), self.policy_file,
+            self.ev = prompt_replay.Evaluator(os.path.dirname(os.path.dirname(HERE)), self.policy,
                                               tempfile.mkdtemp(prefix="replay-build-"))
         return self.ev
 
-    def fidelity(self, rec, ti_orig, ti_masked, ctx, occ):
-        """Mark rec modeled when masking changes the decision under today's implementation."""
+    def masking_changes_decision(self, tool, prompted, ctx, occ, ti_orig, ti_masked):
+        """True when masking changes the decision under today's implementation."""
         if json.dumps(ti_orig, sort_keys=True) == json.dumps(ti_masked, sort_keys=True):
-            return
+            return False
         ev = self.evaluator()
-        job = dict(occ, tool=rec["tool"], ctx=ctx, prompted=rec.get("prompted", False))
-        if ev.evaluate(dict(job, input=ti_orig))["decision"] != ev.evaluate(dict(job, input=ti_masked))["decision"]:
-            rec.update(modeled=True, modeled_why="masking changed the guard verdict")
+        job = dict(occ, tool=tool, ctx=ctx, prompted=prompted)
+        return ev.evaluate(dict(job, input=ti_orig))["decision"] != ev.evaluate(dict(job, input=ti_masked))["decision"]
 
     # ---- the two layers -----------------------------------------------------------------------
     def replay_layer(self):
@@ -613,15 +612,14 @@ class Builder:
             g = groups.setdefault(key, {"refs": [], "occ": {}})
             g["refs"].append(c["ref"])
             g["occ"][occ] = g["occ"].get(occ, 0) + 1
-            orig = c["ti"].get("command" if c["tool"] == "Bash" else "url")
+            orig = c["ti"].get(REPLAY_FIELD[c["tool"]])
             if orig != text:
                 origs.setdefault((key, occ), set()).add(orig)
         out = []
         for (tool, text), g in groups.items():
+            fld = REPLAY_FIELD[tool]
             rec = {"id": "r-" + sha1("transcript\n%s\n%s" % (tool, text)), "source": "transcript", "tool": tool,
-                   "input": {"tool_input": {"command" if tool == "Bash" else "url": text}},
-                   "refs": sorted(g["refs"]), "occurrences": []}
-            fld = "command" if tool == "Bash" else "url"
+                   "input": {"tool_input": {fld: text}}, "refs": sorted(g["refs"]), "occurrences": []}
             for occ, n in sorted(g["occ"].items()):
                 o = dict(zip(("ctx", "project", "checkout", "cwd_class", "cwd_rel"), occ[:5]),
                          paths=[list(p) for p in occ[5]], count=n)
@@ -632,20 +630,23 @@ class Builder:
                 for orig in sorted(origs.get(((tool, text), occ), ())):
                     if o.get("modeled"):
                         break
-                    probe = {"tool": tool}
-                    self.fidelity(probe, {fld: orig}, {fld: text}, o["ctx"], o)
-                    if probe.get("modeled"):
-                        o.update(modeled=True, modeled_why=probe["modeled_why"])
+                    if self.masking_changes_decision(tool, False, o["ctx"], o, {fld: orig}, {fld: text}):
+                        o.update(modeled=True, modeled_why="masking changed the guard verdict")
                 rec["occurrences"].append(o)
             out.append(rec)
         return sorted(out, key=lambda r: r["id"])
 
     def build(self):
         os.makedirs(self.out, exist_ok=True)
-        policy = self.read_policy()
-        self.policy_file = os.path.join(tempfile.mkdtemp(prefix="replay-policy-"), "policy.json")
-        with open(self.policy_file, "w", encoding="utf-8") as fh:
-            json.dump(policy, fh)
+        self.policy = self.read_policy()
+        try:
+            self.collect()
+        finally:
+            if self.ev:
+                shutil.rmtree(self.ev.tmp, ignore_errors=True)
+        return 0
+
+    def collect(self):
         self.read_transcripts()
         asks, decs = self.read_runs()
         rows = self.read_touch_logs()
@@ -655,8 +656,9 @@ class Builder:
         self.join_rows(rows, linked)
         recs = asks + decs + rows + tl + gc
         for r in recs:
-            if r.get("replayable") and not r.get("modeled") and "_orig" in r:
-                self.fidelity(r, r["_orig"], r["input"].get("tool_input", {}), r["ctx"], r)
+            if r.get("replayable") and not r.get("modeled") and "_orig" in r and self.masking_changes_decision(
+                    r["tool"], r.get("prompted", False), r["ctx"], r, r["_orig"], r["input"].get("tool_input", {})):
+                r.update(modeled=True, modeled_why="masking changed the guard verdict")
         groups = {}
         for r in recs:
             groups.setdefault(find(r["id"]), []).append(r)
@@ -668,14 +670,12 @@ class Builder:
         clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in recs]
         clean.sort(key=lambda r: r["id"])
         replay = self.replay_layer()
-        self.write(clean, replay, policy)
-        for d in [os.path.dirname(self.policy_file)] + ([self.ev.tmp] if self.ev else []):
-            shutil.rmtree(d, ignore_errors=True)
-        return 0
+        self.write(clean, replay, self.policy)
 
     # ---- writers ------------------------------------------------------------------------------
     def write(self, recs, replay, policy):
-        p = lambda n: os.path.join(self.out, n)  # noqa: E731
+        def p(n):
+            return os.path.join(self.out, n)
         with open(p("touched.jsonl"), "w", encoding="utf-8") as fh:
             for r in recs:
                 fh.write(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n")
@@ -688,7 +688,7 @@ class Builder:
         write_sheet(self.out, recs)
         m = {"files": {n: file_sha(p(n)) for n in CORPUS_FILES}, "roots": self.acq.roots,
              "families": {}, "cutoff": self.src.cutoff or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-             "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "builder_rev": builder_rev(),
+             "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "builder_rev": rev(HERE),
              "counts": dict(self.counts, touched=len(recs), interventions=len({r["intervention"] for r in recs}),
                             replay_unique=len(replay), replay_calls=len(self.calls),
                             by_source={s: sum(r["source"] == s for r in recs) for s in sorted({r["source"] for r in recs})})}
@@ -703,24 +703,40 @@ class Builder:
             fh.write("\n")
 
 
+SOURCE_RANK = {"ask": 0, "touch": 1, "decision": 2, "guard-corpus": 3, "teamlead-log": 4}
+
+
+def members_sorted(ms):
+    """An intervention's members in representative order: by source rank, then id."""
+    return sorted(ms, key=lambda r: (SOURCE_RANK.get(r["source"], 9), r["id"]))
+
+
+def representative(ms):
+    """The replayed member of a sorted intervention: the first replayable one, else None."""
+    return next((m for m in ms if m.get("replayable")), None)
+
+
+def observed(ms):
+    """Who acted on a sorted intervention: the first member that knows, else unknown."""
+    return next((m["observed"] for m in ms if m["observed"] != "unknown"), "unknown")
+
+
 def write_sheet(out, recs):
     """One row per intervention; label and note empty — the Advisors fill a separate file."""
     by = {}
     for r in recs:
         by.setdefault(r["intervention"], []).append(r)
-    rank = {"ask": 0, "touch": 1, "decision": 2, "guard-corpus": 3, "teamlead-log": 4}
     with open(os.path.join(out, "labelling-sheet.csv"), "w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(SHEET)
         for iid in sorted(by):
-            ms = sorted(by[iid], key=lambda r: (rank.get(r["source"], 9), r["id"]))
-            rep = next((m for m in ms if m.get("replayable")), ms[0])
+            ms = members_sorted(by[iid])
+            rep = representative(ms) or ms[0]
             ti = rep["input"].get("tool_input")
             text = ti.get("command") or ti.get("url") or json.dumps(ti, ensure_ascii=False, sort_keys=True) \
                 if isinstance(ti, dict) else rep["input"].get("text", "")
             w.writerow([iid, " ".join(m["id"] for m in ms), "+".join(sorted({m["source"] for m in ms})), rep["project"],
-                        rep["ctx"], rep["tool"], str(rep["exact"]).lower(),
-                        next((m["observed"] for m in ms if m["observed"] not in ("unknown",)), "unknown"),
+                        rep["ctx"], rep["tool"], str(rep["exact"]).lower(), observed(ms),
                         json.dumps({m["id"]: m["evidence"] for m in ms}, ensure_ascii=False, sort_keys=True), text, "", ""])
 
 
@@ -732,9 +748,10 @@ def file_sha(path):
     return h.hexdigest()
 
 
-def builder_rev():
+def rev(root):
+    """`git rev-parse HEAD` of root; "" when git cannot tell."""
     try:
-        return subprocess.run(["git", "-C", HERE, "rev-parse", "HEAD"], stdout=subprocess.PIPE,
+        return subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, text=True, timeout=10).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""

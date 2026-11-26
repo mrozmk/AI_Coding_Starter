@@ -32,7 +32,7 @@ _BEARER = re.compile(r"\b(Bearer\s+)\S+", re.I)
 # The known-format tokens of hooks/lib/leak-patterns.sh, prefix kept and length relaxed: a token
 # cut by an upstream truncation is still masked.
 _HIGH = re.compile(
-    r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*|(?:AKIA|ASIA)[0-9A-Z]{4,}|gh[pousr]_[0-9A-Za-z]{4,}|github_pat_[0-9A-Za-z_]{4,}"
+    r"(?:AKIA|ASIA)[0-9A-Z]{4,}|gh[pousr]_[0-9A-Za-z]{4,}|github_pat_[0-9A-Za-z_]{4,}"
     r"|xox[baprs]-[0-9A-Za-z-]{4,}|xapp-[0-9A-Za-z-]{4,}|glpat-[0-9A-Za-z_-]{4,}|AIza[0-9A-Za-z_-]{4,}"
     r"|sk-(?:ant|proj)-[0-9A-Za-z_-]{4,}|(?:sk|rk)_live_[0-9A-Za-z]{4,}|shp(?:at|ss)_[0-9a-fA-F]{4,}|SG\.[0-9A-Za-z_.-]{4,}"
     r"|ATATT[0-9A-Za-z_=.-]{4,}|npm_[0-9A-Za-z]{4,}|eyJ[0-9A-Za-z_-]{4,}(?:\.[0-9A-Za-z_-]*){0,2}|SK[0-9a-f]{32}"
@@ -40,21 +40,27 @@ _HIGH = re.compile(
 
 # A private-key block to its END line, or to the end of a value cut upstream.
 _PEM = re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----(?:.*?-----END[A-Z ]*PRIVATE KEY-----|.*\Z)", re.S)
-_AUTHZ = re.compile(r"((?:Proxy-)?Authorization\s*:\s*|Cookie\s*:\s*)[^\r\n\"';|&]+", re.I)
-# Scoped to curl: a bare `-u` is also `git push -u origin`.
-_CURLU = re.compile(r"(\bcurl\b[^\n|;&]*?\s(?:-u|--user)(?:\s+|=))(%s|\S+)" % _Q)
+# A header value, also JSON-quoted ("Authorization": "…"); Authorization stops at a shell
+# separator, a Cookie value holds `;` between its pairs.
+_AUTHZ = re.compile(r"""((?:Proxy-)?Authorization["']?\s*:\s*["']?)[^\r\n"';|&]+""", re.I)
+_COOKIE = re.compile(r"""(Cookie["']?\s*:\s*["']?)[^\r\n"'|&]+""", re.I)
+# Scoped to curl: a bare `-u` is also `git push -u origin`; a short-flag cluster (-su) or an
+# attached value (-uX:Y) is still the user flag.
+_CURLU = re.compile(r"(\bcurl\b[^\n|;&]*?\s(?:-[A-Za-z]*?u\s*|--user(?:\s+|=)))(%s|\S+)" % _Q)
 _USERINFO = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@")
-# Never an scp-like remote (git@host:path): the egress guard reads its host.
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b(?![A-Za-z0-9.-]*:)")
+# Never an scp-like remote (git@host:path): the egress guard reads its host. The lookbehind starts
+# the local part only at a run's start (linear on a long run, not quadratic).
+_EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b"
+                    r"(?![A-Za-z0-9.-]*:)")
 _SECRET_KEY = re.compile(r"[A-Za-z0-9_-]*(?:%s)|(?:proxy-)?authorization|cookie" % _KEY, re.I)
 FIELDS = ("command", "url", "file_path", "path", "notebook_path", "skill", "pattern")
 
 def _mask(s):
     s = _LABELLED.sub(lambda m: m.group(1) + m.group(2) + m.group(1) + m.group(3) + "***", _PEM.sub("***", s))
-    s = _USERINFO.sub(r"\1***@", _CURLU.sub(r"\1***", _AUTHZ.sub(r"\1***", s)))
+    s = _USERINFO.sub(r"\1***@", _CURLU.sub(r"\1***", _COOKIE.sub(r"\1***", _AUTHZ.sub(r"\1***", s))))
     return _HIGH.sub("***", _BEARER.sub(r"\1***", _FLAGS.sub(r"\1\2***", _EMAIL.sub("***@***", s))))
 
-def _mask_value(v):
+def mask_value(v):
     """The masked full value: newlines and tabs kept, other control characters as spaces, no cap."""
     return _mask(re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", str(v)))
 
@@ -66,7 +72,7 @@ def mask_obj(o, key=None):
         return [mask_obj(v, key) for v in o]
     if key is not None and o is not None and _SECRET_KEY.fullmatch(str(key)):
         return "***"
-    return _mask_value(o) if isinstance(o, str) else o
+    return mask_value(o) if isinstance(o, str) else o
 
 def _clean(s, cap=200):
     return re.sub(r" {2,}", " ", _mask(re.sub(r"[\x00-\x1f\x7f]", " ", str(s)))).strip()[:cap]
@@ -120,7 +126,8 @@ def resolve_main(explicit, cwd, redirects=True):
     return os.path.realpath(os.path.dirname(common) if common and common.endswith("/.git") else top)
 
 def _team(project, session_id):
-    """(team.json, session.json, is the lead's session) of project's repository; None outside a clone."""
+    """(team, ticket, role) of the session in project's repository: the lead's from team.json, a
+    stage's from session.json; None outside a clone or with neither."""
     td = os.path.join(_git_out(project, "rev-parse", "--show-toplevel") or project, ".agents/team")
     if not os.path.isfile(os.path.join(td, "team.json")):
         return None
@@ -128,34 +135,33 @@ def _team(project, session_id):
     sj = _json(os.path.join(td, "session.json"))
     run = (_read_regular(os.path.join(td, "run")) or b"").decode("utf-8", "replace").strip()
     lead = bool(session_id and session_id == tl.get("session_id") and tl.get("run") and tl.get("run") == run)
-    return tj, sj, lead or (not sj and os.environ.get("TEAM_SESSION_ROLE") == "TeamLead")
+    if lead or (not sj and os.environ.get("TEAM_SESSION_ROLE") == "TeamLead"):
+        return tj.get("team", "?"), tj.get("ticket", "?"), "TeamLead"
+    return (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?")) if sj else None
 
 def default_where(main, project, cwd, session_id):
     """Team files come from project's repository; cwd only names the solo path."""
     t = _team(project, session_id)
-    if t and (t[2] or t[1]):
-        tj, sj, lead = t
-        if lead:
-            return "team %s / %s / TeamLead" % (tj.get("team", "?"), tj.get("ticket", "?"))
-        return "team %s / %s / %s" % (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?"))
+    if t:
+        return "team %s / %s / %s" % t
     rel = os.path.relpath(os.path.realpath(cwd), os.path.realpath(main))
     return "solo " + ("?" if rel.startswith("..") else rel)
 
 def _role(project, session_id):
     """The role of input: like default_where, else $TEAM_SESSION_ROLE, else solo."""
     t = _team(project, session_id)
-    if t and (t[2] or t[1]):
-        return "TeamLead" if t[2] else _ident(t[1].get("role")) or "?"
+    if t:
+        return _ident(t[2]) or "?"
     return _ident(os.environ.get("TEAM_SESSION_ROLE")) or "solo"
 
 def make_input(tool, tool_input, cwd, role, session):
     """The masked projection of a tool call the guard and the tier read; key names for the rest."""
     ti = tool_input if isinstance(tool_input, dict) else {}
     out = {"tool": _clean(tool or "", 100),
-           "fields": {k: _mask_value(ti[k]) for k in FIELDS if isinstance(ti.get(k), str)}}
+           "fields": {k: mask_value(ti[k]) for k in FIELDS if isinstance(ti.get(k), str)}}
     if any(k not in out["fields"] for k in ti):
         out["keys"] = sorted(str(k) for k in ti)
-    out.update(cwd=_mask_value(cwd) if isinstance(cwd, str) else "", role=_ident(role), session=_ident(session))
+    out.update(cwd=mask_value(cwd) if isinstance(cwd, str) else "", role=_ident(role), session=_ident(session))
     return out
 
 def make_entry(kind, what, reason, answer="", wait_s=None, where=""):
@@ -185,7 +191,7 @@ def _line(entry):
             line = _encode(entry)
     if len(line) > LINE_MAX:
         entry.update((k, entry[k][:60]) for k in ("where", "what", "answer"))
-        line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+        line = _encode(entry)
     return line if len(line) <= LINE_MAX else None
 
 def _err(msg, rc):

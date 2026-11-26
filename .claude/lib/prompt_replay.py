@@ -8,7 +8,6 @@ whose raw decision (guard reason, tier, class, cause) or mapped outcome differs.
 import argparse
 import csv
 import gzip
-import hashlib
 import json
 import os
 import re
@@ -47,7 +46,7 @@ def _write(path, data):
 class Evaluator:
     """Today's decision of one implementation root for one replay job, in temp fixtures."""
 
-    def __init__(self, root, policy_path, tmp, ctx_override=None):
+    def __init__(self, root, policy, tmp, ctx_override=None):
         self.root, self.tmp, self.ctx_override = os.path.realpath(root), os.path.realpath(tmp), ctx_override
         for p in (os.path.join(self.root, ".claude", "lib"), os.path.join(self.root, ".claude", "hooks", "lib")):
             sys.path.insert(0, p)
@@ -60,8 +59,6 @@ class Evaluator:
         # The retry key is delivery state that opens files the input names; not part of a decision.
         team_prompt_authority.retry_key = lambda *a, **k: None
         self.g, self.a, self.c = guard_team_egress, team_prompt_authority, team_prompt_check
-        with open(policy_path, encoding="utf-8") as fh:
-            policy = json.load(fh)
         self.fx = self.fixtures(policy)
 
     def fixtures(self, policy):
@@ -134,15 +131,16 @@ class Evaluator:
         f = os.path.join(self.fx["jobs"], "job.json")
         _write(f, {"tool_name": tool, "tool_input": ti, "cwd": cwd})
         try:
-            line = self.a.input_tier(self.c, self.fx["clone"], self.fx["main"], [], f) or "tier: error"
+            line = self.a.input_tier(self.c, self.fx["clone"], self.fx["main"], [], f)
         except Exception as e:  # noqa: BLE001
-            line = "tier: error — %s" % e.__class__.__name__
+            return "error", None, e.__class__.__name__
+        if not line:
+            return "error", None, None
         first = line.split("\n", 1)[0]
-        m = re.match(r"^tier: (class|lead|operator|error)(?: — (.*)| (.*))?$", first)
-        kind = m.group(1) if m else "error"
-        cls = m.group(3) if m and kind == "class" else None
-        cause = m.group(2) if m else first
-        return kind, cls, self.norm(cause)
+        m = re.match(r"^tier: (class|lead|operator)(?: — (.*)| (.*))?$", first)
+        if not m:
+            return "error", None, self.norm(first)
+        return m.group(1), m.group(3) if m.group(1) == "class" else None, self.norm(m.group(2))
 
     def norm(self, s):
         if not s:
@@ -205,18 +203,18 @@ class Evaluator:
 
 
 # ---- verify ------------------------------------------------------------------------------------
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _build():
+    """The builder module of this checkout — parent process only: a worker evaluates another root
+    and must never import this checkout's touches through it."""
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import prompt_replay_build
+    return prompt_replay_build
 
 
 def verify(corpus, require_complete=False):
     """(None, manifest) when the corpus checks out, else (refusal line, None)."""
-    sys.path.insert(0, HERE)
-    import prompt_replay_build as b
+    b = _build()
     try:
         with open(os.path.join(corpus, "manifest.json"), encoding="utf-8") as fh:
             m = json.load(fh)
@@ -227,7 +225,7 @@ def verify(corpus, require_complete=False):
         p = os.path.join(corpus, name)
         if not want:
             return "refused: %s has no hash in manifest.json" % name, None
-        if not os.path.isfile(p) or sha256(p) != want:
+        if not os.path.isfile(p) or b.file_sha(p) != want:
             return "refused: %s hash differs" % name, None
     if require_complete:
         why = b.completeness(m)
@@ -247,15 +245,14 @@ def load(corpus):
 
 def jobs_of(touched, replay, layer):
     """(jobs, touched interventions {iid: {rep, members}}, replay occurrence index)."""
-    jobs, inter = [], {}
-    rank = {"ask": 0, "touch": 1, "decision": 2, "guard-corpus": 3, "teamlead-log": 4}
+    jobs, inter, b = [], {}, _build()
     for r in touched:
         inter.setdefault(r["intervention"], []).append(r)
     reps = {}
     if layer in ("touched", "all"):
         for iid, ms in sorted(inter.items()):
-            ms.sort(key=lambda r: (rank.get(r["source"], 9), r["id"]))
-            rep = next((m for m in ms if m.get("replayable")), None)
+            ms = b.members_sorted(ms)
+            rep = b.representative(ms)
             reps[iid] = (rep, ms)
             if rep:
                 jobs.append(dict(key=iid, tool=rep["tool"], input=(rep.get("input") or {}).get("tool_input") or {},
@@ -285,14 +282,6 @@ def run_worker(impl, policy, jobs, ctx):
         r = json.loads(line)
         res[r["key"]] = r
     return res
-
-
-def rev(root):
-    try:
-        return subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, text=True).stdout.strip() or "?"
-    except OSError:
-        return "?"
 
 
 def table(title, rows, out):
@@ -327,88 +316,93 @@ def fmt(d):
     return s
 
 
-def report(a, m, touched, replay, results, labels):
-    roots = a.impl
-    out = ["# Prompt replay report", "",
-           "Corpus: manifest.json sha256 %s" % sha256(os.path.join(a.corpus, "manifest.json")),
-           "Corpus files: " + ", ".join("%s %s" % (k, v[:12]) for k, v in sorted(m["files"].items()))]
-    out += ["Implementation %s: %s @ %s" % ("AB"[i], r, rev(r)) for i, r in enumerate(roots)]
+def bump(tbl, row, col, n=1):
+    tbl.setdefault(row, {}).setdefault(col, 0)
+    tbl[row][col] += n
+
+
+def report_touched(touched, reps, first, labels, ctx_given):
+    out, rows, obs, b = [], {}, {}, _build()
+    for iid, (rep, ms) in sorted(reps.items()):
+        res = first.get(iid) if rep else None
+        name = row_of(res, labels.get(iid) or "unlabelled", rep is not None and rep["ctx"] == "unknown", ctx_given)
+        col = (res.get("outcome") or "not-replayable") if res else "not-replayable"
+        bump(rows, name, col)
+        bump(obs, b.observed(ms), col)
+    out.append("## Layer touched — interventions (implementation A)")
     out.append("")
-    jobs, reps, occs = jobs_of(touched, replay, a.layer)
-    first = results[0]
+    table("Outcome by label", rows, out)
+    table("Observed handling × simulated outcome", obs, out)
+    diff = [r["id"] for r in touched if r["source"] == "ask" and r.get("evidence", {}).get("tier")
+            and r["intervention"] in first and reps[r["intervention"]][0] is r
+            and first[r["intervention"]].get("tier") not in (None, r["evidence"]["tier"])]
+    out.append("recorded vs simulated tier: %d differ%s" % (len(diff), (" — " + " ".join(diff[:50])) if diff else ""))
+    gc = [(iid, rep) for iid, (rep, _) in reps.items() if rep and rep["source"] == "guard-corpus"]
+    bad = []
+    for iid, rep in sorted(gc):
+        res = first.get(iid) or {}
+        got = "ask" if res.get("guard") else "none"
+        if res.get("modeled") or got != rep["evidence"].get("expected"):
+            bad.append("- %s expected %s got %s: %s" % (rep["ref"], rep["evidence"].get("expected"), got,
+                                                        rep["input"]["tool_input"].get("command", "")[:160]))
+    if gc:
+        out.append("guard-corpus expectations: " + ("all match" if not bad else "%d mismatch" % len(bad)))
+        out += bad
+    out.append("")
+    return out
+
+
+def report_replay(occs, first, ctx_given):
+    out, uniq, weighted, per = [], {}, {}, {}
+    for key, (r, o) in occs.items():
+        per.setdefault(r["id"], []).append((o, first.get(key)))
+    for rid, lst in sorted(per.items()):
+        for o, res in lst:
+            bump(weighted, row_of(res, "unlabelled", o["ctx"] == "unknown", ctx_given),
+                 (res or {}).get("outcome") or "not-replayable", o["count"])
+        live = [(o, res) for o, res in lst if res and not res.get("modeled")]
+        if not live:
+            name, col = "modeled", "not-replayable"
+        else:
+            col = max((res["outcome"] for _, res in live), key=lambda x: SEVERITY[x])
+            name = "unknown-as-advisor" if all(o["ctx"] == "unknown" for o, _ in live) and not ctx_given else "unlabelled"
+        bump(uniq, name, col)
+    out.append("## Layer replay (implementation A)")
+    out.append("")
+    table("Unique calls (most severe occurrence)", uniq, out)
+    table("Occurrence-weighted", weighted, out)
+    return out
+
+
+def report_changes(results, changes_out):
+    dec, oc = [], []
+    for key in sorted(set(results[0]) | set(results[1])):
+        x, y = results[0].get(key) or {}, results[1].get(key) or {}
+        if x.get("decision") != y.get("decision"):
+            dec.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), fmt(x.get("decision")), fmt(y.get("decision"))))
+        if x.get("outcome") != y.get("outcome"):
+            oc.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), x.get("outcome") or "modeled", y.get("outcome") or "modeled"))
+    if changes_out:
+        with open(changes_out, "w", encoding="utf-8") as fh:
+            fh.write("Decision changes: %d\n%sOutcome changes: %d\n%s" % (
+                len(dec), "".join(l + "\n" for l in dec), len(oc), "".join(l + "\n" for l in oc)))
+    return (["## A → B", "", "Decision changes: %d" % len(dec)] + dec[:CHANGES_CAP]
+            + ["Outcome changes: %d" % len(oc)] + oc[:CHANGES_CAP])
+
+
+def report(a, m, touched, reps, occs, results, labels):
+    b = _build()
+    out = ["# Prompt replay report", "",
+           "Corpus: manifest.json sha256 %s" % b.file_sha(os.path.join(a.corpus, "manifest.json")),
+           "Corpus files: " + ", ".join("%s %s" % (k, v[:12]) for k, v in sorted(m["files"].items()))]
+    out += ["Implementation %s: %s @ %s" % ("AB"[i], r, b.rev(r) or "?") for i, r in enumerate(a.impl)]
+    out.append("")
     if a.layer in ("touched", "all"):
-        rows, obs = {}, {}
-        for iid, (rep, ms) in sorted(reps.items()):
-            label = labels.get(iid) or "unlabelled"
-            res = first.get(iid) if rep else None
-            name = row_of(res, label, rep is not None and rep["ctx"] == "unknown", a.ctx)
-            col = (res.get("outcome") or "not-replayable") if res else "not-replayable"
-            rows.setdefault(name, {}).setdefault(col, 0)
-            rows[name][col] += 1
-            o = next((x["observed"] for x in ms if x["observed"] != "unknown"), "unknown")
-            obs.setdefault(o, {}).setdefault(col, 0)
-            obs[o][col] += 1
-        out.append("## Layer touched — interventions (implementation A)")
-        out.append("")
-        table("Outcome by label", rows, out)
-        table("Observed handling × simulated outcome", obs, out)
-        diff = [r["id"] for r in touched if r["source"] == "ask" and r.get("evidence", {}).get("tier")
-                and r["intervention"] in first and reps[r["intervention"]][0] is r
-                and first[r["intervention"]].get("tier") not in (None, r["evidence"]["tier"])]
-        out.append("recorded vs simulated tier: %d differ%s" % (len(diff), (" — " + " ".join(diff[:50])) if diff else ""))
-        gc = [(iid, rep) for iid, (rep, _) in reps.items() if rep and rep["source"] == "guard-corpus"]
-        bad = []
-        for iid, rep in sorted(gc):
-            res = first.get(iid) or {}
-            got = "ask" if res.get("guard") else "none"
-            if res.get("modeled") or got != rep["evidence"].get("expected"):
-                bad.append("- %s expected %s got %s: %s" % (rep["ref"], rep["evidence"].get("expected"), got,
-                                                            rep["input"]["tool_input"].get("command", "")[:160]))
-        if gc:
-            out.append("guard-corpus expectations: " + ("all match" if not bad else "%d mismatch" % len(bad)))
-            out += bad
-        out.append("")
+        out += report_touched(touched, reps, results[0], labels, a.ctx)
     if a.layer in ("replay", "all"):
-        uniq, weighted = {}, {}
-        per = {}
-        for key, (r, o) in occs.items():
-            per.setdefault(r["id"], []).append((o, first.get(key)))
-        for rid, lst in sorted(per.items()):
-            for o, res in lst:
-                name = row_of(res, "unlabelled", o["ctx"] == "unknown", a.ctx)
-                col = (res or {}).get("outcome") or "not-replayable"
-                weighted.setdefault(name, {}).setdefault(col, 0)
-                weighted[name][col] += o["count"]
-            live = [(o, res) for o, res in lst if res and not res.get("modeled")]
-            if not live:
-                name, col = "modeled", "not-replayable"
-            else:
-                col = max((res["outcome"] for _, res in live), key=lambda x: SEVERITY[x])
-                name = "unknown-as-advisor" if all(o["ctx"] == "unknown" for o, _ in live) and not a.ctx else "unlabelled"
-            uniq.setdefault(name, {}).setdefault(col, 0)
-            uniq[name][col] += 1
-        out.append("## Layer replay (implementation A)")
-        out.append("")
-        table("Unique calls (most severe occurrence)", uniq, out)
-        table("Occurrence-weighted", weighted, out)
+        out += report_replay(occs, results[0], a.ctx)
     if len(results) == 2:
-        dec, oc = [], []
-        for key in sorted(set(results[0]) | set(results[1])):
-            x, y = results[0].get(key) or {}, results[1].get(key) or {}
-            if x.get("decision") != y.get("decision"):
-                dec.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), fmt(x.get("decision")), fmt(y.get("decision"))))
-            if x.get("outcome") != y.get("outcome"):
-                oc.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), x.get("outcome") or "modeled", y.get("outcome") or "modeled"))
-        out.append("## A → B")
-        out.append("")
-        out.append("Decision changes: %d" % len(dec))
-        out += dec[:CHANGES_CAP]
-        out.append("Outcome changes: %d" % len(oc))
-        out += oc[:CHANGES_CAP]
-        if a.changes_out:
-            with open(a.changes_out, "w", encoding="utf-8") as fh:
-                fh.write("Decision changes: %d\n%sOutcome changes: %d\n%s" % (
-                    len(dec), "".join(l + "\n" for l in dec), len(oc), "".join(l + "\n" for l in oc)))
+        out += report_changes(results, a.changes_out)
     print("\n".join(out))
 
 
@@ -439,13 +433,13 @@ def cmd_run(a):
         except (OSError, ValueError) as e:
             print("error: --labels: %s" % e, file=sys.stderr)
             return 2
-    jobs = jobs_of(touched, replay, a.layer)[0]
+    jobs, reps, occs = jobs_of(touched, replay, a.layer)
     try:
         results = [run_worker(r, os.path.join(a.corpus, "policy.json"), jobs, a.ctx) for r in a.impl]
     except RuntimeError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
-    report(a, m, touched, replay, results, labels)
+    report(a, m, touched, reps, occs, results, labels)
     return 0
 
 
@@ -453,7 +447,8 @@ def cmd_worker(a):
     tmp = tempfile.mkdtemp(prefix="replay-worker-")
     try:
         try:
-            ev = Evaluator(a.impl, a.policy, tmp, a.ctx)
+            with open(a.policy, encoding="utf-8") as fh:
+                ev = Evaluator(a.impl, json.load(fh), tmp, a.ctx)
         except Exception as e:  # noqa: BLE001
             print("error: cannot load %s: %s: %s" % (a.impl, e.__class__.__name__, e), file=sys.stderr)
             return 1
@@ -507,17 +502,16 @@ def main(argv):
         why, _ = verify(a.corpus, a.require_complete)
         print(why or "verified: %s" % a.corpus, file=sys.stderr if why else sys.stdout)
         return 3 if why else 0
-    sys.path.insert(0, HERE)
-    import prompt_replay_build as b
     if a.cmd == "sheet":
         touched, _ = load(a.corpus)
-        b.write_sheet(a.corpus, touched)
+        _build().write_sheet(a.corpus, touched)
         return 0
+    # build
     if os.path.isdir(a.out) and os.listdir(a.out):
         print("error: --out %s exists and is not empty" % a.out, file=sys.stderr)
         return 2
     try:
-        return b.build(a.sources, a.out)
+        return _build().build(a.sources, a.out)
     except (OSError, ValueError, KeyError) as e:
         print("error: build: %s: %s" % (e.__class__.__name__, e), file=sys.stderr)
         return 1

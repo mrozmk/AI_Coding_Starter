@@ -32,9 +32,6 @@ payload() { # <file> <notification_type> <cwd> <session_id> [transcript]
      + (if $t == "" then {} else {transcript_path:$t} end)' > "$1"
 }
 use() { jq -nc --arg id "$1" --arg c "$2" '{type:"assistant", message:{content:[{type:"tool_use", id:$id, name:"Bash", input:{command:$c}}]}}'; }
-use_cmd() { # <id> <JSON-encoded command> — newlines survive
-  jq -nc --arg id "$1" --argjson c "$2" '{type:"assistant", message:{content:[{type:"tool_use", id:$id, name:"Bash", input:{command:$c}}]}}'
-}
 result() { jq -nc --arg id "$1" '{type:"user", message:{content:[{type:"tool_result", tool_use_id:$id, content:"ok"}]}}'; }
 hook() { # <project dir or ""> <payload file>
   CLAUDE_PROJECT_DIR="$1" bash "$SRC/.claude/hooks/touch-notify.sh" < "$2"
@@ -331,7 +328,7 @@ ok "15f TOUCHES_BLOCK_OFF: block writes nothing" $?
 # (16) input: the masked tool input of the touched call, from the hook and from add --input-file.
 mkrepo "$T/h16"; F16="$(mfile "$T/h16")"
 C16="$(printf 'curl -s https://u:p@h.example/x?token=abc\necho ghp_0123456789abcdefghijklmnopqrstuvwxyz')" # guard-push:allow
-use_cmd tu16 "$(jq -n --arg c "$C16" '$c')" > "$T/p/t16.jsonl"
+use tu16 "$C16" > "$T/p/t16.jsonl"
 payload "$T/p/p16.json" permission_prompt "$T/h16" S16 "$T/p/t16.jsonl"
 hook "" "$T/p/p16.json"
 [ "$(count "$F16")" = 1 ] \
@@ -372,16 +369,33 @@ L=$(tail -n 1 "$F16B"); [ "$(printf '%s\n' "$L" | wc -c)" -le 4000 ] \
 ok "16e a 6000-character command is cut to the line budget and marked" $?
 
 mkrepo "$T/m16f"; F16F="$(mfile "$T/m16f")"
-a16() { jq -nc --arg c "$1" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/w", session_id:"S-F"}' > "$T/p/f16.json"
-  add_in "$T/m16f" --kind permission --reason direct --what q --input-file "$T/p/f16.json" >/dev/null 2>&1; }
-a16 "$(printf 'cat <<K\n-----BEGIN RSA PRIVATE KEY-----\nCANARYKEYLINE2\n-----END RSA PRIVATE KEY-----\nK\necho after')" # guard-push:allow
-a16 "$(printf 'echo -----BEGIN OPENSSH PRIVATE KEY-----\nCANARYUNTERM')" # guard-push:allow
-a16 "mail a.b@example.com" # guard-push:allow
-a16 "curl -H 'Authorization: Basic Zm9vCANARYB' https://x" # guard-push:allow
-a16 "curl -u user:CANARYPASS https://x" # guard-push:allow
+add_cmd() { # <main dir> <command> — one direct touch whose input is that Bash call
+  jq -nc --arg c "$2" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/w", session_id:"S-F"}' > "$T/p/cmd16.json"
+  add_in "$1" --kind permission --reason direct --what q --input-file "$T/p/cmd16.json" >/dev/null 2>&1; }
+add_cmd "$T/m16f" "$(printf 'cat <<K\n-----BEGIN RSA PRIVATE KEY-----\nCANARYKEYLINE2\n-----END RSA PRIVATE KEY-----\nK\necho after')" # guard-push:allow
+add_cmd "$T/m16f" "$(printf 'echo -----BEGIN OPENSSH PRIVATE KEY-----\nCANARYUNTERM')" # guard-push:allow
+add_cmd "$T/m16f" "mail a.b@example.com" # guard-push:allow
+add_cmd "$T/m16f" "curl -H 'Authorization: Basic Zm9vCANARYB' https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -u user:CANARYPASS https://x" # guard-push:allow
 [ "$(count "$F16F")" = 5 ] && ! grep -qE 'CANARYKEYLINE2|CANARYUNTERM|a\.b@example|Zm9vCANARYB|CANARYPASS' "$F16F" \
   && sed -n 1p "$F16F" | jq -e '.input.fields.command | contains("echo after")' >/dev/null
 ok "16f multiline key, email, auth header, curl -u masked" $?
+
+# The user flag is spelt through $U so the source line is no credential shape for a leak scanner.
+U=-u
+add_cmd "$T/m16f" "curl ${U}admin:CANARYATTACHED https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -s${U#-} admin:CANARYCLUSTER https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -H \"Cookie: sid=a; session=CANARYCOOKIE2\" https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -H '{\"Authorization\": \"Basic CANARYJSONHDR\"}' https://x" # guard-push:allow
+add_cmd "$T/m16f" "git push -u origin feat/x"
+[ "$(count "$F16F")" = 10 ] && ! grep -qE 'CANARYATTACHED|CANARYCLUSTER|CANARYCOOKIE2|CANARYJSONHDR' "$F16F" \
+  && tail -n 1 "$F16F" | jq -e '.input.fields.command == "git push -u origin feat/x"' >/dev/null
+ok "16k attached and clustered curl -u, a Cookie with pairs and a JSON-quoted header masked" $?
+
+LONG="echo $(printf '%0200000d' 0)"; S0=$SECONDS
+add_cmd "$T/m16f" "$LONG"
+[ "$(count "$F16F")" = 11 ] && [ $((SECONDS - S0)) -le 10 ]
+ok "16l a 200000-character unbroken run masks in linear time" $?
 
 add_in "$T/m16f" --kind other --reason direct --what "no call" >/dev/null 2>&1
 [ "$(tail -n 1 "$F16F" | jq -r 'keys_unsorted | join(",")')" = "at,machine,who,where,kind,what,reason,answer,wait_s" ]
@@ -390,10 +404,8 @@ ok "16g an entry without a tool call has no input key" $?
 mkrepo "$T/m16i"; F16I="$(mfile "$T/m16i")"
 jq -nc '{tool_name:"Custom", tool_input:{command:"x", password:"two words"}, cwd:"/w", session_id:"S-I"}' > "$T/p/i16.json" # guard-push:allow
 add_in "$T/m16i" --kind permission --reason direct --what q --input-file "$T/p/i16.json" >/dev/null 2>&1
-a16i() { jq -nc --arg c "$1" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/w", session_id:"S-I"}' > "$T/p/i16b.json"
-  add_in "$T/m16i" --kind permission --reason direct --what q --input-file "$T/p/i16b.json" >/dev/null 2>&1; }
-a16i 'curl -u "us er:pa ss" https://h' # guard-push:allow
-a16i 'git push git@github.com:o/r.git'
+add_cmd "$T/m16i" 'curl -u "us er:pa ss" https://h' # guard-push:allow
+add_cmd "$T/m16i" 'git push git@github.com:o/r.git'
 [ "$(count "$F16I")" = 3 ] && ! grep -qE 'two words|pa ss' "$F16I" \
   && sed -n 1p "$F16I" | jq -e '.input.keys == ["command","password"]' >/dev/null \
   && sed -n 3p "$F16I" | jq -e '.input.fields.command == "git push git@github.com:o/r.git"' >/dev/null
