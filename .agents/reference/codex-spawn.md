@@ -1,7 +1,8 @@
 # Reference: spawning `codex exec` as a background review (the canonical pattern)
 
 The single source of truth for how any slash command launches Codex (`codex exec`) in the
-background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4),
+background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8) and
+`/brainstorm-ba` (Step 7) through [spec-cross-review.md](spec-cross-review.md),
 `/check-implementation` (Step 1.5), `/design-ui` (Phase 4),
 `/architecture-review` and `/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
 *why*; the wrapper is the *how*. If you add a new command that runs codex, reuse the wrapper and
@@ -96,7 +97,7 @@ re-validates everything).
 
 | Caller | `CODEX_EFFORT` | `SANDBOX` | Model |
 |--------|----------------|-----------|-------|
-| `/brainstorm` Step 8 | `high` | (unset — `SCHEMA` run) | CLI default |
+| `spec-cross-review.md` (`/brainstorm` Step 8, `/brainstorm-ba` Step 7) | `high` | (unset — `SCHEMA` run) | CLI default |
 | `/plan-feature` Phase 7 | `high` | (unset — `SCHEMA` run) | CLI default |
 | `/codex-review` | `high` | `read-only` (default) | CLI default |
 | `/check-implementation` Step 1.5 | `high` | (unset — `SCHEMA` run) | `gpt-6.2-sol` |
@@ -238,7 +239,7 @@ out-of-scope change instead of reverting it.
 | Command | FIRST_CHECK | POLL_INTERVAL | HARD_KILL |
 |---------|-------------|---------------|-----------|
 | `/plan-feature` Phase 7 | 6 min | 3 min | 50 min (per round, min 2 rounds) |
-| `/brainstorm` Step 8.4 | 4 min | 3 min | 40 min (single round) |
+| `spec-cross-review.md` (`/brainstorm` Step 8, `/brainstorm-ba` Step 7) | 4 min | 3 min | 40 min (single round) |
 | `/codex-review` | (long-wakeup fallback; heartbeat from log is primary) | — | no hard ceiling — relay heartbeats, kill only on a genuine hang |
 | `/quick-change` Phase 2 | 4 min | 3 min | 25 min — then proceed without the opinion, reported on its own line |
 | `/architecture-review --codex` Phase 0 | 8 min | 5 min | 60 min (whole-codebase sweep) — then render the report from one sweep |

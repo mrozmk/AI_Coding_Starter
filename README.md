@@ -59,7 +59,8 @@ the `.claude/` and `.agents/` folders that shape how the AI works.
 ```
 
 Each document is judged by an independent critic, not by the agent that wrote it. When scope
-changes later, `/meeting-notes` and `/update-backlog` bring the PRD and the backlog up to date
+changes later, `/brainstorm-ba` turns a client message or a decision into verified Task
+definitions, and `/meeting-notes` and `/update-backlog` bring the PRD and the backlog up to date
 without breaking work in progress.
 
 Existing codebase? `/setup:map-codebase` reads it in parallel and writes an architecture map and

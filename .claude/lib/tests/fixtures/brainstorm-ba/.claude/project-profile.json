@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "tracker": "github",
+  "github": {
+    "repo": "example-org/reading-list"
+  },
+  "ba": {
+    "enabled": true,
+    "code_repos": []
+  }
+}

@@ -175,7 +175,7 @@
     "refresh_brief": true
   },
 
-  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web. ba = the BA command group (meeting-notes, update-backlog, check-backlog, resync) — pruning arrives with the /setup:start interview. herdr = /maintain:sync-herdr-kit, the opt-in installer of the Herdr panels kit; derived from its existing value, else true (a no-op without a Herdr app home).",
+  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web. ba = the BA command group (meeting-notes, update-backlog, check-backlog, resync, brainstorm-ba) — pruning arrives with the /setup:start interview. herdr = /maintain:sync-herdr-kit, the opt-in installer of the Herdr panels kit; derived from its existing value, else true (a no-op without a Herdr app home).",
   "commands": {
     "pr": true,
     "jira": false,

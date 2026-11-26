@@ -67,7 +67,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | Role | Commands |
 |------|----------|
 | **Setup** | `/setup:start` (guided bootstrap), `/setup:map-codebase` (existing codebase), `/setup:create-CLAUDE_MD`, `/setup:createwikillm`, `/setup:teams`, `/setup:regression` (switch regression on, foundation check) |
-| **Business analyst** | `/prime-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
+| **Business analyst** | `/prime-ba`, `/brainstorm-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/create-task`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
 | **QA and security** | `/prime-qa`, `/qa-verify`, `/audit-security`, `/seo-geo-audit`, `/ai-act-audit`, `/wcag-audit` |
@@ -103,6 +103,8 @@ This starter supports two distinct roles. Both share the same knowledge layers (
 New chat → /prime-ba → /discover → /architect → /setup:create-backlog → /check-backlog → /setup:delivery-plan → /jira sync
 ```
 
+Requirement work later (a client message, a design change, a spike result): New chat → /prime-ba → /brainstorm-ba <input> → /update-backlog <spec> (or the tracker create the command names)
+
 | Step | What it means |
 |------|---------------|
 | **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
@@ -115,7 +117,7 @@ New chat → /prime-ba → /discover → /architect → /setup:create-backlog �
 | **`/setup:delivery-plan`** | The Tech Lead's step: details the Epics (Goal, scope and acceptance criteria per Task, one author per Epic, each Epic judged) and computes the plan — the order per person and session, the CORE phase and working days / weeks / sprints → `.agents/backlog/delivery-plan.md`. |
 | **`/jira sync`** | Drafts the Epics and Tasks locally, sends them on your confirmation (one per Epic group), and writes the keys back into the backlog. |
 
-When scope changes later: `/meeting-notes <transcript>` turns a meeting into a note, and `/update-backlog` applies the changes to the PRD and the backlog in one reviewed write.
+When scope changes later: `/brainstorm-ba <input>` turns one input into a verified requirements spec first, `/meeting-notes <transcript>` turns a meeting into a note, and `/update-backlog` applies the changes to the PRD and the backlog in one reviewed write.
 
 ### Developer flow
 
@@ -410,6 +412,7 @@ Checks what shipped against the Task's acceptance criteria, one by one, and leav
 | `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
 | `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, and `reference/` up to a budget (120 KB / 25 files). `specs/` is listed, never auto-read. |
 | `/prime-ba` | When working as a Business Analyst on stories/backlog — loads the product map on a budget — register index, backlog state, pending sources, code roots; specs listed, not read (no implementation context). Independent from `/prime`. |
+| `/brainstorm-ba <input>` | Requirement work — one input (client message, design change, spike result, decision) → a verified, approved requirements spec: coverage against the PRD, decisions, backlog, tracker and code, the Task definitions and the impact; asks below 99 % certainty; writes only the spec, then names `/update-backlog` or the tracker command. |
 | `/prime-qa [deep]` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, the deployed build SHA, readiness checks of external systems, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically — which build is acceptable for each ticket is `/qa-verify`'s per-ticket decision. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/prime` first. `deep` also loads `decisions.md` and `patterns.md`. |
 | `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](../../.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, decides the findings with you in one pass and leaves a fingerprinted record on the ticket (registry §7; a re-check on a ticket that has one), keeping a working matrix in `.agents/handoffs/`. Stops for approval after classification — nothing runs before that. **Two verifiers ship**: `qa-contract` (static contract/type/boundary checks, lane P) and `qa-runtime-ui` (rendered UI and accessibility, lane S — observed in the main session by default, one self-terminating Playwright script per criterion kept as evidence; spawned as a sub-agent only under `browser_driver: subagent`); the design lane `I` and the other declared verifiers are **guarded** — their ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. For a team PR it cites the task ledger's `met` rows for static criteria (`CITED`), sends `qa-contract` only what the ledger does not prove, ranks the pool by risk and offers a light path to an all-static, fully proven group. Never mutates: on a defect it records a FAIL and keeps verifying. |
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. `/prime` reminds you when it is due (`.claude/lib/upkeep.sh`, thresholds in the profile's `upkeep` block); the run is recorded in `.agents/upkeep.json`. |

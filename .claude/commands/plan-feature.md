@@ -28,8 +28,8 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
 ## Phase 0: Locate and Load the Spec
 
 1. Resolve the spec file:
-   - If `$ARGUMENTS` looks like a path to an existing `.md` file under `.agents/specs/` → use it.
-   - Otherwise → pick the **newest** file in `.agents/specs/` by modification time. If that directory is empty, STOP and tell the user: "No approved spec found. Run `/brainstorm <feature idea>` first."
+   - If `$ARGUMENTS` looks like a path to an existing `.md` file under `.agents/specs/` → use it — unless its header carries `**Kind:** requirements`: STOP with "`<path>` is a requirements spec (`/brainstorm-ba`) — its Tasks go through `/update-backlog` or the tracker; design one Task with `/brainstorm <Task>` first."
+   - Otherwise → pick the **newest** design spec in `.agents/specs/` by modification time (a spec whose header carries `**Kind:** requirements` is skipped). If that directory is empty, STOP and tell the user: "No approved spec found. Run `/brainstorm <feature idea>` first."
 2. Read the spec **in full**. Extract:
    - Feature name, summary, problem, solution
    - Architecture, files, edge cases
