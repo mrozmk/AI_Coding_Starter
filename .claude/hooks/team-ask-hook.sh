@@ -28,6 +28,8 @@ PAYLOAD="$(cat)"
 
 # --- the write guard (fail closed) -----------------------------------------------------------
 guard_refuse() { echo "team ask write guard: $1" >&2; exit 2; }
+out_pre_deny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
+  permissionDecision: "deny", permissionDecisionReason: $r}}'; }
 if ! command -v jq >/dev/null 2>&1; then
   case "$PAYLOAD" in *'"PreToolUse"'*'"Edit"'*|*'"PreToolUse"'*'"Write"'*|*'"PreToolUse"'*'"NotebookEdit"'*)
     guard_refuse "jq missing — refused" ;; esac
@@ -64,10 +66,8 @@ if [ "$EV" = PreToolUse ]; then
     esac
     # #322 (Operator decision d-2): settings and role profiles are never edited by a stage; the
     # guard layer's hooks only in its own clone or its run's starter worktree.
-    wdeny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-      permissionDecision: "deny", permissionDecisionReason: $r}}'; exit 0; }
     case "$P" in */.claude/settings*.json|*/.claude/team/sessions/*.settings.json)
-      wdeny "settings and role profiles are never edited by a stage (#322)" ;;
+      out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0 ;;
     esac
     case "$P" in */.claude/hooks/*)
       CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"
@@ -80,7 +80,7 @@ if [ "$EV" = PreToolUse ]; then
         SW="$(tr '[:upper:]' '[:lower:]' <<<"$SW-$ST-$SK")"
         case "$P" in "$SW"/*) exit 0 ;; esac
       fi
-      wdeny "a stage edits hooks only in its own clone or its run's starter worktree (#322)" ;;
+      out_pre_deny "a stage edits hooks only in its own clone or its run's starter worktree (#322)"; exit 0 ;;
     esac
     exit 0 ;;
   esac
@@ -109,8 +109,6 @@ trap 'rm -f "$TMP".*' EXIT
 stopped() { [ -e "$TD/cancel" ] || [ -e "$TD/closing" ]; }
 STOP_MSG="the team was stopped — write nothing more"
 
-out_pre_deny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-  permissionDecision: "deny", permissionDecisionReason: $r}}'; }
 out_perm_deny() { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PermissionRequest",
   decision: {behavior: "deny", message: $m}}}'; }
 out_block() { jq -n --arg r "$1" '{decision: "block", reason: $r}'; }
@@ -290,7 +288,7 @@ verify_relay() {
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
-# check_input <{tool_name, tool_input, cwd} file> — the checker's tier line and `retry: <key>|none`.
+# check_input <{tool_name, tool_input, cwd} file> — the tier line, `retry: <key>|none`, `batch: …`.
 check_input() { python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$1" --main "$MAIN" 2>/dev/null; }
 
 deliver() {

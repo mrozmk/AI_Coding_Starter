@@ -185,10 +185,21 @@ def write_class(cmd, project, cwd):
     base = cwd if isinstance(cwd, str) and cwd else (project or None)
     cmd = inline_literals(cmd)  # `S=/x; cd $S/y && … > f`: the literal head resolves the cd
     top = segment_cwds(cmd, base)
+    links = []  # (link path, its source): a later write through the link writes the source
     for raw, words, seg_cwd in top:
         for t in redirect_targets(raw) + word_targets(words):
             found.append(target_class(t, seg_cwd, project))
+            p = resolve(t, seg_cwd)
+            for link, src in links:
+                if p and (p == link or p.startswith(link + os.sep)):
+                    found.append(target_class(src + p[len(link):], None, project))
         found.extend(python_c_writes(words, seg_cwd, project))
+        pos = positional(words[1:], ("-t", "-S", "--suffix")) if words[:1] == ["ln"] else []
+        if len(pos) == 2 and seg_cwd:
+            link = resolve(pos[1], seg_cwd)
+            symbolic = any(re.match(r"^-[A-Za-z]*s|^--symbolic", a) for a in words[1:])
+            src = resolve(pos[0], os.path.dirname(link) if symbolic else seg_cwd)
+            links.append((link, src))
     # Nested commands (bash -c, $(…), eval): the cwd at their start is the payload's, or unknown
     # when a cd appears in the text.
     here = None if re.search(r"(?:^|[\s;&|(])(?:cd|pushd|popd)\s", cmd) else base
@@ -240,7 +251,7 @@ def push_reason(words, cwd, project):
             repo = resolve(words[i + 1], repo) if repo else None
             i += 2
             continue
-        if w.startswith("--git-dir") or w.startswith("--work-tree") or w.startswith("--config-env"):
+        if w.startswith(("--git-dir", "--work-tree", "--config-env", "--exec-path")):
             return "git push with a repository option"
         i += 1
     if words[i:i + 1] != ["push"]:

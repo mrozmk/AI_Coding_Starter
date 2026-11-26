@@ -210,6 +210,17 @@ def word_targets(words):
         return out + pos[-1:] if len(pos) >= 2 or out else out
     if verb in ("sed", "gsed") and any(re.match(r"^-[A-Za-z]*i|^--in-place", a) for a in args):
         return positional([a for a in args if a != "''"], ("-e", "-f", "--expression", "--file"))[1:]
+    if verb in ("perl", "ruby") and any(re.match(r"^-[A-Za-z]*i", a) for a in args):
+        # In-place edit: every operand after the code (`-e CODE`, or the script when there is none).
+        files, code, skip = [], False, False
+        for a in args:
+            if skip:
+                skip, code = False, True
+            elif re.match(r"^-[A-Za-z]*[eE]$", a):
+                skip = True
+            elif not a.startswith("-"):
+                files.append(a)
+        return files if code else files[1:]
     if verb == "dd":
         return [a[3:] for a in args if a.startswith("of=")]
     if verb == "curl":

@@ -226,11 +226,11 @@ class Evaluator:
             return [sub(x) for x in v] if isinstance(v, list) else v
         return sub(job.get("input") or {}), cwd
 
-    def remap_role(self, job, ti):
+    def remap_role(self, job, ctx, ti):
         """(tool_input, cwd, limit) of a non-stage job inside its fixture project (#322): every path
         the job's `paths` map names becomes the fixture dir; a git push whose repository or
         destination the fixture cannot represent gets the limit `origin not representable`."""
-        project = self.project_of(job.get("ctx_eval"), job.get("fixture"))
+        project = self.project_of(ctx, job.get("fixture"))
         cmd = ti.get("command") if isinstance(ti.get("command"), str) else None
         if cmd is None:
             return ti, project, None
@@ -268,7 +268,7 @@ class Evaluator:
             else:
                 ti, cwd = m
         elif not out["modeled"] and ctx != "solo" and tool == "Bash" and self.effect_api:
-            ti, cwd, out["limit"] = self.remap_role(dict(job, ctx_eval=ctx), ti)
+            ti, cwd, out["limit"] = self.remap_role(job, ctx, ti)
         if out["modeled"]:
             out.update(outcome=None, decision=None)
             return out

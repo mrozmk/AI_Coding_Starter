@@ -942,7 +942,8 @@ drv pass "#322 pass: an allowlisted host keeps a query" "$D/proj" WebFetch 'http
 for c in "git -c core.sshCommand='sh -c id' fetch https://docs.astral.sh/r" 'git fetch --upload-pack=x https://docs.astral.sh/r' \
   "git clone -u 'sh -c id' https://docs.astral.sh/r" 'git clone --config core.sshCommand=x https://docs.astral.sh/r' \
   "GIT_SSH_COMMAND='sh -c id' git fetch https://docs.astral.sh/r" 'git -c core.sshCommand=x fetch origin' \
-  'GIT_CONFIG_KEY_0=core.sshCommand git fetch origin' 'git clone --template=t https://github.com/o/r'; do
+  'GIT_CONFIG_KEY_0=core.sshCommand git fetch origin' 'git clone --template=t https://github.com/o/r' \
+  'git --exec-path=/tmp/x fetch origin' 'GIT_CONFIG_GLOBAL=/tmp/g git fetch origin'; do
   drv ask "#322 git read running a local command: $c" "$D/proj" Bash "$c" docs.astral.sh=104.16.0.1
 done
 drv pass "#322 git read: a harmless -c key" "$D/proj" Bash 'git -c core.commitGraph=false clone https://docs.astral.sh/r' docs.astral.sh=104.16.0.1
@@ -1059,6 +1060,7 @@ git -C "$D/gp" config "url.$D/gp-up.git.pushInsteadOf" "$D/gp-origin.git"
 gp ask  "a pushInsteadOf rewrite of origin" 'git push origin HEAD'
 git -C "$D/gp" config --unset "url.$D/gp-up.git.pushInsteadOf"
 gp ask  "a command-local config option" 'git -c remote.origin.pushurl=x push origin'
+gp ask  "an exec-path option (runs git-remote-* from that dir)" 'git --exec-path=/tmp/x push origin HEAD'
 gp none "back to origin after the config is gone" 'git push origin HEAD'
 check ask "#322 git push: not a repository" "$(hook "$(bash_cwd 'git push origin HEAD' "$D/noteam")")"
 # A deny is a mechanical block in the Supervisor's touch log, never a permission touch.

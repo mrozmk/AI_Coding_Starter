@@ -360,9 +360,6 @@ def settings_refusal(root, header, inp, text):
     return None
 
 
-session_id = team_prompt_authority.session_id
-
-
 def audit(root, main, extra, header, cmds, inp, text):
     """Raises egress, unwaivable, deny and outside-clone; → (ask matches, settings refusal|None)."""
     if re.match(r"(WebFetch|Fetch)\b", header):  # by effect only when bound to its pending call (#322)
@@ -395,7 +392,7 @@ def classes_flow(root, main, pane, transcript, extra):
     # The role's transcript is Bash-writable: a header off screen was an Operator click before.
     if recovered:
         raise Refuse("%s; class: recovered prompt — header off screen" % first)
-    session = session_id(root)
+    session = team_prompt_authority.session_id(root)
     if session is None:
         raise Refuse("%s; class: no live session" % first)
     name, why = team_prompt_classes.classify(

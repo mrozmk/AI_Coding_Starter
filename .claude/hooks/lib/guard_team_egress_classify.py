@@ -164,22 +164,23 @@ GIT_RUN_KEY = re.compile(r"(?i)^(?:core\.(?:sshcommand|gitproxy|askpass|fsmonito
                          r"|url\..+\.insteadof|http\..*proxy|include\.path|includeif\..+\.path"
                          r"|protocol\..+\.allow)$")
 GIT_RUN_ENV = re.compile(r"^(?:GIT_SSH_COMMAND|GIT_SSH|GIT_PROXY_COMMAND|GIT_EXEC_PATH|GIT_ASKPASS"
-                         r"|SSH_ASKPASS|GIT_CONFIG_PARAMETERS)=")
+                         r"|SSH_ASKPASS|GIT_CONFIG_PARAMETERS|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG)=")
 GIT_RUN_OPTS = ("--upload-pack", "--exec", "--template")
 
 
 def git_runs_command(words, tokens):
     """True when a git read (`fetch|pull|clone|ls-remote`) would run a local command chosen on the
-    command line: a command-running `-c`/`--config` key, `--upload-pack`/`--exec`/`--template`,
-    clone's `-u`, or an env assignment anywhere in the text (`GIT_SSH_COMMAND=…`,
-    `GIT_CONFIG_KEY_<n>=<such key>`). The host check never sees that command."""
+    command line: a command-running `-c`/`--config` key, `--exec-path=`, `--upload-pack`/`--exec`/
+    `--template`, clone's `-u`, or an env assignment anywhere in the text (`GIT_SSH_COMMAND=…`, a
+    config file `GIT_CONFIG_GLOBAL=…`, `GIT_CONFIG_KEY_<n>=<such key>`). The host check never sees
+    that command."""
     if any(GIT_RUN_ENV.match(t) or (re.match(r"^GIT_CONFIG_KEY_[0-9]+=", t)
                                     and GIT_RUN_KEY.match(t.split("=", 1)[1])) for t in tokens):
         return True
     i, sub = 1, None
     while i < len(words):
         w, config = words[i], sub in (None, "clone")
-        if w.startswith("--config-env"):
+        if w.startswith("--config-env") or (sub is None and w.startswith("--exec-path=")):
             return True
         if config and w in ("-c", "--config") and i + 1 < len(words):
             if GIT_RUN_KEY.match(words[i + 1].split("=", 1)[0]):

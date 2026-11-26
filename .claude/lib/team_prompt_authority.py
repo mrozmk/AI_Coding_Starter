@@ -134,7 +134,7 @@ def delete_causes(c, root, cmd, cwd=None):
 
 
 def session_id(root):
-    """The stage's session id from <root>'s session.json, or None (team_prompt_check.session_id)."""
+    """The stage's session id from <root>'s session.json, or None."""
     try:
         with open(os.path.join(root, ".agents", "team", "session.json"), encoding="utf-8") as fh:
             return str(json.load(fh).get("session_id") or "") or None
@@ -310,7 +310,7 @@ def tier_full(c, root, main, extra, tool, header, cmds, inp, text, cwd):
     elif not asks:
         rest = ("lead", None)
     else:
-        session = c.session_id(root)
+        session = session_id(root)
         name = None
         if session is not None and tool != "WebFetch":
             name, _ = team_prompt_classes.classify(root, main, header, inp, cwd,
@@ -319,11 +319,6 @@ def tier_full(c, root, main, extra, tool, header, cmds, inp, text, cwd):
     if egress:
         return ("operator", egress, not human, rest)
     return (rest[0], rest[1] if rest[0] != "lead" else None, False, rest)
-
-
-def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
-    """→ ("class", name) | ("lead", None) | ("operator", cause): tier_full without its extras."""
-    return tier_full(c, root, main, extra, tool, header, cmds, inp, text, cwd)[:2]
 
 
 # The retry key of an operator-tier permission: what an Operator approval is bound to, so a retry

@@ -25,6 +25,7 @@ from guard_team_egress_effect import (  # noqa: E402
 from guard_team_egress_loops import (  # noqa: E402
     SUB_MARK, backstop, companion_safe, loop_verdict, piped_verdict, substituted)
 from guard_team_egress_classify import net_read  # noqa: E402
+from guard_team_egress_words import LOOP_WORD as SAFE  # noqa: E402
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
 # backslash anywhere else -> ignored (still asked).
@@ -44,7 +45,6 @@ GH_READS_TAINT = re.compile(r"[$`#\\]|GH_HOST|GH_REPO|[^\s;&|()<>]\(")
 BRACE = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
 # A glob that can match a file named like an option (`--rep[o]`, `[-]-repo` with a file `--repo`).
 GLOB_OPTION = re.compile(r"^[-*?\[][^*?\[]*[*?\[]|^[*?\[]")
-from guard_team_egress_words import LOOP_WORD as SAFE  # noqa: E402
 # Where an unquoted word ends; any other character outside quotes is refused.
 BOUNDARY = " \t;\n&|>"
 DIGITS = "0123456789"
