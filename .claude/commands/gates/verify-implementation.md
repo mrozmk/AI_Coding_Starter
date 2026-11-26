@@ -259,7 +259,7 @@ Then the concrete checks:
 - Are all **dependencies** declared in the plan actually imported and used?
 - If the plan specified **test files** — do they exist, run, and pass?
 - If the plan specified **i18n keys** — are they present in all locale files?
-- If the plan required **E2E** — was it validated? Use the project's test runner, a browser driven through MCP Playwright, or document a manual check.
+- If the plan required **E2E** — was it validated? Use the project's test runner, a browser driven through MCP Playwright — close it with that server's `browser_close` when the check is done — or document a manual check.
 
 If there is no plan (diff-only mode), skip (a)-(c) and the ledger — there is no spec to compare against — report `Acceptance criteria: n/a (no plan)`, and run only the concrete checks that apply.
 

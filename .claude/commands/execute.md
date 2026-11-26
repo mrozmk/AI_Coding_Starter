@@ -157,6 +157,7 @@ If the plan requires browser validation (e.g. a task or acceptance criterion rea
    - capture a screenshot as validation evidence
    - check console messages for JS errors
    - Save the screenshot path in your output report.
+   - close the browser with the same server's `browser_close` — also when the validation stops early; never close a browser by process name.
 
 3. **If E2E infrastructure is missing** (no browser-test runner installed, no `tests/e2e/` directory):
    - Record it as **evidence in your output report**: `E2E: validated manually via MCP; dedicated suite pending runner setup.`

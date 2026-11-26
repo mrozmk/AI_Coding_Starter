@@ -71,7 +71,7 @@ This step needs the Playwright MCP server (`mcp__playwright__*` tools). It is **
 - Compare with the probe: rendered JSON-LD > raw JSON-LD → schema is JS-injected (still counts, note that non-rendering crawlers miss it); rendered text ≫ raw text → SSR finding confirmed.
 - Console errors via `mcp__playwright__browser_console_messages` (errors only) — report only if they affect content rendering.
 
-Close the browser page when done. Do not browse beyond the probed pages.
+Close the browser with `mcp__playwright__browser_close` when done — also when this step aborts after the browser was opened. Do not browse beyond the probed pages.
 
 ### 4. Evaluate against the checklist
 

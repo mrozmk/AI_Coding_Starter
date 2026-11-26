@@ -78,6 +78,15 @@ Two mechanics make this exact form load-bearing:
 
 **A screenshot without the `<KEY>-<ac-id>` prefix is not attributable and must not be attached to anything.** An artifact that cannot be tied back to the criterion it supports is not evidence — it is a picture.
 
+## Closing the browser
+
+A browser MCP server keeps its window open until something closes it; a session that never does leaves Chrome running on the Operator's machine.
+
+- **As the `subagent` driver (this agent):** your last tool call, on every path — all criteria done, a lane abort (preflight failure, profile in use, a `browser_launch` value not established), any hazard stop — is `mcp__playwright__browser_close`.
+- **The main session under `mcp`** (it reads this section — `qa-verify.md` step 3): close with the `browser_close` of the server it actually navigated with, at the points `qa-verify.md` → Driver `mcp` names.
+- **The main session under `script`:** no MCP call — each script closes the browser it launched (the skeleton's `browser?.close()` and Playwright's exit handler).
+- **Every case:** it closes only the browser this session started; a "no open browser" answer is fine; never close a browser by process name, never touch a window you did not open.
+
 ## Do NOT
 
 - **Do not re-run the quality gate** — no typecheck, no lint, no test suite, no build. Cite `GATE_STATUS`. `Bash` is granted for read-only inspection, not for building or serving.

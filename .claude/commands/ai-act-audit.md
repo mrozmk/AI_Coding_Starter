@@ -34,7 +34,7 @@ Detect the mode from the input; when ambiguous, ask once.
 
 | Input | Mode | Evidence collection |
 |---|---|---|
-| URL (`https://…`) | `www` | WebFetch the homepage + discoverable key routes (privacy policy, imprint / legal notice, careers/jobs, contact, blog or guides, any page with a chat widget or AI feature). If browser tools (Playwright MCP / Claude in Chrome) are available, prefer them for rendered-DOM inspection — chat widgets often inject after load. |
+| URL (`https://…`) | `www` | WebFetch the homepage + discoverable key routes (privacy policy, imprint / legal notice, careers/jobs, contact, blog or guides, any page with a chat widget or AI feature). If browser tools (Playwright MCP / Claude in Chrome) are available, prefer them for rendered-DOM inspection — chat widgets often inject after load. When done, close what this run opened: a browser MCP with its `browser_close`; Claude in Chrome — the Operator's own browser — only the tabs this run opened, never a window or a tab that was already there. |
 | Local path (repo or `dist/`) | `repo` | Scan with `rg` per the CODE-* detection patterns in checklist.md. Check image assets for AI-provenance metadata (`exiftool` if available: XMP `DigitalSourceType`, C2PA manifest) and whether the build pipeline strips it. Read the content pipeline too: where AI text is generated, reviewed, translated and published. |
 | Pasted text / copy file (.md, .txt, .docx, .pdf) | `marketing` | Read directly. Audit claims, disclosures, synthetic-media descriptions. |
 | "audit this project" with both repo and deployed URL | `full` | `repo` + `www` combined; cross-check source against rendered output. |
