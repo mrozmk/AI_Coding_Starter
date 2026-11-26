@@ -90,6 +90,7 @@
       "Bash(node .claude/skills/audit-security/scripts/audit-runner.mjs:*)",
       "Bash(node .claude/skills/wcag-audit/runner/audit.mjs:*)",
       "Bash(node .claude/lib/backlog-check.mjs:*)",
+      "Bash(node .claude/lib/prime-ba.mjs:*)",
       "Bash(node .claude/lib/standards-tools.mjs:*)",
       "Bash(node .claude/lib/coding-standards-render.mjs:*)",
       "Bash(node .claude/lib/delivery-plan.mjs:*)",
