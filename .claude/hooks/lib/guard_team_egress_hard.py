@@ -98,8 +98,9 @@ def claude_config_dir():
 def guard_layer(path, project):
     """True when a settings or role-profile path (PROTECTED) belongs to a live guard layer (#322
     round 2): the `.claude/` of the session's project, the `.claude/` at the root of a checkout
-    (its parent holds `.git` — the clone, the main checkout, the starter and its worktrees), or the
-    user's Claude config dir. A fixture project's `.claude/` inside a repository tree is not one."""
+    (its parent holds `.git` — the clone, the main checkout, the starter and its worktrees), the
+    user's Claude config dir, and any `.claude/` outside every repository. Only a fixture
+    project's `.claude/` inside a repository tree (an ancestor holds `.git`) is not one."""
     low, cfg = path.lower(), claude_config_dir().lower()
     if low.startswith(cfg + os.sep) and any(
             fnmatch.fnmatch(low[len(cfg) + 1:], p) for p in ("settings*.json", "team/sessions/*.settings.json")):
@@ -111,8 +112,18 @@ def guard_layer(path, project):
         rest = low[k + len("/.claude/"):]
         if fnmatch.fnmatch(rest, "settings*.json") or fnmatch.fnmatch(rest, "team/sessions/*.settings.json"):
             root = path[:k]
-            return (bool(project) and root.lower() == os.path.realpath(project).lower()) or \
-                os.path.exists(os.path.join(root, ".git"))
+            if (project and root.lower() == os.path.realpath(project).lower()) or \
+                    os.path.exists(os.path.join(root, ".git")):
+                return True
+            # Not a checkout root: a fixture tree only when it lies inside a repository (an
+            # ancestor holds .git). A root outside every repository — one that does not exist
+            # yet included — stays protected.
+            d = os.path.dirname(root)
+            while d and d != os.path.dirname(d):
+                if os.path.exists(os.path.join(d, ".git")):
+                    return False
+                d = os.path.dirname(d)
+            return True
         k = low.rfind("/.claude/", 0, k)
     return False
 

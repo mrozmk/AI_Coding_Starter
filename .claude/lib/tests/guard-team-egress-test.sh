@@ -1022,11 +1022,15 @@ check deny "#322 protected write: python -c writing a role profile" \
 mkdir -p "$D/rp/.claude/lib/tests/fixtures/p/.claude" "$D/eh/.claude"; git init -q "$D/rp"
 drv deny "#322 r2 guard layer: another checkout's root settings.json" "$D/proj" Bash "cp a $D/rp/.claude/settings.json"
 drv deny "#322 r2 guard layer: the user's Claude config dir" "$D/proj" Bash "cp a $D/eh/.claude/settings.json"
+drv deny "#322 r2 guard layer: a root outside every repository, not there yet (a sync worktree)" "$D/proj" Bash \
+  "python3 - <<'EOF'"$'\n'"p='$D/wt-sync/.claude/settings.json'; open(p, 'w').write('{}')"$'\n'"EOF"
 ndrv "#322 r2 guard layer: a fixture project's settings.local.json in a repository" "$D/proj" Bash \
   "cp a $D/rp/.claude/lib/tests/fixtures/p/.claude/settings.local.json"
 ndrv "#322 r2 guard layer: a fixture role profile in a repository" "$D/proj" Bash \
   "echo x > $D/rp/.claude/lib/tests/fixtures/p/.claude/team/sessions/x.settings.json"
-check none "#322 r2 guard layer: a stage writes a fixture's settings.local.json in its clone" \
+check none "#322 r2 guard layer: a stage writes a fixture's settings.local.json inside a repository" \
+  "$(hook "$(bash_cwd 'mkdir -p fx/.claude && echo {} > fx/.claude/settings.local.json' "$D/rp")")"
+check deny "#322 r2 guard layer: the same write outside every repository stays denied" \
   "$(hook "$(bash_cwd 'mkdir -p fx/.claude && echo {} > fx/.claude/settings.local.json' "$D/proj")")"
 # Round 2 (rework item 3): a host-qualified repo on another host than github.com is Operator-only.
 drv operator "#322 r2 gh: -R other.host/<own owner>/<own repo> is another host" "$D/own" Bash \

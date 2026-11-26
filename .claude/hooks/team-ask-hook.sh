@@ -65,7 +65,7 @@ if [ "$EV" = PreToolUse ]; then
       exit 0 ;;
     esac
     # #322 (Operator decision d-2): settings and role profiles of a live guard layer (guard_layer:
-    # the clone, a checkout root, the Claude config dir) are never edited by a stage; the hooks only
+    # all but a fixture tree inside a repository) are never edited by a stage; the hooks only
     # in its own clone or its run's starter worktree. exit 0 = guard layer, 1 = not, else refused.
     case "$P" in *.json) python3 -I "$MAIN/.claude/hooks/lib/guard_team_egress_hard.py" guard-layer "$PO" "$CLONE"; GL=$?
       [ "$GL" -le 1 ] || guard_refuse "the guard layer check failed — refused"
