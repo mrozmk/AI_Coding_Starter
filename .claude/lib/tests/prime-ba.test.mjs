@@ -234,7 +234,7 @@ test('processed requirements spec is neither pending nor waiting', () => {
   const A = '.agents/specs/2026-01-02-req.md';
   const text = reqSpec('Draft');
   write(d, A, text);
-  const hash = crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
+  const hash = sha12(text);
   write(d, 'docs/PRD.md', `# PRD\n\n## Change log\n\n### D-1 — 2026-01-02 — d1\n**Kind:** scope\n**Sources:** \`${A}\` (sha256:${hash})\n**Tasks:** E1-1\n`);
   const out = plan(d);
   assert.ok(!rows(out, 'PENDING').some((r) => r[3] === A));

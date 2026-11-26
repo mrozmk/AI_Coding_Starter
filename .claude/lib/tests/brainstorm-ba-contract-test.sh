@@ -33,6 +33,8 @@ has "$CMD" '.agents/team/session.json' && has "$CMD" '.agents/team/team.json' &&
 check $? "team clone refused (session.json, team.json, D-A16)"
 has "$CMD" 'Never pick a backlog Task'
 check $? "empty call asks, never picks"
+has "$CMD" 'with `Waiting —`' && has "$CMD" 'never a second spec for the same input'
+check $? "resume covers a Waiting and a Draft requirements spec"
 has "$CMD" 'list --state all' && has "$CMD" 'start_at'
 check $? "tracker read in every state (github list --state all, jira paged with start_at)"
 has "$CMD" 'withdrawn: false' && has "$CMD" '--next-ids' && has "$CMD" '--impact'
@@ -57,8 +59,9 @@ check $? "never hands off to /plan-feature"
 has .claude/commands/update-backlog.md 'resume it with `/brainstorm-ba <path>`' \
   && has .claude/commands/update-backlog.md 'never becomes `[Assumption — to verify]`'
 check $? "update-backlog skips an unapproved requirements spec and keeps its open questions"
-has .claude/commands/plan-feature.md 'is a requirements spec (`/brainstorm-ba`)'
-check $? "plan-feature refuses a requirements spec"
+has .claude/commands/plan-feature.md 'is a requirements spec (`/brainstorm-ba`)' \
+  && has .claude/commands/plan-feature.md 'holds only requirements specs'
+check $? "plan-feature refuses a requirements spec and stops when only those remain"
 has .claude/commands/brainstorm.md 'this is `/brainstorm-ba` work'
 check $? "brainstorm points requirement work at /brainstorm-ba"
 has .claude/commands/prime-ba.md 'WAITING' && has .claude/commands/prime-ba.md '/brainstorm-ba <spec>' \

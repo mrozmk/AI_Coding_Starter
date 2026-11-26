@@ -56,7 +56,9 @@ Refusals, in this order:
 **Resume.** The argument is a requirements spec (`**Kind:** requirements`) whose `**Status:**` starts
 with `Waiting —` → read it, take the reply from the invocation or the chat, and resume at Step 1 for
 the rows its open question affects only; the rest of the spec stands. A reply that opens a new
-question keeps it `Waiting`, the new paste-ready text replacing the old.
+question keeps it `Waiting`, the new paste-ready text replacing the old. A `Draft` one is a run that
+stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has
+moved, and continue at Step 4 with the spec as it stands — never a second spec for the same input.
 
 **Backlog format** — read the Task table header of `.agents/backlog.md` once: `| Size |` and
 `| Depends on |` → `new-format`; `Wave` / `Slice` and no `Scope` → pre-Scope → stop: "run

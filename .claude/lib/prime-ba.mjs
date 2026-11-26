@@ -456,7 +456,7 @@ export function pendingSources(root) {
     }
     // An unapproved requirements spec (/brainstorm-ba) waits for an answer; it is not a source yet.
     if (item.pending && c.kind === 'spec') {
-      const { kind, status } = specHead(root, c.path);
+      const { kind, status } = specHead(f.text);
       if (kind === 'requirements' && !/^Approved\b/.test(status)) {
         item.pending = false;
         item.waiting = status;
@@ -650,8 +650,8 @@ export function codeRootState(abs, now = Date.now()) {
 // Listings
 // ---------------------------------------------------------------------------------------------
 
-function specHead(root, p) {
-  const head = (readText(root, p)?.text ?? '').split('\n').slice(0, 30);
+function specHead(text) {
+  const head = text.split('\n').slice(0, 30);
   const kind = head.map((l) => /^\*\*Kind:\*\*\s*(\S+)/.exec(l)?.[1]).find(Boolean) ?? 'design';
   const status = head.map((l) => /^\*\*Status:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.trim() ?? '—';
   const title = (head.find((l) => l.startsWith('# ')) ?? '# —').slice(2).replace(/^Design:\s*/, '').trim();
@@ -666,7 +666,7 @@ function specRows(root) {
     .sort((a, b) => (a.date === b.date ? (a.p < b.p ? 1 : -1) : a.date < b.date ? 1 : -1));
   const rows = [`SPECS_TOTAL\t${specs.length} files / ${total} bytes (listing only — never auto-read)`];
   for (const { p, date } of dated.slice(0, SPECS_LISTED)) {
-    const { kind, status, title } = specHead(root, p);
+    const { kind, status, title } = specHead(readText(root, p)?.text ?? '');
     rows.push(`SPEC\t${date || '—'}\t${kind}\t${status}\t${title}\t${p}`);
   }
   return { rows, specs: dated.map((d) => d.p) };
