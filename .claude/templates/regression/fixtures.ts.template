@@ -1,0 +1,28 @@
+// Regression fixtures — copied by /setup:regression next to the specs (never over an existing file).
+// Placeholders:
+//   <session-command>  runner.test_data.session split into argv, e.g. ['e2e/test-data/adapter.sh', 'session']
+// A spec picks its account with `test.use({ account: '<account-key>' })` (the key named in the scenario's
+// Data field — never a value); `account: null` runs anonymous. The adapter prints only the PATH of a
+// storage-state file, never a secret (.agents/reference/regression-test-data.md).
+import { test as base, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+
+const SESSION_COMMAND: string[] = <session-command>;
+
+export const test = base.extend<{ account: string | null }>({
+  account: [null, { option: true }],
+  // The browser context is created already signed in: the adapter's `session <env> <account>` prints the
+  // storage-state file path, which becomes this test's storageState.
+  storageState: async ({ account }, use) => {
+    if (!account) return use(undefined);
+    const env = process.env.REGRESSION_ENV;
+    if (!env) throw new Error('REGRESSION_ENV is not set');
+    const [program, ...args] = SESSION_COMMAND;
+    const file = execFileSync(program, [...args, env, account], { encoding: 'utf8' }).trim();
+    await use(file);
+  },
+});
+
+// request guard: installed here, before the first navigation (regression.md → Environments)
+
+export { expect };

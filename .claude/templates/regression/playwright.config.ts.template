@@ -1,0 +1,23 @@
+// Regression runner config — copied by /setup:regression to `runner.config` (never over an existing file).
+// Placeholders:
+//   <spec-dir-relative>  runner.spec_dir relative to THIS file's directory (Playwright resolves testDir
+//                        and outputFile against the config's directory, not the repo root):
+//                        config e2e/playwright.config.ts + spec_dir e2e/regression → './regression'
+//   <report-relative>    runner.report relative to this file's directory (e2e/.results/report.json → './.results/report.json')
+//   <desktop-project>, <mobile-project>  the names in runner.devices
+// No `webServer` on purpose: a regression run targets a deployed environment only (REGRESSION_BASE_URL,
+// resolved from .claude/regression.json `environments`), never an app this run starts itself.
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: '<spec-dir-relative>',
+  retries: 0,
+  reporter: [['json', { outputFile: '<report-relative>' }]],
+  use: {
+    baseURL: process.env.REGRESSION_BASE_URL,
+  },
+  projects: [
+    { name: '<desktop-project>', use: { ...devices['Desktop Chrome'] } },
+    { name: '<mobile-project>', use: { ...devices['iPhone 13'] } },
+  ],
+});

@@ -1,0 +1,15 @@
+// Regression spec skeleton — one test per scenario, title starting with the scenario id.
+// Placeholders:
+//   <relative-path>  path from this spec to the fixtures file (the extended test, never '@playwright/test')
+//   <account-key>    the account key from the scenario's Data field, or null for an anonymous run
+//   <ID>, <title>    the scenario's id and title
+//   <Source copied verbatim from the catalog>  the scenario's Source value as written — the header is what
+//                    the computed automation state compares with the current criteria (regression.md §7)
+import { test, expect } from '<relative-path>/fixtures';
+
+test.use({ account: '<account-key>' });
+
+// regression: <ID> · source: <Source copied verbatim from the catalog>
+test('<ID> — <title>', async ({ page }) => {
+  /* one assertion per Expected clause */
+});

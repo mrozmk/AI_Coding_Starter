@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "catalog": {
+    "path": ".agents/regression/scenarios",
+    "areas": {
+      "CART": "Cart",
+      "PDP": "Product page",
+      "ACC": "Account"
+    },
+    "id_pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{3}$",
+    "smoke": ["P0"]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "_doc": "Regression switch, read by .claude/lib/regression/{catalog,setup}.mjs. ABSENT = regression not adopted: every regression step is silent. Two switch positions: only `catalog` = catalog phase (scenarios are written and validated, nothing runs); `catalog` + `runner` + `environments` = baseline established. /setup:regression writes it (catalog stage, then baseline stage) and never overwrites it. Copy to .claude/regression.json only through that command or by hand. Committed; nothing here is secret — hosts, paths and commands, never credentials (those stay in .env). Contract: .agents/reference/regression.md.",
+
+  "version": 1,
+
+  "_catalog_doc": "The scenario catalog. `path`: directory of the catalog files (one *.md per area, README.md skipped). `areas`: CODE → name; a scenario id's prefix must be one of the codes. `id_pattern`: the scenario id regex. `smoke`: the priorities the smoke run takes.",
+  "catalog": {
+    "path": ".agents/regression/scenarios",
+    "areas": {
+      "CART": "Cart",
+      "PDP": "Product page"
+    },
+    "id_pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{3}$",
+    "smoke": ["P0"]
+  },
+
+  "_runner_doc": "The spec runner (baseline stage). Every path is repo-root-relative and every command runs from the repo root. `config`: the Playwright config; `spec_dir`: where the specs live; `devices`: catalog viewport → runner project name; `commands`: the smoke and full runs; `report`: the JSON report the runner writes; `test_data`: the adapter's four commands (contract: .agents/reference/regression-test-data.md).",
+  "runner": {
+    "config": "e2e/playwright.config.ts",
+    "spec_dir": "e2e/regression",
+    "devices": {
+      "desktop": "desktop-chrome",
+      "mobile": "mobile-safari"
+    },
+    "commands": {
+      "smoke": "npx playwright test --config e2e/playwright.config.ts --grep @smoke",
+      "full": "npx playwright test --config e2e/playwright.config.ts"
+    },
+    "report": "e2e/.results/report.json",
+    "test_data": {
+      "check": "e2e/test-data/adapter.sh check",
+      "provision": "e2e/test-data/adapter.sh provision",
+      "reset": "e2e/test-data/adapter.sh reset",
+      "session": "e2e/test-data/adapter.sh session"
+    }
+  },
+
+  "_environments_doc": "Deployed environments a run may target (baseline stage). `host`: an http(s) URL without a trailing slash, or \"qa-env\" = take `base_url` from .claude/qa-env.json. `kind`: test | production; ABSENT = production, so the adapter's provision and reset refuse it.",
+  "environments": {
+    "test": {
+      "host": "qa-env",
+      "kind": "test"
+    },
+    "prod": {
+      "host": "https://shop.example.com"
+    }
+  }
+}
