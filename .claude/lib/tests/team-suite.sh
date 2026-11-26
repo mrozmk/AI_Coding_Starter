@@ -62,7 +62,7 @@ STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-
   starter-fork-commit-test team-starter-land-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test
-  portable-userland-test wcag-audit-test)
+  portable-userland-test wcag-audit-test browser-close-test)
 ALL=()
 [ ! -f "$TESTS/team-smoke.sh" ] \
   || read -r -a ALL <<<"$(sed -n 's/^ *all) parts=(\(.*\)) ;;$/\1/p' "$TESTS/team-smoke.sh")"

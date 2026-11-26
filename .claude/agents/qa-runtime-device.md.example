@@ -106,6 +106,10 @@ Two mechanics make this exact form load-bearing:
 | **Navigation never settles** | The wait-for-condition times out on a page that keeps loading | Capture the console and the last a11y snapshot, then return `NEEDS-HUMAN` for the affected criteria with the URL and the timeout quoted. A screenshot of a half-rendered page is not evidence of a defect. |
 | **Element found but not reachable** | The node exists in the tree but a tap does nothing | Check `pointer-events`, `inert`, `opacity`, `visibility`, and whether something overlays it. A programmatic dispatch bypasses hit-testing and can manufacture a state no real user can reach — verify reachability before reporting either a pass or a failure. |
 
+## Closing the browser
+
+Your last tool call, on every path — all criteria done, a lane abort (preflight failure, profile in use), any hazard stop — is `mcp__{device_mcp_server}__browser_close`: your own server only — never the desktop server. It closes only the browser this server started; a "no open browser" answer is fine; never close a browser by process name, never touch a window you did not open.
+
 ## Do NOT
 
 - **Do not re-run the quality gate** — no typecheck, no lint, no test suite, no build. Cite `GATE_STATUS`.

@@ -42,18 +42,19 @@ done
 gate() {
   awk -v n="$1" '/^<HARD-GATE>$/ { c++; if (c == n) f = 1 } f { print } f && /^<\/HARD-GATE>$/ { exit }' "$ROOT/$CMD"
 }
-want1=$(cat <<'EOF'
+# Plain heredocs into files, not $(cat <<…): bash 3.2 misreads some bodies inside a command substitution.
+cat > "$WORK/want1.txt" <<'EOF'
 <HARD-GATE>
 **Nothing runs before Phase 1 is approved.** No verifier is spawned, no browser is driven, no probe is dispatched until every AC has been classified and the human has explicitly approved the classification table. Correcting a misclassification before verification costs one line; after it, the whole run was spent answering the wrong question.
 </HARD-GATE>
 EOF
-)
-want2=$(cat <<'EOF'
+want1=$(cat "$WORK/want1.txt")
+cat > "$WORK/want2.txt" <<'EOF'
 <HARD-GATE>
 **QA never mutates.** No source edits. No mutating git. No editing the AC text — not to clarify it, not to fix a typo. No transitioning the issue's status. **On finding a defect, record a `FAIL` with a severity and keep verifying — never fix it.** A proposed fix appears only as text in the row's notes. The permitted outward writes are the run's tracker comments — records and deferral pointers — after explicit human approval, and the one-time `qa.pool_status` setting with its `decisions.md` entry, on the Operator's answer. This boundary has no exception: a QA run that repairs what it inspects has destroyed the evidence it exists to produce.
 </HARD-GATE>
 EOF
-)
+want2=$(cat "$WORK/want2.txt")
 [ "$(gate 1)" = "$want1" ]; check $? "hard gate 1 is not verbatim"
 [ "$(gate 2)" = "$want2" ]; check $? "hard gate 2 is not verbatim"
 
@@ -305,7 +306,7 @@ lacks "$CMD" 'met (<file:line>)'; check $? "qa-verify still cites a file:line fr
 lacks "$CMD" 'on a line or heading containing "sensitive"'; check $? "qa-verify still harvests any line that says sensitive"
 
 # ---- modes, pool, groups ----------------------------------------------------------------------------
-POOL_PINS=$(cat <<'EOF'
+cat > "$WORK/pool-pins.txt" <<'EOF'
 ## Step 0.1 — Mode
 ## Step 0.2 — The pool
 ## Step 0.75 — PR data and incoming deferrals
@@ -368,7 +369,7 @@ CHANGELOG*
 .agents/memory/**
 .claude/lib/tests/team-suite.sh
 EOF
-)
+POOL_PINS=$(cat "$WORK/pool-pins.txt")
 pins "$CMD" "pool" <<< "$POOL_PINS"
 for neg in 'In this revision a `DEFERRED` row is a plain row' '**PR data is not read by this command yet.**' \
            '**No argument → list candidates and stop.**'; do
@@ -592,15 +593,32 @@ check $? "qa-env.json: browser_driver / browser_launch shape"
 has .claude/commands/prime-qa.md '`browser-driver: …`'; check $? "prime-qa: no browser-driver reading row"
 has .claude/commands/prime-qa.md '**Browser driver:**'; check $? "prime-qa: no Browser driver fact"
 
+# #306: every MCP-driven path closes the browser it opened.
+has "$CMD" '`## Closing the browser`'; check $? "qa-verify: step 3 does not read ## Closing the browser"
+section() {  # section <heading line> <out> — from the heading to the next ### or #### heading
+  awk -v h="$1" '$0 == h { f = 1; next } f && /^###/ { exit } f' "$ROOT/$CMD" > "$2"
+}
+section '#### Driver `mcp`' "$WORK/drv-mcp.md"
+section '#### Driver `subagent`' "$WORK/drv-subagent.md"
+section '### The light run' "$WORK/light-run.md"
+grep -qF browser_close "$WORK/drv-mcp.md"; check $? "qa-verify: Driver mcp has no browser_close"
+grep -qF browser_close "$WORK/drv-subagent.md"; check $? "qa-verify: Driver subagent has no browser_close"
+grep -qF 'no agent was spawned' "$WORK/drv-subagent.md"; check $? "qa-verify: Driver subagent does not close after a failed preflight"
+grep -qF browser_close "$WORK/light-run.md"; check $? "qa-verify: the light run has no browser_close"
+grep -F '**Two browser servers.**' "$ROOT/$CMD" | grep -qF "device server's \`browser_close\`"
+check $? "qa-verify: the device lane has no browser_close outside Driver subagent"
+
 # The script skeleton: extracted from the command, checked as text, then run against a stub Playwright.
 awk '/^<!-- qa-script:end -->$/{exit} f; /^<!-- qa-script:begin -->$/{f=1}' "$ROOT/$CMD" | sed '/^```/d' > "$WORK/skel.mjs"
 [ -s "$WORK/skel.mjs" ]; check $? "skeleton: the extracted block is empty"
 for want in 'newContext(' 'setDefaultTimeout(' 'setDefaultNavigationTimeout(' 'emit(124)' 'process.exit(code)' \
             'ariaSnapshot()' 'resp.status()' 'result.required.push(tag)' '${OUT}/${BASE}-${tag}.png' \
-            'not the mount target' 'searchParams' 'page.screenshot(' 'after load, not the mount target'; do
+            'not the mount target' 'searchParams' 'page.screenshot(' 'after load, not the mount target' \
+            'await browser?.close()'; do
   grep -qF -- "$want" "$WORK/skel.mjs"; check $? "skeleton: lacks $want"
 done
-for neg in waitForTimeout launchPersistentContext userDataDir; do
+# No handleSIG option: Playwright's default signal handlers close the browser on an interrupt (#306).
+for neg in waitForTimeout launchPersistentContext userDataDir handleSIG; do
   ! grep -qF -- "$neg" "$WORK/skel.mjs"; check $? "skeleton: contains $neg"
 done
 for re in '^const HARD_LIMIT_MS = 120000;$' '^const ROOT = ' '^const OUT = ' '^const TARGET = ' \

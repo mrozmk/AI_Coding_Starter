@@ -199,6 +199,7 @@ If the project's dev server (or a reachable deployed URL) is available, validate
 6. `mcp__playwright__browser_console_messages` — flag errors/warnings.
 7. Obtain the **reference render**: if Figma MCP is the source, use the node image from §3 (`mcp__figma__get_image`); otherwise render the static artifact at the same viewports and screenshot the matching section.
 8. Compare side-by-side; note every visible difference (alignment, color saturation, spacing, rendering).
+9. `mcp__playwright__browser_close` — after the comparison, and also when §6 stops early (the dev server is gone, a navigation fails) after a browser was opened. It closes only the browser this session's MCP server started; a "no open browser" answer is fine. Never close a browser by process name.
 
 If the dev server is **not** running: skip live screenshots (note it), do not start a long-running server without authorization, and proceed with the static audit. If the reference references external resources (web fonts, CDNs) that won't load offline, note rendering caveats — the audit of values is unaffected.
 
