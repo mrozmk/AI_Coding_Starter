@@ -548,6 +548,32 @@ test('pre-flight sees a forbidden key between route globs', async () => {
   assert.match(g.stdout, /^confirmation-required: /m, `a glob before the import does not hide it: ${g.out}`);
 });
 
+test('pre-flight refuses a spec or fixture that installs its own route', async () => {
+  const spec = copyRoot();
+  fs.appendFileSync(path.join(spec, 'e2e/regression/cart.spec.ts'), "test.beforeEach(async ({ page }) => { await page.route('**/*', (r) => r.continue()); });\n");
+  const r1 = await cli(['run', '--env', 'prod', '--root', spec]);
+  assert.equal(r1.status, 3, r1.out);
+  assert.match(r1.stderr, /^runner not guard-integrated — e2e\/regression\/cart\.spec\.ts: installs its own route \(\.route\(\)/m);
+  assert.doesNotMatch(r1.stdout, /confirmation-required/, 'refused before the confirmation');
+  assert.equal(runnerCalls(spec), 0);
+  const har = copyRoot();
+  fs.appendFileSync(path.join(har, 'e2e/fixtures.ts'), "export const replay = (page) => page.routeFromHAR('e2e/shop.har');\n");
+  const r2 = await cli(['run', '--env', 'prod', '--root', har]);
+  assert.equal(r2.status, 3, r2.out);
+  assert.match(r2.stderr, /e2e\/fixtures\.ts: installs its own route \(routeFromHAR\)/);
+  const commented = copyRoot();
+  fs.appendFileSync(path.join(commented, 'e2e/regression/cart.spec.ts'), "// page.route('**/*', (r) => r.continue());\n");
+  const r3 = await cli(['run', '--env', 'prod', '--root', commented]);
+  assert.match(r3.stdout, /^confirmation-required: /m, `a whole-line comment is not a route: ${r3.out}`);
+  const t = copyRoot();
+  knownBuild(t);
+  useRunner(t, 'green attest-all 0');
+  fs.appendFileSync(path.join(t, 'e2e/regression/cart.spec.ts'), "test.beforeEach(async ({ page }) => { await page.route('**/*', (r) => r.continue()); });\n");
+  const w = await cli(['run', '--root', t]);
+  assert.equal(w.status, 0, `on a test environment it is a warning: ${w.out}`);
+  assert.match(w.stdout, /^warning: runner not guard-integrated — e2e\/regression\/cart\.spec\.ts: installs its own route/m);
+});
+
 test('production run without case attestation is blocked', async () => {
   const root = copyRoot();
   knownBuild(root, 'prod');

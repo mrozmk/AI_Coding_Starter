@@ -28,6 +28,9 @@ const SHA_KEYS = ['sha', 'commit', 'commit_sha', 'git_sha', 'build_sha', 'revisi
 const HEX_SHA = /^[0-9a-f]{7,40}$/;
 const EXIT = { GREEN: 0, RED: 1, INCOMPLETE: 4, 'BLOCKED/ENV': 5 };
 const GUARD_MODULE = /\.claude\/lib\/regression\/guard\.mjs$/;
+// Calls that install a route of the spec's own: a page or context route a spec adds is matched
+// before the guard's context route, and `continue()` there sends the request unguarded.
+const OWN_ROUTE_CALLS = ['.route(', 'routeFromHAR', '.routeWebSocket('];
 
 const h16 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 const now = () => (process.env.REGRESSION_NOW ? new Date(process.env.REGRESSION_NOW) : new Date());
@@ -126,19 +129,20 @@ function resolveModule(fromFile, spec) {
 /**
  * The production pre-flight: the runner config imports `runnerOptions` from guard.mjs, every
  * selected spec imports `test` from a relative fixture module that imports `installGuard` from
- * guard.mjs, and none of them sets context defaults the private redirect transport would re-add.
- * Returns findings `[{file, reason}]` (empty = integrated).
+ * guard.mjs, none of them sets context defaults the private redirect transport would re-add, and
+ * no selected spec or fixture module installs a route of its own (a page route takes precedence
+ * over the guard's context route). Returns findings `[{file, reason}]` (empty = integrated).
  */
 export function checkIntegration(root, cfg, plan) {
   const findings = [];
   const rel = (f) => posix(path.relative(root, f));
   const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
-  const scanned = [];
+  const scanned = []; // [file, text, routesChecked]
   const configFile = path.resolve(root, cfg.runner.config);
   const configText = read(configFile);
   if (configText === null) findings.push({ file: cfg.runner.config, reason: 'runner config absent' });
   else {
-    scanned.push([configFile, configText]);
+    scanned.push([configFile, configText, false]);
     const ok = importsOf(configText).some((i) => GUARD_MODULE.test(i.from) && i.bindings.includes('runnerOptions'));
     if (!ok) findings.push({ file: cfg.runner.config, reason: 'does not import runnerOptions from .claude/lib/regression/guard.mjs' });
   }
@@ -147,7 +151,7 @@ export function checkIntegration(root, cfg, plan) {
     const file = path.resolve(root, spec);
     const text = read(file);
     if (text === null) { findings.push({ file: spec, reason: 'spec file absent' }); continue; }
-    scanned.push([file, text]);
+    scanned.push([file, text, true]);
     const testImport = importsOf(text).find((i) => i.bindings.includes('test'));
     if (!testImport) { findings.push({ file: spec, reason: 'imports no test' }); continue; }
     if (!testImport.from.startsWith('.')) { findings.push({ file: spec, reason: `imports test from ${testImport.from}, not from the guarded fixtures` }); continue; }
@@ -156,13 +160,16 @@ export function checkIntegration(root, cfg, plan) {
     if (fixtures.has(mod)) continue;
     fixtures.add(mod);
     const modText = read(mod);
-    scanned.push([mod, modText]);
+    scanned.push([mod, modText, true]);
     const ok = importsOf(modText).some((i) => GUARD_MODULE.test(i.from) && i.bindings.includes('installGuard'));
     if (!ok) findings.push({ file: rel(mod), reason: 'does not import installGuard from .claude/lib/regression/guard.mjs' });
   }
-  for (const [file, text] of scanned) {
+  for (const [file, text, routesChecked] of scanned) {
     const code = dropCommentLines(text);
     for (const key of ['extraHTTPHeaders', 'httpCredentials']) if (code.includes(key)) findings.push({ file: rel(file), reason: `sets ${key}` });
+    if (!routesChecked) continue;
+    // A literal call only: a route installed through a helper or a computed call is not seen (regression.md §11).
+    for (const call of OWN_ROUTE_CALLS) if (code.includes(call)) findings.push({ file: rel(file), reason: `installs its own route (${call}) — it would take precedence over the guard` });
   }
   return findings;
 }

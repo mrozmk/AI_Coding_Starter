@@ -309,7 +309,10 @@ fails is logged `session-failed` by the fixture and fails its test (`RED`), not 
 `runnerOptions` from `.claude/lib/regression/guard.mjs`, every selected spec imports `test` from a
 relative fixture module that imports `installGuard` from it, and none of those files sets
 `extraHTTPHeaders` or `httpCredentials` (context defaults the guard's own redirect transport would
-re-add on a cross-origin hop). On a test environment the same finding is a warning.
+re-add on a cross-origin hop), and no selected spec or fixture module installs a route of its own
+(`.route(`, `routeFromHAR`, `.routeWebSocket(` — a page route is matched before the guard's context
+route, and its `continue()` would send the request unguarded). On a test environment the same
+finding is a warning.
 
 **Migrating a #330 installation.** The copied config and fixtures are project code and never
 synced: re-copy both templates (`/setup:regression` baseline, Step 2, fills `<guard-module-relative>`)
@@ -326,6 +329,10 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
   expensive operation (the confirmation states the worst case).
 - A `200` with an error body is not a status: declare `error_signals`, or call `stopRun`.
 - A load balancer serving mixed builds can make a run straddle two builds; pin the environment.
+- The pre-flight is a static text check of the selected specs and their fixture module: a route
+  installed through a helper module they import, or through a computed call (`page[name](…)`), is
+  not seen — and such a route takes precedence over the guard. Keep request mocking out of
+  production scenarios.
 
 ## 12. The run
 
