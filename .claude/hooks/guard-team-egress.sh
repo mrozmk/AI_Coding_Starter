@@ -1,7 +1,10 @@
 #!/bin/bash
 # PreToolUse(WebFetch, Bash) guard, team mode only: auto mode would let the classifier approve
 # egress, so an unlisted WebFetch host or an egress tool in command position asks
-# (lib/guard_team_egress.py). Never allows. Fail-closed: no python3 / a crash asks.
+# (lib/guard_team_egress.py, by effect: lib/guard_team_egress_classify.py, #322). Never allows;
+# denies a hard deny class (body/upload from a file, /dev/tcp, a token in a URL, a download piped
+# into a shell, a write into settings or a role profile, a stage's hook write outside its clone and
+# starter worktree). Fail-closed: no python3 / a crash asks.
 # Contract: .agents/reference/security-egress.md, .agents/reference/team-mode.md
 # The Supervisor's local allow rules (main checkout only): lib/guard_team_egress_supervisor.py.
 # Supervisor touch log: every Supervisor ask appends to .agents/touches/<yyyy-mm>.jsonl.

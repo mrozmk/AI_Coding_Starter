@@ -1,5 +1,13 @@
 """Logic of guard-team-egress.sh: keep the egress prompt for team roles in auto mode.
 
+#322: every verdict comes from the effect classifier (guard_team_egress_classify: pass / deny /
+operator / ask, the same for every role). pass -> no output; deny -> permissionDecision deny (a hard
+deny class, a mechanical block: the Supervisor's touch log records it as kind block); operator and
+ask -> permissionDecision ask. Never allows. bash_effect / webfetch_effect are the classifier's
+entry points for other callers; bash_reason / webfetch_reason return the reason of any non-pass
+kind. The reading below (reading_reason_of) is the classifier's pass test: what it lets through is
+a pass unless a deny or operator detector fires first.
+
 A best-effort guard over Bash and WebFetch, not an allowlist (MCP tools and WebSearch are out of
 scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command
 whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm npx
@@ -15,22 +23,25 @@ or its tokens (a quoted ';' does not hide an argument: the whole string is check
 quoted-delimiter `python3 -` here-docs are judged by their code (py_code_safe: local-only modules,
 no process/network/introspection API) — not egress when it passes, for every role; Python output
 piped into a shell or interpreter asks; a `cat` data here-doc's body is not scanned. A /dev/tcp or
-/dev/udp path (bash's sockets) -> ask, whatever the verb, at every nesting level. Never emits
+/dev/udp path (bash's sockets) -> deny (#322), whatever the verb, at every nesting level. Never emits
 allow: no output leaves the decision to Claude Code's own rules, so deny still wins. Unreadable
 input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
 git push/fetch/pull/clone/ls-remote/submodule add/remote add|set-url whose repository argument is a
 URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a bare remote name or
-a local path passes (the remote's configured URL was itself set through this check or by a human).
+a local path passes (the remote's configured URL was itself set through this check or by a human);
+#322: git fetch/pull/clone/ls-remote also pass toward a public host (classifier: lexical + address).
 A URL set as git config — `git config remote.<n>.url|pushurl <url>`, `git -c remote.<n>.url=<url>`,
 `url.<base>.insteadOf` — and `git push --repo[=]<url>` get the same host check.
 On the gh pr|issue view read path a single-quoted --jq/--template value that gh's option layout
-binds is data, not checked for taint. The Supervisor in the main checkout (TEAM_SESSION_ROLE=
-Supervisor, no TEAM_RUN_TEAM, neither .agents/team/session.json nor team.json) passes compounds of
-gh commands covered by a Bash(gh ...) allow rule of settings.local.json (never settings.json) and
-allowlisted companions, and inline Python under the local Bash(python3 -) / Bash(python3 -c *)
-opt-in; gh output piped into a shell or interpreter asks. Every Supervisor ask is appended to
-.agents/touches/<yyyy-mm>.jsonl. All of it: guard_team_egress_supervisor.py.
+binds is data, not checked for taint. Every role passes compounds of built-in gh reads, inline
+Python py_code_safe accepts, the #322 read forms and allowlisted companions (literal loops
+unrolled); only the Supervisor in the main checkout (TEAM_SESSION_ROLE=Supervisor, no
+TEAM_RUN_TEAM, neither .agents/team/session.json nor team.json) adds gh commands covered by a
+Bash(gh ...) allow rule of settings.local.json (never settings.json) and inline Python under the
+local Bash(python3 -) / Bash(python3 -c *) opt-in; gh output piped into a shell or interpreter
+asks. Every Supervisor ask or deny is appended to .agents/touches/<yyyy-mm>.jsonl. All of it:
+guard_team_egress_supervisor.py.
 """
 import json
 import os
@@ -50,8 +61,10 @@ from guard_team_egress_effect import (  # noqa: E402
     GH_READ_FORMS, inline_literals, py_code_safe, python_heredocs_judged)
 from guard_team_egress_loops import backstop  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
-    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector,
-    record_touch, supervisor_verdict)
+    BRACE, GH_READS_TAINT, allow_rules, compound_verdict, format_masked, gh_host_selector,
+    record_touch)
+from guard_team_egress_classify import (  # noqa: E402
+    classify_bash, classify_webfetch, git_read_host_ok)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -189,13 +202,24 @@ def repo_host(arg):
     return m.group(1).lower() if m else ""
 
 
-def git_host_ok(host):
+def git_host_ok(host, read=False):
+    """<read>: fetch/pull/clone/ls-remote, which also pass toward a public host (#322)."""
     if host in LOOPBACK:
         return True
+    project = os.environ.get("CLAUDE_PROJECT_DIR", "")
     try:
-        return host_allowed(host, allowlist(os.environ.get("CLAUDE_PROJECT_DIR", "")))
+        if host_allowed(host, allowlist(project)):
+            return True
     except Unreadable:
         return False
+    return read and git_read_host_ok(host, project)
+
+
+def git_sub(words):
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in ("-C", "-c") else 1
+    return "".join(words[i:i + 1])
 
 
 def egress_in(cmd, depth=0, reads_ok=True):
@@ -244,9 +268,10 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
                 names is EGRESS and not egress_capable(verb, words, plain)):
             return verb
         if verb == "git" and names is EGRESS:
-            for arg in [git_repo_arg(words) or ""] + git_config_urls(words):
+            read = git_sub(words) in ("fetch", "pull", "clone", "ls-remote")
+            for k, arg in enumerate([git_repo_arg(words) or ""] + git_config_urls(words)):
                 host = repo_host(arg)
-                if host and not git_host_ok(host):
+                if host and not git_host_ok(host, read and k == 0):
                     return "git to " + host
         if depth >= 3:
             continue
@@ -303,7 +328,26 @@ def gh_read_tainted(cmd, tokens=()):
                 or any(GH_READS_TAINT.search(t) for t in tokens))
 
 
-def bash_reason(cmd, project):
+def bash_effect(cmd, project, cwd=None):
+    """(kind, reason) of a Bash command — the classifier (#322)."""
+    return classify_bash(cmd, project, cwd)
+
+
+def webfetch_effect(url, project):
+    return classify_webfetch(url, project)
+
+
+def bash_reason(cmd, project, cwd=None):
+    """The reason of any non-pass kind, '' for a pass (callers that only need "asks or not")."""
+    return bash_effect(cmd, project, cwd)[1]
+
+
+def webfetch_reason(url, project):
+    return webfetch_effect(url, project)[1]
+
+
+def reading_reason_of(cmd, project):
+    """The reading's reason ('' = no egress the reading cannot pass): the classifier's pass test."""
     mark = comment_splits()
     reason = reading_reason(cmd, project)
     if reason or not needs_base_reading(mark):
@@ -321,7 +365,7 @@ def reading_reason(cmd, project):
     # #272: a safe Python here-doc is `true <args>`, a `cat` data here-doc loses its body; then the
     # literal heads (inline_literals keeps a command with any other here-doc as it is).
     cmd = inline_literals(python_heredocs_judged(cmd))
-    decision, why = supervisor_verdict(cmd, project, egress_in)
+    decision, why = compound_verdict(cmd, project, egress_in)
     if decision != "defer":
         return why
     # Python judged safe above still never feeds a shell or interpreter through a pipe.
@@ -377,21 +421,11 @@ def host_allowed(host, domains):
     return any(host.endswith(d) if d.startswith(".") else host == d for d in domains)
 
 
-def webfetch_reason(url, project):
-    try:
-        host = (urlsplit(url).hostname or "").rstrip(".") if isinstance(url, str) else ""
-    except ValueError:
-        host = ""
-    if not host:
-        return "unparsable WebFetch URL"
-    # WHATWG (WebFetch) reads `\` as `/` and urlsplit does not: `https://evil\@allowed/` differs.
-    if "\\" in url or "@" in urlsplit(url).netloc:
-        return "ambiguous WebFetch URL (" + host + ")"
-    try:
-        domains = allowlist(project)
-    except Unreadable as e:
-        return host + " not checked (" + str(e) + ")"
-    return "" if host_allowed(host, domains) else host + " not in WebFetch allowlist"
+def deny_verdict(reason):
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "team egress: " + reason + " — denied"}}
 
 
 def main():
@@ -406,16 +440,21 @@ def main():
         print(json.dumps(verdict("unreadable hook payload")))
         record_touch(project, None, "unreadable hook payload")
         return
+    cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     if tool == "WebFetch":
-        reason = webfetch_reason(tool_input.get("url"), project)
+        kind, reason = webfetch_effect(tool_input.get("url"), project)
     elif tool == "Bash":
         cmd = tool_input.get("command")
-        reason = bash_reason(cmd, project) if isinstance(cmd, str) else "unreadable Bash command"
+        kind, reason = (bash_effect(cmd, project, cwd) if isinstance(cmd, str)
+                        else ("ask", "unreadable Bash command"))
     else:
         return
-    if reason:
+    if kind == "deny":
+        print(json.dumps(deny_verdict(reason)))
+        record_touch(project, cwd, reason, payload, kind="block", why="hook")
+    elif kind != "pass":
         print(json.dumps(verdict(reason)))
-        record_touch(project, payload.get("cwd"), reason, payload)
+        record_touch(project, cwd, reason, payload)
 
 
 if __name__ == "__main__":

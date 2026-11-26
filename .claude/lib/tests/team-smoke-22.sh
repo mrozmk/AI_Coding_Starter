@@ -453,7 +453,8 @@ mkdir -p "$CLONE/.claude/team/sessions"; echo '{"permissions": {"allow": []}}' >
 editp "$CREAL/.claude/team/sessions/TeamLead.settings.json" .claude/team/sessions/TeamLead.settings.json \
   '"allow": []' '"allow": ["Bash(*)"]'
 tier "tier: operator — settings edit" "(j) guard profile edit"
-bashp "cp /tmp/s .claude/settings.json"; tier "tier: operator — settings edit" "(j) settings via Bash"
+# #322: a Bash write into settings is a hard deny class of the effect classifier (was a settings edit)
+bashp "cp /tmp/s .claude/settings.json"; tier "tier: operator — refuse (egress denied): write into settings" "(j) settings via Bash"
 echo "team-smoke-22: (j) settings edit operator tier OK"
 # ---- (k) a project-added ask is the Operator's; a baseline ask is the lead's ----------------------
 case_mark "(k) a project-added ask is the Operator'"

@@ -228,19 +228,26 @@ ok "v2 the labelling sheet is hashed; sheet rewrites the same bytes" $?
 # ---- run: the source tree is gone, the corpus alone replays --------------------------------
 mv "$FX" "$T/fx.gone"
 $PR run --corpus "$C" --impl "$SRC" --layer all > "$T/r1.out" 2> "$T/r1.err"; r=$?
-grep -E '^(### |\| |guard-corpus expectations:|recorded vs simulated)' "$T/r1.out" > "$T/r1.got"
+# #322: the baseline-compatible tables and the effect view are two assertions.
+awk '/^### /{e=/^### Effect view/} /^(### |\| |guard-corpus expectations:|recorded vs simulated)/ && !e' "$T/r1.out" > "$T/r1.got"
+awk '/^### /{e=/^### Effect view/} e && /^(### |\| )/' "$T/r1.out" > "$T/r1e.got"
 grep -vE '^#( |$)' "$FXS/expected-baseline.txt" | grep . > "$T/r1.want"
+grep -vE '^#( |$)' "$FXS/expected-effect.txt" | grep . > "$T/r1e.want"
 [ "$r" = 0 ] && diff "$T/r1.want" "$T/r1.got" > "$T/r1.diff"
 ok "r1 baseline equals the expected counts" $?
 [ "$r" = 0 ] || cat "$T/r1.err"; [ -s "$T/r1.diff" ] && cat "$T/r1.diff"
+diff "$T/r1e.want" "$T/r1e.got" > "$T/r1e.diff"
+ok "r1e #322 Effect view equals the expected counts" $?
+[ -s "$T/r1e.diff" ] && cat "$T/r1e.diff"
 
 mkdir -p "$T/implB"; cp -R "$SRC/.claude" "$T/implB/.claude"
+# #322: the worker selects the effect API — the patch wraps bash_effect.
 cat >> "$T/implB/.claude/hooks/lib/guard_team_egress.py" <<'EOF'
-_replay_bash_reason = bash_reason
-def bash_reason(cmd, project):  # test patch: curl is silent for the Supervisor
+_replay_bash_effect = bash_effect
+def bash_effect(cmd, project, cwd=None):  # test patch: curl is silent for the Supervisor
     if "curl" in cmd and os.environ.get("TEAM_SESSION_ROLE") == "Supervisor":
-        return ""
-    return _replay_bash_reason(cmd, project)
+        return ("pass", "")
+    return _replay_bash_effect(cmd, project, cwd)
 EOF
 IR1=$(jq -r 'select(.source == "touch" and .evidence.what == "curl in command position") | .intervention' "$C/touched.jsonl")
 $PR run --corpus "$C" --impl "$SRC" --impl "$T/implB" --layer touched --changes-out "$T/r2.ch" > "$T/r2.out" 2>&1
@@ -249,11 +256,12 @@ sed -n '/^Decision changes:/,/^Outcome changes:/p' "$T/r2.out" | grep -q "^$IR1 
 ok "r2 a Supervisor guard ask turned silent is a decision change" $?
 
 mkdir -p "$T/implC"; cp -R "$SRC/.claude" "$T/implC/.claude"
+# #322: input_tier calls tier_full — the patch wraps it.
 cat >> "$T/implC/.claude/lib/team_prompt_authority.py" <<'EOF'
-_replay_tier = tier
-def tier(*args, **kw):  # test patch: a lead checkpoint becomes class x
-    r = _replay_tier(*args, **kw)
-    return ("class", "x") if r == ("lead", None) else r
+_replay_tier_full = tier_full
+def tier_full(*args, **kw):  # test patch: a lead checkpoint becomes class x
+    r = _replay_tier_full(*args, **kw)
+    return ("class", "x") + tuple(r[2:]) if tuple(r[:2]) == ("lead", None) else r
 EOF
 $PR run --corpus "$C" --impl "$SRC" --impl "$T/implC" --layer touched > "$T/r2b.out" 2>&1
 sed -n '/^Decision changes:/,/^Outcome changes:/p' "$T/r2b.out" | grep -q "^$I1 stage guard=silent tier=lead → guard=silent tier=class x" \
@@ -286,8 +294,57 @@ W "$T/implP" '{key:"m", ctx:"stage", tool:"Bash", input:{command:"git merge --no
   | jq -e '.tier == "class" and .class == "merge-line" and .outcome == "lead"' >/dev/null \
   && W "$SRC" '{key:"o", ctx:"stage", tool:"Bash", input:{command:("cat " + $r + "/README.md")}, cwd_class:"clone", cwd_rel:".", paths:[[$r, "main"]], prompted:true}' \
      --arg r "$T/fx.gone/main" | jq -e '.tier == "operator" and (.cause | contains("<main>/README.md"))' >/dev/null \
-  && W "$SRC" '{key:"w", ctx:"supervisor", tool:"WebFetch", input:{url:"https://docs.example/a"}}' | jq -e '.guard == "" and .outcome == "pass"' >/dev/null
+  && W "$SRC" '{key:"w", ctx:"supervisor", tool:"WebFetch", input:{url:"https://docs-example.dev/a?x=1"}}' | jq -e '.guard == "" and .outcome == "pass"' >/dev/null
 ok "w1 worker fixtures: a genuine class, a main-checkout refusal, a locally allowed WebFetch host" $?
+
+# --- #322: effect dispatch, deny, resolver stub, effect view, git context, isolation ------------
+mkdir -p "$T/implD"; cp -R "$SRC/.claude" "$T/implD/.claude"
+cat >> "$T/implD/.claude/hooks/lib/guard_team_egress.py" <<'EOF'
+_replay_bash_effect_d = bash_effect
+def bash_effect(cmd, project, cwd=None):  # test patch: a marker command is a hard deny
+    return ("deny", "x") if "MARKER322" in cmd else _replay_bash_effect_d(cmd, project, cwd)
+EOF
+# A root without the effect API (the pre-#322 shape): bash_reason / webfetch_reason only.
+mkdir -p "$T/implO"; cp -R "$SRC/.claude" "$T/implO/.claude"
+cat >> "$T/implO/.claude/hooks/lib/guard_team_egress.py" <<'EOF'
+_old_be, _old_we = bash_effect, webfetch_effect
+del bash_effect, webfetch_effect
+def bash_reason(cmd, project, cwd=None):
+    return _old_be(cmd, project, cwd)[1]
+def webfetch_reason(url, project):
+    return _old_we(url, project)[1]
+EOF
+W "$T/implD" '{key:"d", ctx:"advisor", tool:"Bash", input:{command:"echo MARKER322"}}' | jq -e '.effect == "deny" and .outcome == "deny" and .effect_outcome == "deny"' >/dev/null \
+  && W "$T/implD" '{key:"d2", ctx:"stage", tool:"Bash", input:{command:"echo MARKER322"}, cwd_class:"clone", cwd_rel:"."}' | jq -e '.outcome == "deny"' >/dev/null
+ok "#322 e1 a deny kind maps to the deny outcome (stage and non-stage)" $?
+$PR run --corpus "$C" --impl "$T/implO" --impl "$SRC" --layer all > "$T/e2.out" 2> "$T/e2.err"; r=$?
+[ "$r" = 0 ] && [ "$(grep -c '^## Layer touched' "$T/e2.out")" = 2 ] && grep -q '^## Implementation B ' "$T/e2.out" \
+  && grep -q '^Pass → non-pass (effect, touched): ' "$T/e2.out" && grep -q '^Pass → non-pass (effect, replay): ' "$T/e2.out"
+ok "#322 e2 an A/B run over a pre-#322 root and this one: both roots tabulated, the effect lists printed" $?
+W "$SRC" '{key:"g", ctx:"advisor", tool:"Bash", input:{command:"gh issue view 1 --repo o/r"}, prompted:true, guard_caused:true}' | jq -e '.effect_outcome == "pass"' >/dev/null \
+  && W "$SRC" '{key:"n", ctx:"advisor", tool:"Bash", input:{command:"gh issue view 1 --repo o/r"}, prompted:true, guard_caused:false}' | jq -e '.effect_outcome == "native-prompt" and .outcome == "operator"' >/dev/null
+ok "#322 e3 Effect view: a guard-caused prompt whose candidate passes is pass; a native prompt stays native-prompt" $?
+W "$SRC" '{key:"s", ctx:"advisor", tool:"WebFetch", input:{url:"https://no-such-host-322.dev/x"}}' | jq -e '.effect == "pass"' >/dev/null
+ok "#322 e4 the worker's resolver stub: an unresolvable public-looking name passes offline" $?
+echo '{"permissions":{"ask":["Bash(gh issue view:*)"]}}' > "$T/pol-ask.json"
+jq -nc '{key:"p", ctx:"supervisor", tool:"Bash", input:{command:"gh issue view 1 --repo o/r"}, prompted:true, guard_caused:true}' \
+  | python3 -I "$SRC/.claude/lib/prompt_replay.py" worker --impl "$SRC" --policy "$T/pol-ask.json" | jq -e '.effect_outcome == "native-prompt"' >/dev/null
+r1=$?
+mkdir -p "$T/implQ"; cp -R "$SRC/.claude" "$T/implQ/.claude"
+jq '.permissions.ask += ["Bash(gh issue view:*)"]' "$SRC/.claude/settings.json" > "$T/implQ/.claude/settings.json"
+W "$T/implQ" '{key:"q", ctx:"stage", tool:"Bash", input:{command:"gh issue view 1 --repo o/r"}, cwd_class:"clone", cwd_rel:".", prompted:true, guard_caused:true}' | jq -e '.effect_outcome != "pass"' >/dev/null; r2=$?
+W "$SRC" '{key:"q2", ctx:"stage", tool:"Bash", input:{command:"gh issue view 1 --repo o/r"}, cwd_class:"clone", cwd_rel:".", prompted:true, guard_caused:true}' | jq -e '.effect_outcome == "pass"' >/dev/null; r3=$?
+[ "$r1" = 0 ] && [ "$r2" = 0 ] && [ "$r3" = 0 ]
+ok "#322 e5 an explicit ask rule still stops a read the new guard passes (non-stage and stage); without it the stage read passes" $?
+W "$SRC" '{key:"o1", ctx:"advisor", tool:"Bash", input:{command:"git push origin HEAD"}}' | jq -e '.effect == "pass" and .limit == null' >/dev/null \
+  && W "$T/implO" '{key:"o1", ctx:"advisor", tool:"Bash", input:{command:"git push origin HEAD"}}' | jq -e '.outcome == "pass"' >/dev/null \
+  && W "$SRC" '{key:"o2", ctx:"advisor", tool:"Bash", input:{command:"git push other HEAD"}}' | jq -e '.limit == "origin not representable"' >/dev/null
+ok "#322 e6 a non-stage push to origin passes at both roots; a push elsewhere is a replay limit" $?
+mkdir -p "$T/h1" "$T/h2"; : > "$T/h1/.curlrc"
+HOME="$T/h1" $PR run --corpus "$C" --impl "$SRC" --layer all > "$T/e7a.out" 2>&1
+HOME="$T/h2" $PR run --corpus "$C" --impl "$SRC" --layer all > "$T/e7b.out" 2>&1
+diff "$T/e7a.out" "$T/e7b.out" >/dev/null
+ok "#322 e7 two runs whose parent HOME differs (one with a .curlrc) give identical results" $?
 
 # ---- the probe hook ----------------------------------------------------------------------------
 L="$T/probe.log"

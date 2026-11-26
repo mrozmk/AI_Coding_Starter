@@ -5,6 +5,7 @@
       "Bash(python3 -c *)",
       "Bash(gh issue list:*)",
       "WebFetch(domain:docs.example)",
+      "WebFetch(domain:docs-example.dev)",
       "Bash(ls:*)"
     ]
   }

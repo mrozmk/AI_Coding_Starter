@@ -3,10 +3,11 @@
 Imported by the checker, never run: every function takes the checker module `c` (its Refuse,
 parsers and rule matchers), so both share one Refuse class and one implementation of each check.
 
-Egress first, by the real egress classifier (guard_team_egress.bash_reason / webfetch_reason).
-Then the human-only causes — what only the Operator may approve: an Edit/Write (or a Bash command
-naming) .claude/settings*.json or a guard profile .claude/team/sessions/*.settings.json, an egress
-prompt or command (git remote add/set-url too), a recursive rm with a target outside the clone and
+Egress by the effect classifier (#322: guard_team_egress.bash_effect / webfetch_effect — deny →
+"refuse (egress denied)", operator/ask → "egress: …", pass → no egress cause; one decider, no
+blanket Fetch cause and no egress regex). Then the human-only causes — what only the Operator may
+approve: an Edit/Write (or a Bash command naming) .claude/settings*.json or a guard profile
+.claude/team/sessions/*.settings.json, git remote add/set-url, a recursive rm with a target outside the clone and
 the temp roots, and an ask match whose rule is not in the starter's baseline
 (.claude/team/baseline-ask.json — a project's added asks are its production rules; a missing or
 unreadable baseline makes every ask production) — and the causes no authority waives (a deny
@@ -132,6 +133,15 @@ def delete_causes(c, root, cmd, cwd=None):
     return out
 
 
+def session_id(root):
+    """The stage's session id from <root>'s session.json, or None (team_prompt_check.session_id)."""
+    try:
+        with open(os.path.join(root, ".agents", "team", "session.json"), encoding="utf-8") as fh:
+            return str(json.load(fh).get("session_id") or "") or None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def baseline():
     """The starter's ask rules, or None (every ask is then production)."""
     try:
@@ -187,8 +197,6 @@ def human_causes(c, root, main, extra, header, cmds, inp, text, cwd=None):
     """→ (human-only causes, ask matches); raises every never-waived refusal. <cwd> (the hook
     payload's) is the base of relative operands; the clone root stays the containment boundary."""
     human, found = [], []
-    if re.match(r"(WebFetch|Fetch)\b", header):
-        human.append("egress: %s prompt" % header)
     tiered, bash = c.rules(root, extra), header.startswith("Bash")
     for cmd in cmds:
         if bash:
@@ -199,12 +207,7 @@ def human_causes(c, root, main, extra, header, cmds, inp, text, cwd=None):
             m = c.SETTINGS_WORD.search(cmd) or PROFILE_TEXT.search(cmd)
             if m:
                 human.append("settings edit: %s via Bash" % m.group(0).strip())
-            for line in cmd.splitlines():
-                for part in c.SEGMENT.split(line):
-                    m = c.EGRESS.search(part)
-                    if m and not c.guard_team_egress.loopback_probe(part.split()):
-                        human.append("egress: %s" % m.group(2))
-            # A new remote plus the allowed git push sends the repository to an unapproved host.
+            # Egress is the effect classifier's alone (tier_full, #322). A new remote plus the allowed git push sends the repository to an unapproved host.
             human += ["egress: git remote %s" % w[2] for w in map(c.argv_plain, c.canonical(cmd))
                       if w[:2] == ["git", "remote"] and w[2:3] in (["add"], ["set-url"])]
             human += delete_causes(c, root, cmd, cwd)
@@ -269,39 +272,58 @@ def tool_rule_tier(c, root, extra, tool, inp=None):
     return ("lead", None)
 
 
-def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
-    """→ ("class", name) | ("lead", None) | ("operator", cause) for one structured permission.
-    Egress first, by the real egress classifier; then the human-only causes and every never-waived
-    refusal (operator); a prompt no rule explains keeps a checkpoint (lead, never automatic: a
-    hook's own ask leaves no trace in the payload); ask matches in an enabled class → class."""
+def tier_full(c, root, main, extra, tool, header, cmds, inp, text, cwd):
+    """→ (kind, why, eligible, rest) for one structured permission. kind/why: ("class", name) |
+    ("lead", None) | ("operator", cause). Egress by the effect classifier (#322): a deny kind →
+    operator "refuse (egress denied): …"; an operator or ask kind → operator "egress: …" — reported
+    before any other cause, but only after every independent check ran; a pass → no egress cause.
+    Then the human-only causes and every never-waived refusal (operator); a prompt no rule explains
+    keeps a checkpoint (lead, never automatic: a hook's own ask leaves no trace in the payload); ask
+    matches in an enabled class → class. eligible: the only cause is an operator/ask egress kind
+    (batch binding may answer it). rest: the tier without the egress cause — ("operator", cause) |
+    ("class", name) | ("lead", "ask") for an independent trigger, ("lead", None) for the fallback —
+    or None when the classifier failed or denied."""
+    egress = None
     try:
         if tool == "Bash":
-            for cmd in cmds:
-                r = c.guard_team_egress.bash_reason(cmd, root)
-                if r:
-                    return ("operator", "egress: %s" % r)
+            effects = [c.guard_team_egress.bash_effect(cmd, root, cwd) for cmd in cmds]
         elif tool == "WebFetch":
-            r = c.guard_team_egress.webfetch_reason((inp or {}).get("url"), root)
-            if r:
-                return ("operator", "egress: %s" % r)
+            effects = [c.guard_team_egress.webfetch_effect((inp or {}).get("url"), root)]
+        else:
+            effects = []
     except Exception as e:  # noqa: BLE001 — the egress guard asks the Operator when it fails
-        return ("operator", "egress: guard failed (%s)" % e.__class__.__name__)
+        return ("operator", "egress: guard failed (%s)" % e.__class__.__name__, False, None)
+    for kind, reason in effects:
+        if kind == "deny":
+            return ("operator", "refuse (egress denied): %s" % reason, False, None)
+        if kind in ("operator", "ask") and egress is None:
+            egress = "egress: %s" % reason
     if header is None:
-        return tool_rule_tier(c, root, extra, tool, inp)
+        rest = tool_rule_tier(c, root, extra, tool, inp)
+        return (("operator", egress, False, rest) if egress else rest + (False, rest))
     try:
         human, asks = human_causes(c, root, main, extra, header, cmds, inp, text, cwd)
     except c.Refuse as e:
-        return ("operator", str(e))
+        return ("operator", str(e), False, ("operator", str(e)))
     if human:
-        return ("operator", human[0])
-    if not asks:
-        return ("lead", None)
-    session = c.session_id(root)
-    if session is None or tool == "WebFetch":
-        return ("lead", None)
-    name, _ = team_prompt_classes.classify(root, main, header, inp, cwd,
-                                           [(t, r) for t, r, _ in asks], session)
-    return ("class", name) if name else ("lead", None)
+        rest = ("operator", human[0])
+    elif not asks:
+        rest = ("lead", None)
+    else:
+        session = c.session_id(root)
+        name = None
+        if session is not None and tool != "WebFetch":
+            name, _ = team_prompt_classes.classify(root, main, header, inp, cwd,
+                                                   [(t, r) for t, r, _ in asks], session)
+        rest = ("class", name) if name else ("lead", "ask")
+    if egress:
+        return ("operator", egress, not human, rest)
+    return (rest[0], rest[1] if rest[0] != "lead" else None, False, rest)
+
+
+def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
+    """→ ("class", name) | ("lead", None) | ("operator", cause): tier_full without its extras."""
+    return tier_full(c, root, main, extra, tool, header, cmds, inp, text, cwd)[:2]
 
 
 # The retry key of an operator-tier permission: what an Operator approval is bound to, so a retry
@@ -404,8 +426,9 @@ def retry_key(tool, inp, cwd):
 
 def input_tier(c, root, main, extra, path):
     """team_prompt_check.py --input-json: the tier line of one structured permission
-    ({tool_name, tool_input, cwd}) and a second line `retry: <key>|none` (retry_key, operator tier
-    only), or None when the file cannot be read."""
+    ({tool_name, tool_input, cwd}), a second line `retry: <key>|none` (retry_key, operator tier
+    only) and a third `batch: eligible|no` (tier_full: an egress-only operator tier, #322), or None
+    when the file cannot be read."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -422,11 +445,11 @@ def input_tier(c, root, main, extra, path):
     cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
     text = str(inp.get("file_path") or inp.get("url") or cmd.split("\n", 1)[0])
     raw = dict(data.get("tool_input") or {})
-    kind, why = tier(c, root, main, extra, tool, HEADERS.get(tool), [cmd] if tool == "Bash" else [],
-                     inp, text, cwd)
+    kind, why, eligible, _ = tier_full(c, root, main, extra, tool, HEADERS.get(tool),
+                                       [cmd] if tool == "Bash" else [], inp, text, cwd)
     key = None
     if kind == "operator" and not str(why).startswith("egress: guard failed"):
         key = retry_key(tool, raw, cwd)
     line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
         else "tier: operator — %s" % why
-    return "%s\nretry: %s" % (line, key or "none")
+    return "%s\nretry: %s\nbatch: %s" % (line, key or "none", "eligible" if eligible else "no")

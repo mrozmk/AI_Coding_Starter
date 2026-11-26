@@ -9,9 +9,9 @@ a --settings file and the SQL guard stays quiet), exit 1 = the Operator must ans
 with the reason on stderr. Default: the newest prompt in the history is the one checked.
 --strict: team_prompt.py must read a complete active permission prompt; --transcript also checks
 the original input of its unique pending tool_use.
-Refused too: a prompt whose command cannot be read (never approve what was not read), a WebFetch
-prompt or a Bash command naming an egress tool (human-only, team-decision-model.md §3) and an
-unreadable policy, an Edit/Write of .claude/settings*.json or a Bash command naming one
+Refused too: a prompt whose command cannot be read (never approve what was not read), egress by
+the #322 effect classifier (a non-pass kind; a WebFetch URL only when bound to its pending call) and
+an unreadable policy, an Edit/Write of .claude/settings*.json or a Bash command naming one
 and, with a --main other than <root>, an Edit/Write outside <root> or a Bash path under <main>
 (the classes trust its .git, CLAUDE.md and .agents/team/). --block prints the
 command block and exits 0, or 1 when there is none. --classes (the class tests' direct entry; at runtime the stage hook reaches the classes through --input-json): a refusal
@@ -44,8 +44,6 @@ END = re.compile(r"Do you want to (proceed|make this edit|create|overwrite|allow
 START = re.compile(r"^\s*(Bash command|Bash\(|Edit file|Write file|Create file|Overwrite file|"
                    r"Read file|WebFetch|Fetch)")
 SEGMENT = re.compile(r"&&|\|\||\$\(|[;|&()`]")
-# A path segment named like a tool (tools/curl/…) refuses too: its cost is one Operator action.
-EGRESS = re.compile(r"(^|[^A-Za-z0-9_.-])(curl|wget|ssh|scp|rsync|nc)([^A-Za-z0-9_-]|$)")
 EDITS = ("Edit file", "Write file", "Create file", "Overwrite file")
 SETTINGS_TEXT = re.compile(r"\.claude/(settings\.json|settings\.local\.json)", re.I)
 # Second layer under the word check: appsettings.json / local.settings.json are not this name.
@@ -238,17 +236,14 @@ def path_words(cmd, root, main):
 
 
 def unwaivable(cmd, bash, root, main):
-    """Egress, the SQL guard, a Bash command naming a settings file or a <main> trust path."""
+    """Egress (a non-pass effect kind, #322), the SQL guard, a settings file or <main> path named."""
     if bash:
         path_words(cmd, root, main)
         m = SETTINGS_WORD.search(cmd)
         if m:
             raise Refuse("refuse (settings): %s via Bash — Operator" % m.group(2))
-        for line in cmd.splitlines():
-            for part in SEGMENT.split(line):
-                m = EGRESS.search(part)
-                if m and not guard_team_egress.loopback_probe(part.split()):
-                    raise Refuse("refuse (egress): %s" % m.group(2))
+        if (effect := guard_team_egress.bash_effect(cmd, root))[0] != "pass":
+            raise Refuse("refuse (egress): %s" % effect[1])
     decision, reason = guard_destructive_sql.classify(cmd, root, root)
     if decision:
         raise Refuse("refuse (%s): %s" % (decision, reason))
@@ -327,7 +322,10 @@ def strict_commands(pane, transcript, root):
         raise Refuse("refuse: could not read the command behind the prompt (%s)"
                      % (p["reason"] or "no permission prompt"))
     cmds, inp, tid = [p["command"]], None, None
-    if transcript is not None and p["header"] not in ("Fetch", "WebFetch"):
+    if transcript is not None and p["header"] in ("Fetch", "WebFetch"):
+        tid, inp = team_prompt.associated(p, transcript)  # bound: the one pending call's URL (#322)
+        tid, inp = (tid, inp) if isinstance(inp, dict) and squash(str(inp.get("url") or "")) == squash(p["desc"] or p["command"]) else (None, None)
+    elif transcript is not None:
         tid, inp = team_prompt.associated(p, transcript)
         if inp is None:
             raise Refuse("refuse: could not read the command behind the prompt (no prompt event)")
@@ -362,18 +360,18 @@ def settings_refusal(root, header, inp, text):
     return None
 
 
-def session_id(root):
-    try:
-        with open(os.path.join(root, ".agents", "team", "session.json"), encoding="utf-8") as fh:
-            return str(json.load(fh).get("session_id") or "") or None
-    except (OSError, ValueError, AttributeError):
-        return None
+session_id = team_prompt_authority.session_id
 
 
 def audit(root, main, extra, header, cmds, inp, text):
     """Raises egress, unwaivable, deny and outside-clone; → (ask matches, settings refusal|None)."""
-    if re.match(r"(WebFetch|Fetch)\b", header):
-        raise Refuse("refuse (egress): %s prompt" % header)
+    if re.match(r"(WebFetch|Fetch)\b", header):  # by effect only when bound to its pending call (#322)
+        url = str((inp or {}).get("url") or "")
+        kind, why = (guard_team_egress.webfetch_effect(url, root) if url
+                     else ("ask", header + " prompt (URL not bound to the pending call)"))
+        if kind != "pass":
+            raise Refuse("refuse (egress): %s" % why)
+        return [], None
     tiered, bash, found = rules(root, extra), header.startswith("Bash"), []
     for cmd in cmds:
         unwaivable(cmd, bash, root, main)

@@ -547,7 +547,7 @@ class Builder:
         data = self.acq.read(r, self.src.guard_corpus) if r["present"] else None
         for no, line in enumerate((data or b"").decode("utf-8", "replace").splitlines(), 1):
             want, sep, cmd = line.partition("|")
-            if not sep or want not in ("ask", "none"):
+            if not sep or want not in ("ask", "none", "deny"):  # deny: #322's hard deny rows
                 continue
             rec = self.record("guard-corpus", "guard-corpus.txt:%d" % no, "", "fixture", "Supervisor", "Bash")
             rec.update(prompted=False, observed="unknown", evidence={"expected": want}, fixture="guard-corpus",

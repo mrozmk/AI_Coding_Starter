@@ -1,8 +1,10 @@
-"""gh-rule helpers and Supervisor policy beside guard_team_egress.py: the gh host/taint checks and
+"""gh-rule helpers and the compound reader beside guard_team_egress.py: the gh host/taint checks and
 settings readers both share, a strict quote-aware reader of plain compounds (plain_segments), gh's
 option layout for formatting values (format_bindings; format_masked serves every role's read path),
-the Supervisor's compound and inline-Python exemption (supervisor_verdict), the touch-log writer
-(record_touch). Never allows; every parser is fail-closed (None / False / "defer": today's path)."""
+the compound reader of every role (compound_verdict, #322 — no session gate; the Supervisor's local
+gh rules and inline-Python opt-ins stay its grant), the Supervisor's touch-log writer
+(record_touch). The file keeps its name to spare downstream sync a rename. Never allows; every
+parser is fail-closed (None / False / "defer": today's path)."""
 import collections
 import json
 import os
@@ -22,6 +24,7 @@ from guard_team_egress_effect import (  # noqa: E402
     python_heredoc_ok)
 from guard_team_egress_loops import (  # noqa: E402
     SUB_MARK, backstop, companion_safe, loop_verdict, piped_verdict, substituted)
+from guard_team_egress_classify import net_read  # noqa: E402
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
 # backslash anywhere else -> ignored (still asked).
@@ -351,26 +354,27 @@ def gh_covered(seg, vals, rules):
                                     plain_values=True))
 
 
-def supervisor_verdict(cmd, project, egress_in, width=0):
-    """("exempt" | "ask" | "defer", reason). exempt: every simple command is a locally covered gh or
-    built-in gh read, a python3 -c whose code py_code_safe accepts (or under the local opt-in) or
-    a safe companion, `$(…)` of such reads standing in an echo; ask: gh output piped into a stdin
-    executor; defer (also for every session but the Supervisor's in the main checkout): today's
-    path. A literal loop anywhere is unrolled (loop_verdict); <width>: texts unrolled so far."""
-    if not supervisor_main_checkout(project):
-        return "defer", ""
+def compound_verdict(cmd, project, egress_in, width=0):
+    """("exempt" | "ask" | "defer", reason), the same for every role (#322). exempt: every simple
+    command is a built-in gh read, a python3 -c whose code py_code_safe accepts, a #322 read form
+    (net_read), a safe companion, `$(…)` of such reads standing in an echo — plus, for the
+    Supervisor in the main checkout only, a gh command its settings.local.json covers and inline
+    Python under its local opt-in; ask: gh output piped into a stdin executor; defer: today's path.
+    A literal loop anywhere is unrolled (loop_verdict); <width>: texts unrolled so far."""
+    sup = supervisor_main_checkout(project)
+    tag = " (Supervisor)" if sup else ""
     def judge(text, w=width or 1):
-        return supervisor_verdict(text, project, egress_in, w)
+        return compound_verdict(text, project, egress_in, w)
     if (judged := loop_verdict(cmd, SAFE, judge, width or 1)):
         return judged
-    allow = local_rules(project)
+    allow = local_rules(project) if sup else []
     py = python_forms_of(allow)
     if python_heredoc_ok(cmd, py):
         return "exempt", ""
     plain = substituted(cmd, judge)
     segs = plain_segments(plain) if plain is not None else None
     if segs is None:
-        return backstop(cmd)
+        return backstop(cmd, tag=tag)
     gh_rules = gh_rules_of(allow)
     kinds = ["gh"] if plain != cmd else []
     for seg in segs:
@@ -386,11 +390,16 @@ def supervisor_verdict(cmd, project, egress_in, width=0):
             quoted = len(code) == 1 and code[0][0] in "sd"
             safe = quoted and py_code_safe(code[0][1])
             kinds.append("py" if quoted and ("-c" in py or safe) else "other")
+        elif net_read(vals, project) and not any(k == "g" for w in seg for k, _ in w.parts):
+            kinds.append("net")
         else:
             kinds.append("safe" if companion_safe(vals, egress_in, seg) else "other")
-    if "other" not in kinds and ("gh" in kinds or "py" in kinds):
+    if "other" not in kinds and ("gh" in kinds or "py" in kinds or "net" in kinds):
         return "exempt", ""
-    return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs])
+    return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs], tag=tag)
+
+
+supervisor_verdict = compound_verdict  # the pre-#322 name
 
 
 def _touches():
@@ -416,10 +425,11 @@ def _encoded(entry):
     return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def record_touch(project, cwd, reason, payload=None):
+def record_touch(project, cwd, reason, payload=None, kind="permission", why="guard"):
     """Append one Operator touch-log line for a Supervisor ask to .agents/touches/<yyyy-mm>.jsonl
     through pinned directory fds (no symlinked dir, FIFO or hard-linked file); a no-op for every
-    other session. With the parsed hook payload the line carries its masked `input`. Never raises."""
+    other session. With the parsed hook payload the line carries its masked `input`. A deny is
+    <kind> block, <why> hook: a mechanical block, no human touch (#322). Never raises."""
     if not supervisor_main_checkout(project):
         return
     fds = []
@@ -430,7 +440,7 @@ def record_touch(project, cwd, reason, payload=None):
                  "machine": os.uname().nodename.split(".")[0][:100],
                  "who": os.environ.get("USER", "")[:100],
                  "where": ("solo " + ("?" if rel.startswith("..") else rel))[:200],
-                 "kind": "permission", "what": str(reason)[:200], "reason": "guard",
+                 "kind": kind, "what": str(reason)[:200], "reason": why,
                  "answer": "", "wait_s": None}
         line = None
         t = _touches() if isinstance(payload, dict) else None

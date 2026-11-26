@@ -25,6 +25,12 @@ lead nobody answers questions and the tool is disabled.
    - Material decision (team-mode.md §4): stop, run
      `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait for the
      answer in this session.
+   - Several network operations the plan needs (installs, downloads) go as one batch (#322): write
+     `{{RUN_DIR}}/batch-<n>.json` — `{"entries": [{"command": "<exact Bash text>", "cwd": "<abs
+     path>", "pins": ["<file it reads>", …], "outputs": ["<file it creates>", …]}, …]}`, literal
+     text only (no `$`, no backquote: write `npm --prefix /abs/p ci` and check its status in the
+     next call, never `…; echo ${PIPESTATUS[0]}`), an install pinning its manifest and lockfile —
+     and name that one file in one question to the TeamLead. Then run each entry exactly as written.
 3. Round 1 only — backlog: confirm the `/execute` write-back before committing, under its own rules
    (`.claude/commands/execute.md` → Backlog write-back): no `.agents/backlog.md`, a legacy or
    malformed backlog, or a plan without a `**Tasks:**` line → nothing to do. Otherwise, for each

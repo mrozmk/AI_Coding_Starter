@@ -89,7 +89,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 Run this phase **only if the spec says `External docs required: yes`**. Otherwise skip it entirely and move to Phase 3.
 
-For each entry in the spec's "External dependencies" section:
+For each entry in the spec's "External dependencies" section (network reads go through WebFetch; `curl`/`wget` hits the egress gate):
 
 - **For package-managed libraries** (npm / pip / Maven / Cargo / etc.) — if Context7 MCP is available, use it: call `resolve-library-id` to find the library, then `get-library-docs` with a focused query (e.g. "webhook signature verification"). This returns current, version-aware documentation. Otherwise fall back to fetching official docs with WebFetch.
 - **For non-package resources** (hosted APIs, proprietary services, internal docs) — use WebFetch with specific section anchors.

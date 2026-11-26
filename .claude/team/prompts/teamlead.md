@@ -136,7 +136,19 @@ the stage. No screen is read and nothing is typed into a stage.
 - a stop (kind `text`: a blocked record or a plain-text stop): `--text "<how to go on>"`.
 
 1. **Operator tier first.** An ask rung `… operator`, or a sender exit 9, is the Operator's (allow
-   **and** deny): open a decision with `--ask a-<n>` (below), never answer it yourself.
+   **and** deny): open a decision with `--ask a-<n>` (below), never answer it yourself. One
+   exception (#322): a permission ask whose tier cause starts `egress:` and to which no decision is
+   bound is yours to **deny or reformulate** —
+   `bash .claude/lib/team-answer.sh {{TEAM}} a-<n> --deny "<what to do instead, e.g. use WebFetch <url>>" --authority teamlead --why "<line>"`;
+   its allow stays the Operator's (exit 9: open the decision). A `refuse (egress denied)` cause is a
+   hard deny class: the hook already refused it, nobody approves it.
+   **Batch (#322):** a stage that names one JSON batch file of exact network operations (spec
+   `.agents/specs/2026-11-26-effect-based-classifier-guard.md` §8) gets one Operator decision for
+   all of them: `bash .claude/lib/team-lead.sh decision open {{TEAM}} --batch <file> --question "<line>"
+   --recommend <allow|deny>` copies and renders every entry (command, cwd, pins); the Operator
+   answers `d-<n> allow|deny`; each entry then answers its exact matching request once, within 12 h
+   and the run (authority `operator (batch d-<n>)`). `bash .claude/lib/team-lead.sh decision revoke
+   {{TEAM}} d-<n> --why "<line>"` withdraws the remaining entries.
 2. **Decision classes.** Decide which class the ask is before you answer:
    - **verification-only** — the asking role recommends an option that keeps the ticket's intent
      and only changes how or where a criterion is proven (the test's location, which suite step
