@@ -30,6 +30,7 @@ CURL_LONG = {"--request": "method", "--data": "body", "--data-raw": "body", "--d
 CURL_NOVALUE_LONG = {"--netrc", "--netrc-optional"}
 REDIR_OP = re.compile(r"^(?:[0-9]+|\{\w+\})?(?:&>>?|>>?|>\|)$")
 REDIR_GLUED = re.compile(r"(?:^|(?<=[^\\>]))(?:[0-9]+)?(?:>>?|>\|)([^>&|\s][^>\s]*)$")
+# The only unquoted word characters the reader accepts (ASCII; no glob, `~`, `$`, `\`, `#` …).
 LOOP_WORD = re.compile(r"[A-Za-z0-9_./:,=+@%-]+")
 
 

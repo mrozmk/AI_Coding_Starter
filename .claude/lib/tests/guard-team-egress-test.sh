@@ -918,6 +918,7 @@ done
 drv operator "#322 mandatory fixture kind: WebFetch link-local" "$D/proj" WebFetch http://169.254.169.254/latest/meta-data
 drv operator "#322 mandatory fixture kind: WebFetch private literal" "$D/proj" WebFetch https://10.0.0.1/x
 drv ask "#322 mandatory fixture kind: curl -L" "$D/proj" Bash 'curl -sSfL https://docs.python.org/r'
+drv operator "#322: a literal --data-urlencode body stays operator" "$D/proj" Bash 'curl --data-urlencode q=a@b https://docs.python.org/x'
 # The DTS Fable loop (#320): an Advisor's literal loop over gh reads passes.
 check none "#322 DTS Fable loop passes for an Advisor" "$(role Advisor "$D/proj" "$(bash_cmd 'for n in 170 171 172 173; do gh issue view $n --repo o/r --json title -q .title; done')")"
 # Passes for every role (hook): the read forms, a literal head over a gh read, py_code_safe code.
@@ -937,6 +938,15 @@ drv ask  "#322 pass: a query is no public GET" "$D/proj" WebFetch 'https://docs.
 LONGU="https://docs.astral.sh/$(printf 'a%.0s' $(seq 1 150))"
 drv ask  "#322 pass: a URL over 160 characters is no public GET" "$D/proj" WebFetch "$LONGU" docs.astral.sh=104.16.0.1
 drv pass "#322 pass: an allowlisted host keeps a query" "$D/proj" WebFetch 'https://registry.npmjs.org/x?y=1'
+# A git read whose options run a local command is no read: the host check never sees that command.
+for c in "git -c core.sshCommand='sh -c id' fetch https://docs.astral.sh/r" 'git fetch --upload-pack=x https://docs.astral.sh/r' \
+  "git clone -u 'sh -c id' https://docs.astral.sh/r" 'git clone --config core.sshCommand=x https://docs.astral.sh/r' \
+  "GIT_SSH_COMMAND='sh -c id' git fetch https://docs.astral.sh/r" 'git -c core.sshCommand=x fetch origin' \
+  'GIT_CONFIG_KEY_0=core.sshCommand git fetch origin' 'git clone --template=t https://github.com/o/r'; do
+  drv ask "#322 git read running a local command: $c" "$D/proj" Bash "$c" docs.astral.sh=104.16.0.1
+done
+drv pass "#322 git read: a harmless -c key" "$D/proj" Bash 'git -c core.commitGraph=false clone https://docs.astral.sh/r' docs.astral.sh=104.16.0.1
+drv pass "#322 git read: fetch -u is --update-head-ok" "$D/proj" Bash 'git fetch -u origin'
 drv operator "#322: an allowlisted reserved TLD is a private host" "$D/local" WebFetch https://extra.example/x
 drv ask  "#322: a public name resolving to a private address" "$D/proj" WebFetch https://docs.astral.sh/x docs.astral.sh=10.0.0.5
 drv ask  "#322: an unresolvable name" "$D/proj" WebFetch https://docs.astral.sh/x

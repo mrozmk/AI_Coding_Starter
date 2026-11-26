@@ -64,7 +64,7 @@ from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, compound_verdict, format_masked, gh_host_selector,
     record_touch)
 from guard_team_egress_classify import (  # noqa: E402
-    classify_bash, classify_webfetch, git_read_host_ok)
+    classify_bash, classify_webfetch, git_read_host_ok, git_runs_command)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -83,6 +83,7 @@ DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
 # bash's socket pseudo-files: a redirection there is egress whatever the verb.
 NET_DEV = re.compile(r"/dev/(tcp|udp)\b")
 NET_FOUND = "network redirection (/dev/tcp or /dev/udp)"
+UNPARSABLE = "unparsable command mentions an egress tool"
 GIT_NET = {"push", "fetch", "pull", "clone", "ls-remote", "submodule", "remote"}
 # Config keys that redirect where git connects: the value is a URL, or (insteadOf) the key holds it.
 GIT_URL_KEY = re.compile(r"^remote\.[^=]+\.(url|pushurl)$", re.I)
@@ -142,11 +143,17 @@ def egress_capable(verb, words, reads_ok=True):
     return True
 
 
-def git_repo_arg(words):
-    """The repository word of a network git command, or None (a bare remote name is returned too)."""
+def git_sub_index(words):
+    """Index of git's subcommand word: past the global options (`-C` and `-c` take a value)."""
     i = 1
     while i < len(words) and words[i].startswith("-"):
         i += 2 if words[i] in ("-C", "-c") else 1
+    return i
+
+
+def git_repo_arg(words):
+    """The repository word of a network git command, or None (a bare remote name is returned too)."""
+    i = git_sub_index(words)
     if i >= len(words) or words[i] not in GIT_NET:
         return None
     sub, args = words[i], words[i + 1:]
@@ -216,9 +223,7 @@ def git_host_ok(host, read=False):
 
 
 def git_sub(words):
-    i = 1
-    while i < len(words) and words[i].startswith("-"):
-        i += 2 if words[i] in ("-C", "-c") else 1
+    i = git_sub_index(words)
     return "".join(words[i:i + 1])
 
 
@@ -269,6 +274,8 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             return verb
         if verb == "git" and names is EGRESS:
             read = git_sub(words) in ("fetch", "pull", "clone", "ls-remote")
+            if read and git_runs_command(words, tokens):
+                return "git %s with an option that runs a local command" % git_sub(words)
             for k, arg in enumerate([git_repo_arg(words) or ""] + git_config_urls(words)):
                 host = repo_host(arg)
                 if host and not git_host_ok(host, read and k == 0):
@@ -381,7 +388,7 @@ def reading_reason(cmd, project):
         except ValueError:
             # Unparsable: an egress tool cannot sit in command position without its name.
             if MENTIONS_EGRESS.search(cmd):
-                return "unparsable command mentions an egress tool"
+                return UNPARSABLE
             return ""
     if found == NET_FOUND:
         return found

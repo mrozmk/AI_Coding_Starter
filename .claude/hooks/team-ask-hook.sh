@@ -175,14 +175,14 @@ verify_decision() {
       && [ -z "$(dfm_h bind_ask)" ] || return 1
     form=allow; val=""; a='{"form": "allow", "value": "", "authority": "operator"}'
   else
-  [ "$(dfm_h bind_ask)" = "$id" ] || return 1
-  form="$(jq -r .form <<<"$a")"; val="$(jq -r '.value // "" | if type == "string" then . else tojson end' <<<"$a")"
-  case "$form" in
-    allow|deny) [ "$(dfm_h answer_outcome)" = "$form" ] || return 1 ;;
-    answers) [ "$(jq -cS . <<<"$(dfm_h answer_map)" 2>/dev/null)" = "$(jq -cS .value <<<"$a")" ] || return 1 ;;
-    *) [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;;
-  esac
-  case "$form" in deny) [ -z "$val" ] || [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;; esac
+    [ "$(dfm_h bind_ask)" = "$id" ] || return 1
+    form="$(jq -r .form <<<"$a")"; val="$(jq -r '.value // "" | if type == "string" then . else tojson end' <<<"$a")"
+    case "$form" in
+      allow|deny) [ "$(dfm_h answer_outcome)" = "$form" ] || return 1 ;;
+      answers) [ "$(jq -cS . <<<"$(dfm_h answer_map)" 2>/dev/null)" = "$(jq -cS .value <<<"$a")" ] || return 1 ;;
+      *) [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;;
+    esac
+    case "$form" in deny) [ -z "$val" ] || [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;; esac
   fi
   via="$(dfm_h answered_via)"
   # A delegated answer is delivered only as one, and nothing else is delivered as delegated: the

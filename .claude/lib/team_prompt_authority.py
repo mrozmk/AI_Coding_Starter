@@ -207,7 +207,7 @@ def human_causes(c, root, main, extra, header, cmds, inp, text, cwd=None):
             m = c.SETTINGS_WORD.search(cmd) or PROFILE_TEXT.search(cmd)
             if m:
                 human.append("settings edit: %s via Bash" % m.group(0).strip())
-            # Egress is the effect classifier's alone (tier_full, #322). A new remote plus the allowed git push sends the repository to an unapproved host.
+            # A new remote plus the allowed git push sends the repository to an unapproved host.
             human += ["egress: git remote %s" % w[2] for w in map(c.argv_plain, c.canonical(cmd))
                       if w[:2] == ["git", "remote"] and w[2:3] in (["add"], ["set-url"])]
             human += delete_causes(c, root, cmd, cwd)
@@ -429,6 +429,18 @@ def input_tier(c, root, main, extra, path):
     ({tool_name, tool_input, cwd}), a second line `retry: <key>|none` (retry_key, operator tier
     only) and a third `batch: eligible|no` (tier_full: an egress-only operator tier, #322), or None
     when the file cannot be read."""
+    parts = input_tier_parts(c, root, main, extra, path)
+    if parts is None:
+        return None
+    kind, why, eligible, _, key = parts
+    line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
+        else "tier: operator — %s" % why
+    return "%s\nretry: %s\nbatch: %s" % (line, key or "none", "eligible" if eligible else "no")
+
+
+def input_tier_parts(c, root, main, extra, path):
+    """input_tier's facts: (kind, why, eligible, rest, retry key | None), or None when the file
+    cannot be read. The prompt replay reads them directly (prompt_replay.py)."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -445,11 +457,9 @@ def input_tier(c, root, main, extra, path):
     cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
     text = str(inp.get("file_path") or inp.get("url") or cmd.split("\n", 1)[0])
     raw = dict(data.get("tool_input") or {})
-    kind, why, eligible, _ = tier_full(c, root, main, extra, tool, HEADERS.get(tool),
-                                       [cmd] if tool == "Bash" else [], inp, text, cwd)
+    kind, why, eligible, rest = tier_full(c, root, main, extra, tool, HEADERS.get(tool),
+                                          [cmd] if tool == "Bash" else [], inp, text, cwd)
     key = None
     if kind == "operator" and not str(why).startswith("egress: guard failed"):
         key = retry_key(tool, raw, cwd)
-    line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
-        else "tier: operator — %s" % why
-    return "%s\nretry: %s\nbatch: %s" % (line, key or "none", "eligible" if eligible else "no")
+    return kind, why, eligible, rest, key

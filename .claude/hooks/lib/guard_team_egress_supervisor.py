@@ -44,8 +44,7 @@ GH_READS_TAINT = re.compile(r"[$`#\\]|GH_HOST|GH_REPO|[^\s;&|()<>]\(")
 BRACE = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
 # A glob that can match a file named like an option (`--rep[o]`, `[-]-repo` with a file `--repo`).
 GLOB_OPTION = re.compile(r"^[-*?\[][^*?\[]*[*?\[]|^[*?\[]")
-# The only unquoted word characters the reader accepts (ASCII; no glob, `~`, `$`, `\`, `#` …).
-SAFE = re.compile(r"[A-Za-z0-9_./:,=+@%-]+")
+from guard_team_egress_words import LOOP_WORD as SAFE  # noqa: E402
 # Where an unquoted word ends; any other character outside quotes is refused.
 BOUNDARY = " \t;\n&|>"
 DIGITS = "0123456789"
@@ -397,9 +396,6 @@ def compound_verdict(cmd, project, egress_in, width=0):
     if "other" not in kinds and ("gh" in kinds or "py" in kinds or "net" in kinds):
         return "exempt", ""
     return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs], tag=tag)
-
-
-supervisor_verdict = compound_verdict  # the pre-#322 name
 
 
 def _touches():

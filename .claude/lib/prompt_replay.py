@@ -170,9 +170,16 @@ class Evaluator:
         self._env("stage", self.fx["clone"])
         f = os.path.join(self.fx["jobs"], "job.json")
         _write(f, {"tool_name": tool, "tool_input": ti, "cwd": cwd})
+        args = (self.c, self.fx["clone"], self.fx["main"], [], f)
         try:
-            line = self.a.input_tier(self.c, self.fx["clone"], self.fx["main"], [], f)
-            rest = self.tier_rest(tool, ti, cwd) if hasattr(self.a, "tier_full") else None
+            if hasattr(self.a, "input_tier_parts"):
+                parts = self.a.input_tier_parts(*args)
+                if not parts:
+                    return "error", None, None, None
+                kind, why, _, rest, _ = parts
+                cause = self.norm(str(why).split("\n", 1)[0]) if kind == "operator" else None
+                return kind, why if kind == "class" else None, cause, list(rest) if rest else None
+            line = self.a.input_tier(*args)
         except Exception as e:  # noqa: BLE001
             return "error", None, e.__class__.__name__, None
         if not line:
@@ -181,18 +188,7 @@ class Evaluator:
         m = re.match(r"^tier: (class|lead|operator)(?: — (.*)| (.*))?$", first)
         if not m:
             return "error", None, self.norm(first), None
-        return m.group(1), m.group(3) if m.group(1) == "class" else None, self.norm(m.group(2)), rest
-
-    def tier_rest(self, tool, ti, cwd):
-        inp = dict(ti)
-        target = inp.get("file_path") or inp.get("notebook_path")
-        if isinstance(target, str) and target:
-            inp["file_path"] = os.path.join(cwd, os.path.expanduser(target))
-        cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
-        text = str(inp.get("file_path") or inp.get("url") or cmd.split("\n", 1)[0])
-        r = self.a.tier_full(self.c, self.fx["clone"], self.fx["main"], [], tool, self.a.HEADERS.get(tool),
-                             [cmd] if tool == "Bash" else [], inp, text, cwd)
-        return list(r[3]) if r[3] else None
+        return m.group(1), m.group(3) if m.group(1) == "class" else None, self.norm(m.group(2)), None
 
     def policy_match(self, project, cmd):
         """deny | ask | None: the strongest rule of the fixture's policy a Bash command meets."""
@@ -243,10 +239,7 @@ class Evaluator:
                 cmd = boundary(p).sub(lambda m: project, cmd)
         limit = None
         if GIT_PUSH.search(cmd):
-            try:
-                words = cmd.split()
-            except ValueError:
-                words = []
+            words = cmd.split()
             after = words[words.index("push") + 1:] if "push" in words else []
             dest = next((w for w in after if not w.startswith("-")), "origin")
             dest = dest.rstrip(";&|)")

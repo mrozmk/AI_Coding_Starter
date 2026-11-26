@@ -55,7 +55,6 @@ TOKEN = re.compile(
     r"|(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?|ftp)://[^:@/\s]+:[^@/\s]+@"
     r"|(?i:(?:^|[/?&;=])(?:token|access_token|api_key|apikey|key|sig|password|secret)=[^&/\s]+)"
     r"|(?i:\bBearer\s+\S)")
-NET_DEV = re.compile(r"/dev/(tcp|udp)\b")
 PIPED_SHELL = re.compile(r"\b(?:bash|sh|zsh|python3?|node|perl|ruby)\b[^\n;|&]*<\(\s*(?:curl|wget)\b"
                          r"|-c\s+['\"]?\$\(\s*(?:curl|wget)\b")
 REGISTRY_OPTS = re.compile(r"^(?:--registry|-i|--index-url|--extra-index-url|--proxy|--https-proxy"
@@ -159,6 +158,46 @@ def git_read_host_ok(host, project):
     return public_host(host, project) and not private_host(host)
 
 
+# Config keys that make a git read run a local command, load more config or move its traffic.
+GIT_RUN_KEY = re.compile(r"(?i)^(?:core\.(?:sshcommand|gitproxy|askpass|fsmonitor|hookspath)"
+                         r"|uploadpack\.packobjectshook|credential\..*helper|remote\..+\.(?:uploadpack|proxy)"
+                         r"|url\..+\.insteadof|http\..*proxy|include\.path|includeif\..+\.path"
+                         r"|protocol\..+\.allow)$")
+GIT_RUN_ENV = re.compile(r"^(?:GIT_SSH_COMMAND|GIT_SSH|GIT_PROXY_COMMAND|GIT_EXEC_PATH|GIT_ASKPASS"
+                         r"|SSH_ASKPASS|GIT_CONFIG_PARAMETERS)=")
+GIT_RUN_OPTS = ("--upload-pack", "--exec", "--template")
+
+
+def git_runs_command(words, tokens):
+    """True when a git read (`fetch|pull|clone|ls-remote`) would run a local command chosen on the
+    command line: a command-running `-c`/`--config` key, `--upload-pack`/`--exec`/`--template`,
+    clone's `-u`, or an env assignment anywhere in the text (`GIT_SSH_COMMAND=…`,
+    `GIT_CONFIG_KEY_<n>=<such key>`). The host check never sees that command."""
+    if any(GIT_RUN_ENV.match(t) or (re.match(r"^GIT_CONFIG_KEY_[0-9]+=", t)
+                                    and GIT_RUN_KEY.match(t.split("=", 1)[1])) for t in tokens):
+        return True
+    i, sub = 1, None
+    while i < len(words):
+        w, config = words[i], sub in (None, "clone")
+        if w.startswith("--config-env"):
+            return True
+        if config and w in ("-c", "--config") and i + 1 < len(words):
+            if GIT_RUN_KEY.match(words[i + 1].split("=", 1)[0]):
+                return True
+            i += 1
+        elif config and w.startswith("--config="):
+            if GIT_RUN_KEY.match(w[len("--config="):].split("=", 1)[0]):
+                return True
+        elif sub is None and w == "-C":
+            i += 1
+        elif sub is None and not w.startswith("-"):
+            sub = w
+        elif sub is not None and (w.startswith(GIT_RUN_OPTS) or (sub == "clone" and w == "-u")):
+            return True
+        i += 1
+    return False
+
+
 # --- WebFetch -----------------------------------------------------------------------------------
 
 def classify_webfetch(url, project):
@@ -199,6 +238,12 @@ def body_file(verb, args):
             if cls == "upload" or (cls in ("body", "url") and (val.startswith("@") or "=@" in val
                                                                or "=<" in val)):
                 return True
+        # --data-urlencode also reads a file as `name@file` (no `=` before the `@`).
+        for k, a in enumerate(args):
+            val = a[len("--data-urlencode="):] if a.startswith("--data-urlencode=") else \
+                args[k + 1] if a == "--data-urlencode" and k + 1 < len(args) else None
+            if val is not None and re.match(r"^[^=]*@", val):
+                return True
     if verb == "wget":
         return any(a.startswith(("--post-file", "--body-file")) for a in args)
     if verb == "gh" and args[:1] == ["api"]:
@@ -230,7 +275,7 @@ def deny_units(text):
 
 def deny_text(text):
     import guard_team_egress as g
-    if NET_DEV.search(text) or NET_DEV.search(g.unquoted(text)):
+    if g.net_device(text, [g.unquoted(text)]):
         return g.NET_FOUND
     return deny_units(text)
 
@@ -297,7 +342,7 @@ def classify_bash(cmd, project, cwd=None):
     # Today's reason where the verdict (ask) does not change; the class decides the kind.
     if op or (wrote and wrote[0] == "operator"):
         return "operator", base or op or wrote[1]
-    if base == "unparsable command mentions an egress tool":
+    if base == g.UNPARSABLE:
         return "operator", base
     if base:
         return "ask", base
