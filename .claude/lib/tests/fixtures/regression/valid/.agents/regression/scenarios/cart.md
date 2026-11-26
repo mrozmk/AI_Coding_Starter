@@ -9,7 +9,7 @@
   2. Increase the quantity with the stepper until it stops.
 - **Expected:** The stepper stops at the maximum, the increase control is disabled, and the line
   total equals unit price × quantity.
-- **Source:** E1-1.AC1 [d742c9] · FL-1.A2 · **Spec:** e2e/regression/cart.spec.ts › CART-001 — Change quantity up to the maximum
+- **Source:** E1-1.AC1 [5def01] · FL-1.A2 · **Spec:** e2e/regression/cart.spec.ts › CART-001 — Change quantity up to the maximum
 
 ### CART-002 — Remove the last line
 - **Priority:** P1 · **Viewport:** desktop · **Status:** READY · **Effect:** write

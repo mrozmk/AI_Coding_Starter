@@ -85,6 +85,7 @@ After the questions, the main session spawns `@backlog-author` once (pinned mode
 | `ANSWERS` | the operator's answers from Phase 2 (and the assumptions you stated), verbatim |
 | `METHOD` | `.claude/commands/setup/create-backlog.md` — Phases 3–6 |
 | `OUTPUT` | `.agents/backlog.md` and `.agents/backlog/E<n>-<slug>.md`, one per Epic |
+| `REGRESSION` | `adopted` (.claude/regression.json exists) · `web — not adopted` (app_surface web, no regression.json) · `off` — computed by the main session: `test -f .claude/regression.json`, `jq -r '.app_surface // "unknown"' .claude/project-profile.json` |
 
 The agent follows Phases 3–6 below and returns the list of files written and its open questions. The main session then runs the Phase 7 gate. Errors — and the quality warnings of Phase 4.5 — go back to the same agent (`SendMessage`) with the checker output verbatim, at most twice; still red after that → the main session fixes the files itself. Agent unavailable (not installed, rate or usage limit, pinned model unavailable) → the main session writes Phases 3–6 itself, and the report says `**Author:** main session — @backlog-author unavailable`.
 
@@ -139,10 +140,14 @@ apply it; do not restate it here. In short:
 3. Order is `Depends on` only: a closing audit waits for every live `CORE`/`MUST` product Task;
    occurrence `k` of `n = max(2, ceil(P / 160))` waits for its share of the product points.
    A release outside row waits for the closing audits.
-4. `backlog-check.mjs` checks the markers, sizes, audit waits and the occurrence count; on a
+4. `backlog-check.mjs` checks the markers, sizes, audit waits and the occurrence count, and warns
+   on the regression markers (planned, ruled out, missing); on a
    fresh backlog its quality warnings are fixed like errors (Phase 2.5, Phase 7). Placement it
    does not check: after it passes, recompute `P`, `n`, the prefixes and their sinks yourself
    and send any occurrence whose `Depends on` differs back to the author with the errors.
+5. **Regression** — `REGRESSION: adopted` → `[regression:foundation]` and 1–3
+   `[regression:baseline]` (optional `[regression:smoke]`) by quality-tasks.md → Regression;
+   `web — not adopted` → its rule-out line; `off` → nothing. The release row never waits for them.
 
 ### Phase 5: Story map
 
@@ -182,7 +187,7 @@ Create `.agents/` and `.agents/backlog/` if needed. Write `.agents/backlog.md` *
 | X-1 | DevOps | Deployment pipeline | E0-1 | — | NFR-1 | — |
 
 ## External blockers · ## Open questions · ## Consciously out of scope
-(`## Consciously out of scope` also holds the rule-out line of a conditional audit, e.g. `- [audit:seo-geo] — no public website (PRD §2)`)
+(`## Consciously out of scope` also holds the rule-out line of a conditional audit, e.g. `- [audit:seo-geo] — no public website (PRD §2)`, and the regression rule-out, e.g. `- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /update-backlog adds the Tasks`)
 ```
 
 **Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Scope` `CORE|MUST|COULD`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task or outside row); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. Outside rows: `ID` `X-n`; `Needed by` — Task ids or `—`; `Starts after` — Task ids or `—`, never closing a wait cycle: a Task waits for its `Depends on` Tasks and for the items that list it under `Needed by`, an item for its `Starts after` Tasks (so not a Task named in the row's own `Needed by`, nor one that depends on such a Task); `Traces` — active `R-`/`NFR-`/`AD-` ids or `—` (an active `R-`/`NFR-` traced only here counts as covered). The section is optional for the checker, but write it — with an empty table when nothing falls outside. The last three headings are separate `##` sections in the real file (one line each when empty). `**Detail:** structure` says the Epic files carry Summary lines only; `/setup:delivery-plan` sets it to `full` once every live Task has criteria.

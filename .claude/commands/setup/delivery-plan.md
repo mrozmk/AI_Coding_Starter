@@ -36,7 +36,10 @@ backlog's structure goes through `/update-backlog`.
 ## 0. Preconditions
 
 1. `/prime` ran and `.agents/backlog.md` exists — otherwise say which and stop.
-2. `node .claude/lib/backlog-check.mjs` exits 0. Errors → print them verbatim and stop. A pre-Scope
+2. `node .claude/lib/backlog-check.mjs` exits 0. Errors → print them verbatim and stop — **except**
+   when `.claude/regression.json` exists, the argument is not `plan`, and every `error:` line of the
+   output reads `error: regression tag: …` (the CLI prefixes each error with `error: `): then
+   continue; step 2's tag pass repairs them and 2.3 must end clean before step 3. A pre-Scope
    backlog (`Wave` / `Slice` columns, no `Scope`) and a backlog with its criteria still in
    `backlog.md` are among those errors: print the checker's message, which names
    `node .claude/lib/backlog-migrate.mjs --write`, and stop. Warnings → keep them for the report.
@@ -101,6 +104,13 @@ Skipped with the argument `plan`. `$SCRATCH` = the session scratchpad, as in ste
 Run `node .claude/lib/backlog-check.mjs --next-ids` and keep the JSON. Read `**Detail:**` from the
 backlog header:
 
+- `.claude/regression.json` exists and the step-0 output holds a `regression tag:` error or the
+  warning `… no criterion carries a [reg P0|P1|P2] tag …` → **tag pass**, no question: every Epic
+  with a live, non-spec-owned Task that has Epic-file criteria; those Tasks get `missing: ["tags"]`
+  (added to whatever else they miss). Tags, retags and the repair of a bad token follow
+  `.claude/skills/backlog/quality-tasks.md` → Regression (only a retag keeps the fingerprint and
+  is allowed on a protected criterion; a malformed, misplaced or duplicate token repair is a
+  rewrite). On a `full` backlog the tag pass replaces the two `full` bullets below.
 - `structure` → detail every Epic with a live Task whose `missing` list is not empty — a missing
   Goal, In scope or Out of scope line counts exactly like a missing criterion. No such Epic → go
   to 2.8 (2.5 holds as it is).
@@ -109,8 +119,8 @@ backlog header:
   scope lines — add them now (<k> Epics: one author, one critic and possibly one fixer run per
   Epic, plus one Codex pass) or compute the plan only?"; the recommended option is plan only. Add them now → detail the Epics with such Tasks, as above;
   plan only → skip to step 3.
-- `full` and no such warning → print `Detail: full — every Task is detailed, step 2 skipped` and go
-  to step 3.
+- `full`, no such warning and no tag pass due → print `Detail: full — every Task is detailed, step
+  2 skipped` and go to step 3.
 
 Per Task to detail, note from `--next-ids` its `missing` list, `source` and `nextAc`, and two
 marks:
@@ -120,7 +130,9 @@ marks:
 - **protected** — by the **Protection** rule of `.claude/commands/update-backlog.md` (Phase 3):
   read it there and apply it; do not restate it. Its acceptance contract is frozen: it gets the
   three descriptive lines only. A criterion it seems to lack is a proposal for `/update-backlog`
-  (a `delta-linked` Task), never an edit.
+  (a `delta-linked` Task), never an edit. A protected Task's Epic-file criteria may still be
+  tagged, retagged or untagged (the tag is outside the fingerprint) — its mark for the fixer is
+  `protected — tags only`.
 
 ### 2.2 Authors
 
@@ -133,6 +145,8 @@ FILE:    .agents/backlog/E<n>-<slug>.md
 SOURCES: docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
 BACKLOG: .agents/backlog.md
 TASKS:   per Task id to detail — missing: [...], source: <path>, nextAc: <id>[, protected: true]
+         (missing may hold "tags" — the Task's criteria need their regression tags)
+REGRESSION: on | off   (on when .claude/regression.json exists)
 ```
 
 Each author writes only its own `FILE`. Keep each agent's id — 2.3 and 2.5 send it more work. Do
@@ -144,6 +158,13 @@ which Epics.
 
 `node .claude/lib/backlog-check.mjs` — errors in an Epic file go back to that Epic's author once
 (`SendMessage`, the errors verbatim); still failing → the main session fixes the file.
+
+After a tag pass the checker must exit 0. A `regression tag:` error still there after the author's
+second try → the main session fixes it **only when the fix is a retag or the criterion is
+unprotected and backlog-owned** (quality-tasks.md → Regression; a fingerprint-changing repair of an
+unprotected criterion is withdraw + new id). A fingerprint-changing repair on a protected or
+spec-owned criterion goes to the proposals list (2.7) as a blocker — stop before step 3 and list
+every error still open with its way (`/update-backlog` or `/brainstorm <Task id>`).
 
 ### 2.4 Critic
 
@@ -157,13 +178,15 @@ ARTIFACT: .agents/backlog.md .agents/backlog/E<n>-<slug>.md $SCRATCH/delivery-pl
 RUBRIC:   .claude/skills/backlog/backlog-rubric.md
 SOURCES:  docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
           + every approved spec named in the Ref cell of a Task of E<n>
-          + .claude/skills/backlog/quality-tasks.md when E<n> holds a quality Task
+          + .claude/regression.json and .claude/skills/backlog/quality-tasks.md when .claude/regression.json exists
+            (every Epic — K12 grades product criteria), else + quality-tasks.md when E<n> holds a
+            quality or regression Task
 MODE:     detail
 ROUND:    1 | 2
 PRIOR:    the checker warnings, verbatim, as known context; from round 2 also the previous
           findings with their rulings
 SCOPE:    E<n>
-RULES:    K1,K2,K5,K7,K9,K11
+RULES:    K1,K2,K5,K7,K9,K11,K12   (K12 only when .claude/regression.json exists)
 METHOD:   .claude/commands/setup/create-backlog.md
 ```
 
@@ -175,7 +198,10 @@ real? severity honest? a duplicate of a checker warning → drop). Route the kep
   Epic's spec-owned and protected Task ids, each with its mark);
 - on a criterion of a **spec-owned** Task → never fixed in the Epic file; the proposals list (2.7),
   with `/brainstorm <Task id>` as the way to revise the spec;
-- on a criterion of a **protected** Task → the proposals list, with `/update-backlog` as the way;
+- a finding that only adds, changes or removes the leading tag of a **protected** Task's Epic-file
+  criterion → the fixer (`FROZEN` mark `protected — tags only`);
+- any other finding on a criterion of a **protected** Task → the proposals list, with
+  `/update-backlog` as the way;
 - on the structure (a Task to split, a size that does not match the criteria, a missing
   dependency) → the proposals list (2.7).
 
@@ -234,7 +260,11 @@ another, each with `backlog.md` as the index and its own `OUT` / `LOG` (`-<k>` s
 > defined in two Epics, contracts at Epic boundaries (what one Epic's criteria assume of
 > another's), outcome not method, size against criteria. A quality Task (its Task cell begins with
 > `[audit:` or `[upkeep:`) is backed by `.claude/skills/backlog/quality-tasks.md` — its criteria
-> come from that file's templates, not from the PRD; read it. These checker warnings are known context
+> come from that file's templates, not from the PRD; read it. A Task cell beginning `[regression:`
+> is backed by that file too. <With `.claude/regression.json` present:> check that every
+> browser-observable criterion leads with `[reg P0|P1|P2]` by
+> `.claude/skills/backlog/quality-tasks.md` → Regression and that no other criterion carries one
+> (rubric K12). These checker warnings are known context
 > — do not re-report them: `<the checker warnings, verbatim, or "none">`. Decisions the operator
 > recorded in the PRD change log (`D-n`) are out of bounds unless they contradict a stated
 > requirement. You are read-only: do not edit, create or reformat any file and do not run
@@ -248,7 +278,9 @@ report line `Codex: not reviewed — <reason>` (for a group: which group) and go
 
 **Judge** every Codex finding as in 2.4 (a duplicate of a critic finding or a checker warning →
 drop) and route the kept ones the same way: Epic-file text → the fixer, then the checker; a
-spec-owned or protected criterion and every structure finding → the proposals list. Never
+tag-only finding on a protected Task's Epic-file criterion → the fixer (`protected — tags only`);
+any other finding on a protected criterion, every finding on a spec-owned criterion and every
+structure finding → the proposals list. Never
 re-spawn Codex and never re-enter the critic rounds.
 
 ### 2.7 Structure proposals
@@ -263,7 +295,7 @@ a spec.
 
 ### 2.8 Close
 
-1. 2.5 held → set `**Detail:** full` in the header (Edit). Then
+1. 2.5 held → set `**Detail:** full` in the header (Edit; a tag pass on a `full` backlog keeps it `full`). Then
    `node .claude/lib/backlog-check.mjs --write`. Errors → fix them; they cannot be fixed → put
    `**Detail:** structure` back, rerun `--write` and say so — never leave `full` on a red checker.
 2. The step's own writes change the fingerprint. Record a review only when all of these hold: the

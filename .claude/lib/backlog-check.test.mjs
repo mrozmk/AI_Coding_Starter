@@ -10,7 +10,7 @@ import {
   renderStoryMap, replaceRegion, locateRegions, main, chainPaths, impactOf,
   loadPlanTasks, staleTaskWarnings, SCOPES, PRE_SCOPE_MESSAGE, NO_CORE_WARNING,
   PRE_DETAIL_MESSAGE, EPIC_DIR, readBacklogFiles, backlogFingerprint, epicSlug, epicFileName,
-  renderMeta, renderEpicFile, checkAgainstRoot, fenceScanner, QUALITY_MARKERS,
+  renderMeta, renderEpicFile, checkAgainstRoot, fenceScanner, QUALITY_MARKERS, regressionTag,
 } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
@@ -1848,7 +1848,7 @@ test('quality: off type/size/scope and unknown markers warn', () => {
   assert.ok(resized.warnings.includes('Task E3-5 [audit:security]: expected tech · H · MUST, found tech · M · MUST'), resized.warnings.join('\n'));
   const typo = quality(qrow('E3-5', '| E3-5 | E3 | [audit:securty] Run /audit-security | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |'));
   assert.deepEqual(typo.errors, []);
-  assert.ok(typo.warnings.includes('Task E3-5: unknown quality marker [audit:securty] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief]'), typo.warnings.join('\n'));
+  assert.ok(typo.warnings.includes('Task E3-5: unknown quality marker [audit:securty] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief], [regression:foundation], [regression:baseline], [regression:smoke]'), typo.warnings.join('\n'));
   const clean = quality();
   assert.ok(!clean.warnings.some((w) => /expected tech ·|unknown quality marker/.test(w)), clean.warnings.join('\n'));
 });
@@ -1883,7 +1883,7 @@ test('quality: a tech Task without a marker and no trace still warns', () => {
 
 test('quality: an unknown upkeep id is neither recognized nor trace-exempt', () => {
   const res = quality([...QUALITY_ROWS, '| E3-8 | E3 | [upkeep:foo] Run /foo | tech | M | 4 | — | COULD | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(44)] });
-  assert.ok(res.warnings.includes('Task E3-8: unknown quality marker [upkeep:foo] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief]'), res.warnings.join('\n'));
+  assert.ok(res.warnings.includes('Task E3-8: unknown quality marker [upkeep:foo] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief], [regression:foundation], [regression:baseline], [regression:smoke]'), res.warnings.join('\n'));
   assert.ok(res.warnings.includes('Task E3-8: tech Task with no trace (AD-n / NFR-n)'), res.warnings.join('\n'));
 });
 
@@ -1891,4 +1891,151 @@ test('quality: a refresh-brief reminder is never required and plans nothing', ()
   const res = quality(['| E3-1 | E3 | [upkeep:refresh-brief] Run /maintain:refresh-brief | tech | M | 4 | — | MUST | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(4)] });
   assert.deepEqual(res.errors, []);
   assert.deepEqual(qw(res), [ALL_UNPLANNED], res.warnings.join('\n'));
+});
+
+// ---------------------------------------------------------------------------------------------
+// (R) regression — .claude/skills/backlog/quality-tasks.md → Regression
+// ---------------------------------------------------------------------------------------------
+
+/** A Shop project with `acs` in its Epic files; `adopted` writes `.claude/regression.json`, `surface` the profile's `app_surface`. */
+function regProject({ acs = ACS, backlog, adopted = true, surface, discovery = DISCOVERY, detail = 'full', rows = TASK_ROWS } = {}) {
+  const md = backlog ?? backlogMd({ rows, detail });
+  const dir = project({ backlog: md, epicFiles: epicFilesFor(md, { acs }), discovery });
+  if (adopted || surface) fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  if (adopted) fs.writeFileSync(path.join(dir, '.claude', 'regression.json'), '{"version":1,"catalog":{}}');
+  if (surface) fs.writeFileSync(path.join(dir, '.claude', 'project-profile.json'), JSON.stringify({ schema: 1, app_surface: surface }));
+  return dir;
+}
+const regErrors = (res) => res.errors.filter((e) => e.startsWith('regression tag:'));
+const regWarnings = (res) => res.warnings.filter((w) => /regression|\[reg /.test(w));
+const ZERO_TAGS = 'regression adopted (.claude/regression.json) but no criterion carries a [reg P0|P1|P2] tag — /setup:delivery-plan tags them';
+const FL1_NO_P0 = 'regression tag: FL-1 (critical flow): no [reg P0] criterion on the Tasks that trace it (E1-1, E1-2, E1-3)';
+/** `ACS` with the text after `- **<id>** — ` rewritten by `edits[id](text)`. */
+const regAcs = (edits) => ACS.split('\n').map((line) => {
+  const m = /^- \*\*(E\d+-\d+\.AC\d+)\*\* — (.*)$/.exec(line);
+  return m && edits[m[1]] ? `- **${m[1]}** — ${edits[m[1]](m[2])}` : line;
+}).join('\n');
+const lead = (tag) => (text) => `${tag} ${text}`;
+const FOUNDATION = '| E3-8 | E3 | [regression:foundation] Set up the regression run | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |';
+const baseline = (k) => `| E3-${8 + k} | E3 | [regression:baseline] Write the regression baseline — part ${k} | tech | H | 8 | E3-8, E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |`;
+/** A structure-mode quality backlog (no criteria checks) in a project with the given regression state. */
+const regQuality = (rows, { adopted = true, surface, ...opts } = {}) => check(regProject({ backlog: qmd(rows, opts), adopted, surface }));
+
+test('regression: regressionTag parses the leading tag after any separator', () => {
+  const t = (text) => regressionTag(text);
+  assert.equal(t('— [reg P0] x').priority, 'P0');
+  assert.equal(t(': [reg P1] x').priority, 'P1');
+  assert.equal(t('– [reg P2] x').priority, 'P2');
+  assert.equal(t('[reg P1] x').problem, null);
+  assert.deepEqual([t('Given x').priority, t('Given x').problem], [null, null]);
+  assert.match(t('[reg p0] x').problem, /^malformed tag "\[reg p0\]" — use \[reg P0\], \[reg P1\] or \[reg P2\]$/);
+  assert.equal(t('x [reg P1]').problem, 'the tag must lead the criterion text');
+  assert.equal(t('[reg P0] [reg P1] x').problem, 'more than one regression tag');
+  assert.equal(t('[reg P0]').problem, 'a tag with no criterion text');
+  assert.deepEqual([t('`[reg P0]` x').priority, t('`[reg P0]` x').problem], [null, null]);
+  const w = t('(withdrawn) [reg P0] x');
+  assert.deepEqual([w.withdrawn, w.problem], [true, null]);
+  assert.equal(t('[reg P0]Given x').problem, 'the tag must be followed by a space');
+  assert.match(t('[regression P0] x').problem ?? '', /^malformed tag "\[regression P0\]"/);
+  assert.match(t('[reg: P0] x').problem ?? '', /^malformed tag "\[reg: P0\]"/);
+  assert.deepEqual([t('see [regression:foundation] x').priority, t('see [regression:foundation] x').problem], [null, null]);
+  assert.deepEqual([t('the [region] x').priority, t('the [region] x').problem], [null, null]);
+  // The tag sits between two spans; the triple run inside the double-backtick span does not close it.
+  assert.match(t('Show ``foo```bar`` then [reg p0] and `x`').problem ?? '', /^malformed tag "\[reg p0\]"/);
+  // An unclosed run makes the rest a span.
+  assert.deepEqual([t('Run ` then [reg p0] x').priority, t('Run ` then [reg p0] x').problem], [null, null]);
+});
+
+test('regression: a malformed or misplaced tag is an error naming the criterion when adopted', () => {
+  const acs = regAcs({ 'E1-2.AC1': lead('[reg p0]'), 'E1-2.AC2': (s) => `${s} [reg P1]` });
+  const res = check(regProject({ acs }));
+  assert.deepEqual(regErrors(res).filter((e) => e.startsWith('regression tag: E1-2')), [
+    'regression tag: E1-2.AC1: malformed tag "[reg p0]" — use [reg P0], [reg P1] or [reg P2]',
+    'regression tag: E1-2.AC2: the tag must lead the criterion text',
+  ]);
+});
+
+test('regression: without regression.json no tag rule and no marker rule fires', () => {
+  const acs = regAcs({ 'E1-2.AC1': lead('[reg p0]'), 'E1-2.AC2': (s) => `${s} [reg P1]`, 'E1-3.AC1': lead('[regression P0]') });
+  for (const surface of ['none', undefined]) {
+    const res = check(regProject({ acs, adopted: false, surface }));
+    assert.deepEqual(regErrors(res), [], res.errors.join('\n'));
+    assert.deepEqual(regWarnings(res), [], res.warnings.join('\n'));
+  }
+  const rows = [...QUALITY_ROWS, FOUNDATION.replace('| H | 8 |', '| M | 4 |'), baseline(1), baseline(2), baseline(3), baseline(4)];
+  for (const surface of ['none', undefined]) {
+    const res = regQuality(rows, { adopted: false, surface, epics: [...BASE_EPICS, qepic(76)] });
+    assert.deepEqual(res.errors, []);
+    assert.deepEqual(regWarnings(res), [], res.warnings.join('\n'));
+  }
+});
+
+test('regression: [regression P0] is an error even when the flow is covered', () => {
+  const acs = regAcs({ 'E1-1.AC1': lead('[reg P0]'), 'E1-2.AC1': lead('[regression P0]'), 'E1-2.AC2': lead('[reg: P0]') });
+  const res = check(regProject({ acs }));
+  assert.deepEqual(regErrors(res), [
+    'regression tag: E1-2.AC1: malformed tag "[regression P0]" — use [reg P0], [reg P1] or [reg P2]',
+    'regression tag: E1-2.AC2: malformed tag "[reg: P0]" — use [reg P0], [reg P1] or [reg P2]',
+  ]);
+});
+
+test('regression: zero tags — critical-flow error plus the zero-tag warning', () => {
+  const res = check(regProject());
+  assert.deepEqual(regErrors(res), [FL1_NO_P0]);
+  assert.ok(res.warnings.includes(ZERO_TAGS), res.warnings.join('\n'));
+  assert.ok(!res.errors.some((e) => /FL-2/.test(e)), res.errors.join('\n'));
+});
+
+test('regression: partial tags — only the untagged critical flow errs', () => {
+  const discovery = DISCOVERY.replace('## Business rules', '### FL-3 — Pay\n\n**Critical:** yes\n\n- **FL-3.A1** — Pay the order\n\n## Business rules');
+  const rows = withRow('E2-1', '| E2-1 | E2 | Report view | story | H | 8 | E1-2 | MUST | reporting | FL-2.A1, FL-3.A1, BR-1 | TODO | — | — |');
+  const res = check(regProject({ discovery, rows, acs: regAcs({ 'E1-1.AC1': lead('[reg P0]') }) }));
+  assert.deepEqual(regErrors(res), ['regression tag: FL-3 (critical flow): no [reg P0] criterion on the Tasks that trace it (E2-1)']);
+  assert.ok(!res.warnings.includes(ZERO_TAGS), res.warnings.join('\n'));
+});
+
+test('regression: fully tagged backlog is clean', () => {
+  const res = check(regProject({ acs: regAcs({ 'E1-2.AC1': lead('[reg P0]'), 'E1-2.AC2': lead('[reg P2]') }) }));
+  assert.deepEqual(regErrors(res), [], res.errors.join('\n'));
+  assert.ok(!res.warnings.includes(ZERO_TAGS), res.warnings.join('\n'));
+});
+
+test('regression: structure backlog checks tag form only', () => {
+  const clean = check(regProject({ detail: 'structure' }));
+  assert.deepEqual(regErrors(clean), [], clean.errors.join('\n'));
+  assert.ok(!clean.warnings.includes(ZERO_TAGS), clean.warnings.join('\n'));
+  const bad = check(regProject({ detail: 'structure', acs: regAcs({ 'E1-2.AC1': lead('[reg p0]') }) }));
+  assert.deepEqual(regErrors(bad), ['regression tag: E1-2.AC1: malformed tag "[reg p0]" — use [reg P0], [reg P1] or [reg P2]']);
+});
+
+test('regression: markers planned, ruled out and missing', () => {
+  const NOT_PLANNED = 'regression Tasks not planned: [regression:foundation], [regression:baseline] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md → Regression)';
+  const RULED_OUT = 'regression adopted (.claude/regression.json): the rule-out of [regression:foundation] under ## Consciously out of scope does not count — plan the regression Tasks';
+  const NEITHER = 'regression neither planned nor ruled out — app_surface web and no .claude/regression.json: plan [regression:foundation] and [regression:baseline], or rule out [regression:foundation] under ## Consciously out of scope (.claude/skills/backlog/quality-tasks.md → Regression)';
+  const ruleOut = ['- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /update-backlog adds the Tasks'];
+  const plain = { epics: [...BASE_EPICS, QUALITY_EPIC] };
+
+  const planned = regQuality([...QUALITY_ROWS, FOUNDATION, baseline(1)], { epics: [...BASE_EPICS, qepic(56)] });
+  assert.deepEqual(planned.errors, []);
+  assert.deepEqual(regWarnings(planned), [], planned.warnings.join('\n'));
+
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, plain)), [NOT_PLANNED]);
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, { ...plain, outOfScope: ruleOut })), [NOT_PLANNED, RULED_OUT]);
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, { ...plain, adopted: false, surface: 'web', outOfScope: ruleOut })), []);
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, { ...plain, adopted: false, surface: 'web' })), [NEITHER]);
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, { ...plain, adopted: false, surface: 'none' })), []);
+  assert.deepEqual(regWarnings(regQuality(QUALITY_ROWS, { ...plain, adopted: false })), []);
+
+  const four = regQuality([...QUALITY_ROWS, FOUNDATION, baseline(1), baseline(2), baseline(3), baseline(4)], { epics: [...BASE_EPICS, qepic(80)] });
+  assert.deepEqual(regWarnings(four), ['[regression:baseline]: 4 live Tasks planned, at most 3']);
+
+  const xh = regQuality([...QUALITY_ROWS, FOUNDATION.replace('| H | 8 |', '| XH | 16 |'), baseline(1)], { epics: [...BASE_EPICS, qepic(64)] });
+  assert.deepEqual(regWarnings(xh), [], xh.warnings.join('\n'));
+  const m = regQuality([...QUALITY_ROWS, FOUNDATION.replace('| H | 8 |', '| M | 4 |'), baseline(1)], { epics: [...BASE_EPICS, qepic(52)] });
+  assert.deepEqual(regWarnings(m), ['Task E3-8 [regression:foundation]: expected tech · H or XH · MUST, found tech · M · MUST']);
+});
+
+test('regression: regression markers count as known quality markers', () => {
+  const res = regQuality([...QUALITY_ROWS, FOUNDATION, baseline(1)], { epics: [...BASE_EPICS, qepic(56)] });
+  assert.ok(!res.warnings.some((w) => /^Task E3-(8|9): (tech Task with no trace|unknown quality marker)/.test(w)), res.warnings.join('\n'));
 });

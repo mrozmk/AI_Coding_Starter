@@ -21,6 +21,7 @@ the Epics later.
 | `ANSWERS` | the operator's answers to the directional questions and the assumptions the main session stated, verbatim |
 | `METHOD` | `.claude/commands/setup/create-backlog.md` — Phases 3–6 are your method |
 | `OUTPUT` | `.agents/backlog.md` and `.agents/backlog/E<n>-<slug>.md`, one per Epic |
+| `REGRESSION` | adopted · web — not adopted · off (from the main session) |
 
 A checker report in a later message (`SendMessage`) means: fix exactly those errors and quality warnings
 in the files you wrote, then answer as below.
@@ -38,7 +39,8 @@ in the files you wrote, then answer as below.
 5. **Plan the `Quality & upkeep` Epic** — Phase 4.5 of the method and
    `.claude/skills/backlog/quality-tasks.md`, read in full: the marker Tasks, their `Depends on`
    by its placement rules, rule-out lines under `## Consciously out of scope`, the release outside
-   row's `Starts after`.
+   row's `Starts after`; and, per `REGRESSION`, the regression Tasks or the rule-out line
+   (quality-tasks.md → Regression).
 
 ## Rules
 
@@ -50,7 +52,7 @@ in the files you wrote, then answer as below.
   (the checker generates it), no technical approach — a Summary names what the Task delivers as an
   outcome a user or system can observe, in the PRD's words.
 - Every Task traces to source ids; a Task with nothing to trace is a gap in `## Open questions`,
-  not an invented Task — quality Tasks (Phase 4.5) are the one exception.
+  not an invented Task — quality and regression Tasks (Phase 4.5) are the one exception.
 - Ids are never reused or renumbered.
 
 Your final message lists the files you wrote and every open question you recorded, nothing else.

@@ -74,7 +74,7 @@
   "_codex_doc": "Asked (Screen 2, Q6) as a TEAM question. `command -v codex` on the bootstrap machine is informational only and never sets this field — the file is shared.",
   "codex": false,
 
-  "_app_surface_doc": "unknown | none | web | mobile | desktop | tui. NOT asked by /setup:start — always written as `unknown`, which keeps all QA tooling. /setup:create-CLAUDE_MD detects it from the stack once code exists.",
+  "_app_surface_doc": "unknown | none | web | mobile | desktop | tui. Written by /architect from the published stack (only while absent or unknown); /setup:start keeps it and asks on --rerun while it is still unknown; /setup:create-CLAUDE_MD may detect it later.",
   "app_surface": "unknown",
 
   "_language_doc": "pl | en. Asked first (Screen 0). Governs Claude <-> developer communication only; code, comments and commits stay English.",

@@ -51,7 +51,7 @@ Derived facts:
 
 ### A.2 Screens
 
-Ask with `AskUserQuestion`, one call per screen, the detected value pre-selected and marked **(Recommended)**. The copy below is the **approved wording** — ship it verbatim. Screen 0 is bilingual; every later screen renders in the language chosen on Screen 0 (English column is a 1:1 translation). `app_surface` is **not asked** — it is written as `unknown`.
+Ask with `AskUserQuestion`, one call per screen, the detected value pre-selected and marked **(Recommended)**. The copy below is the **approved wording** — ship it verbatim. Screen 0 is bilingual; every later screen renders in the language chosen on Screen 0 (English column is a 1:1 translation). `app_surface` is **not asked on a first run** — an existing value (from `/architect`) is kept, else `unknown`; `--rerun` asks while it is still `unknown` (*Re-run*).
 
 Shaping rule: 3 screens, ≤4 questions each — yields only when a detected value is wrong and the user asks to change it (then re-ask that one question, nothing else). Screen 2's Q8 is its one unconditional follow-up call (the main call already holds four questions, the tool's maximum).
 
@@ -116,8 +116,8 @@ Expand the answers into `.claude/project-profile.json` (schema and field docs: `
 - `github` (only for `tracker=github`): the Q4 follow-ups — `repo`, plus the six Project fields or none of them (No Project). It is the one github block of the profile: the team layer reads it too when `teams.github` is absent.
 - `qa.pool_status` = the Q4 QA-pool answer; skipped → not written (an existing value is kept by the merge rule).
 - `jira.started_status` = the Q4 answer; skipped → not written (an existing value is kept by the merge rule). It is merged into the `jira` object after the merge below (`.jira = ((.jira // {}) + {started_status: $s})`), so `estimates` and `commit_drafts` stay.
-- `app_surface` = `unknown` (keeps all QA tooling; `/setup:create-CLAUDE_MD` detects it from the stack later).
-- `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = **Jira in use** (below), `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` (because `app_surface=unknown`), `herdr` = the profile's existing `commands.herdr` when the key is present, else `true` (no question: `/maintain:sync-herdr-kit` is a no-op without a Herdr app home, and a plain derived `true` would overwrite a project's `false` through the merge below).
+- `app_surface` = **the answer given in this rerun** to the app-surface question (*Re-run*) when one was given, else the profile's existing value when present (`/architect` writes it from the published stack), else `unknown` (keeps all QA tooling; `/setup:create-CLAUDE_MD` detects it from the stack later). So the merge below never overwrites `/architect`'s value, and an `unknown → web` answer is written and read by step 5 in the same run.
+- `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = **Jira in use** (below), `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` when `app_surface` is `unknown` or `web`, else `false`, `herdr` = the profile's existing `commands.herdr` when the key is present, else `true` (no question: `/maintain:sync-herdr-kit` is a no-op without a Herdr app home, and a plain derived `true` would overwrite a project's `false` through the merge below).
 - **Jira in use** = `tracker == jira`, or the profile keeps a `teams` block with `teams.tracker == jira`. `commands.jira`, the step 1 Jira block and the step 2 `atlassian` removal key on it — never on the Q4 answer alone — so a kept `teams.tracker=jira` keeps the Jira tooling until the two tracker answers agree.
 - `workflow.team_merge` = the Q7 answer (`confirm` | `auto`).
 - `upkeep` = the Q8 answer: **Yes** + an existing `upkeep` object → that object, unchanged; **Yes** + absent or `false` → `{"cleanup_workflow": {"commits": 200, "min_days": 14}, "architecture_review": {"feat_commits": 40, "min_days": 14, "repo": ""}, "refresh_brief": true}`; **No** → `false`. It goes through the merge below like any derived top-level key.
@@ -148,7 +148,7 @@ Ten ordered steps (0–9). Each reports one line `created | kept | skipped(<why>
   followed by the list of active keys to fill and `restart Claude Code — MCP servers read .env at startup`. If the user already has `.env`, say: "restart Claude Code — the SessionStart preflight reports any missing keys" (this command never looks).
 - Four states to verify by reading the result: Jira only · Confluence only · neither · both.
 
-**2. `.mcp.json`.** Requires `jq`; absent → `skipped(jq not on PATH — edit .mcp.json by hand: …)` with the exact servers to remove. Remove `atlassian` when Jira is not in use (A.3) and `!confluence`. Remove `playwright` only when `app_surface` ∈ {`none`,`mobile`,`desktop`,`tui`} — with `unknown` (always, from this command) it stays. Never add servers; never touch `context7`.
+**2. `.mcp.json`.** Requires `jq`; absent → `skipped(jq not on PATH — edit .mcp.json by hand: …)` with the exact servers to remove. Remove `atlassian` when Jira is not in use (A.3) and `!confluence`. Remove `playwright` only when the effective `app_surface` (A.3) ∈ {`none`,`mobile`,`desktop`,`tui`} — with `unknown` or `web` it stays. Never add servers; never touch `context7`.
 
 **3. `CLAUDE.md` blocks.** Edit in place, only inside these blocks:
 - `### Branch model`: fill the six labelled fields (`**Preset:**`, `**Trunk:**`, `**Integration:**`, `**Branch names:**`, `**Base → PR dest:**`, `**Protected:**`) from the profile; emit `**Merge:**` only for the direct-push override (`ff`) — otherwise omit the line, as the template says. `**Maintenance:**` / `**Retired:**` are never written from the profile: delete the template's placeholder lines, and keep a populated block's existing lines untouched (they are not drift). `**Protected push:** pr-only` is written only when filling the block from the placeholder with `pr_required=true` and a non-empty `protected`; otherwise delete the line. A populated block keeps its `**Protected push:**` line as it is, or its absence (an opt-out), and is never drift.
@@ -157,7 +157,7 @@ Ten ordered steps (0–9). Each reports one line `created | kept | skipped(<why>
 
 **4. `user-profile.md`.** `[ -f .agents/memory/user-profile.md ] || cp .agents/memory/user-profile.md.example .agents/memory/user-profile.md` → `created | kept`. It is gitignored, per developer.
 
-**5. `qa-env.json`.** Only when `app_surface=web` and the user gives a URL. From this command `app_surface` is always `unknown` → `skipped(app_surface unknown — /prime-qa will ask)`.
+**5. `qa-env.json`.** By the effective `app_surface` (A.3): `web` and `.claude/qa-env.json` → `base_url` empty → ask once for the deployed base URL (`http(s)://`, no trailing slash; Skip allowed) and write only that key with `jq` (temp file, then `mv`); `base_url` already set → `kept`; another known value → `skipped(app_surface <value> — no browser QA)`; `unknown` → `skipped(app_surface unknown — /prime-qa will ask)`.
 
 **6. Toolchain block in `.claude/hooks/check-project-deps.sh`.** Detect a manifest at the root: `package.json` → `node` (+ `[ -d node_modules ]`), `pyproject.toml`/`requirements.txt` → `python3` (+ `uv` if `uv.lock`), `composer.json` → `php`, `go.mod` → `go`, `Cargo.toml` → `cargo`, `pubspec.yaml` → `flutter`. Insert one `command -v X >/dev/null 2>&1 || add "X not on PATH — Validation gates will fail."` line per detected tool **between** the `# --- toolchain ---` marker and the `# --- .env ----` marker, below the existing example comments. No manifest (greenfield) → `skipped(no manifest yet — rerun /setup:start --rerun after the scaffold; listed in Phase C)`. Validate with `bash -n`.
 
@@ -241,6 +241,7 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 1. `/prime` — this command ran unprimed; `/discover` and `/architect` need the Loader Convention context
 2. `/discover` — interview (or `--import` existing requirements); writes `docs/discovery.md` + `docs/PRD.md`
 3. `/architect` — subdomains, decisions (`AD-n`), stack; writes `docs/architecture.md` + `docs/map/system.yaml`
+   `/setup:regression` — when `/architect` reported `app_surface: web` (catalog stage, before the backlog)
 4. `/maintain:refresh-brief` — distill the PRD into `project-brief.md`
 5. `/prime` — reload with the new brief
 6. `/setup:create-backlog` — Epics/Tasks, Scope, story map, a Summary per Task
@@ -281,6 +282,7 @@ UI-heavy product: `/design-ui` after `/architect` for the critical flow's key sc
 - Enabled → disabled for a group: the normal pruning path (step 7).
 - A profile without `workflow.team_merge` shows Q7 as `confirm (default)`; changing it re-runs step 9.
 - A profile without `upkeep` shows Q8 as `yes (default)`; a kept answer keeps the block as it is.
+- While `app_surface` is still `unknown`, ask one question after the screens: *Which surface do users operate?* — `web` · `none` · `mobile` · `desktop` · `tui` · `still unknown`. The answer goes through A.3 (it wins over the stored value) and step 5; `still unknown` changes nothing. A known value is never asked again (`/architect` or an earlier answer set it).
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
 - Never re-create a file reported `kept`; never re-delete. Step 6b is idempotent: an `enabledPlugins` entry already `true` and a preflight line already present both report `kept`. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
 

@@ -230,6 +230,11 @@ a reason**. A characteristic without a number is *Partial*, never *Clear*.
    which vendor lock-in is acceptable? `→ feeds: PRD NFR-n`
 9. **Safety** — operational constraint, risk identification, fail-safe: what must never happen,
    and what is the fail-safe state? `→ feeds: PRD NFR-n, discovery BR-n`
+10. **Test environment and accounts** (an add-on to the nine, for a product with a browser UI) —
+    will there be a deployed test environment separate from production, test accounts per role,
+    and a sandbox mode for payments or other paid integrations? `→ feeds: PRD §9 Security &
+    Configuration, discovery Risks, the regression foundation size (quality-tasks.md →
+    Regression)`
 
 ### Compliance
 

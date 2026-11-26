@@ -34,6 +34,7 @@ export const SCOPES = ['CORE', 'MUST', 'COULD'];
 export const NO_CORE_WARNING = 'no CORE Task — the delivery plan starts every session on day 0; mark the Tasks that must exist before parallel work';
 // Quality Tasks — .claude/skills/backlog/quality-tasks.md (keep the two tables in step).
 // `planned: false` marks a reminder-only marker: added by /check-backlog when an upkeep item is due, never required on a backlog, never counted.
+// The `regression` kind is planned by `regressionChecks` (only with .claude/regression.json), never by the generic missing list.
 export const QUALITY_MARKERS = {
   'audit:security': { kind: 'closing', command: '/audit-security', size: 'H', conditional: false, planned: true },
   'audit:seo-geo': { kind: 'closing', command: '/seo-geo-audit', size: 'H', conditional: true, planned: true },
@@ -41,11 +42,14 @@ export const QUALITY_MARKERS = {
   'upkeep:architecture-review': { kind: 'recurring', command: '/architecture-review', size: 'M', conditional: false, planned: true },
   'upkeep:cleanup-workflow': { kind: 'recurring', command: '/maintain:cleanup-workflow', size: 'M', conditional: false, planned: true },
   'upkeep:refresh-brief': { kind: 'reminder', command: '/maintain:refresh-brief', size: 'M', conditional: false, planned: false },
+  'regression:foundation': { kind: 'regression', command: '/setup:regression', size: 'H', sizes: ['H', 'XH'], conditional: false, planned: false },
+  'regression:baseline': { kind: 'regression', command: '—', size: 'H', conditional: false, planned: false },
+  'regression:smoke': { kind: 'regression', command: '—', size: 'M', conditional: false, planned: false },
 };
 export const QUALITY_CADENCE_POINTS = 160;
 export const QUALITY_MIN_OCCURRENCES = 2;
-const QUALITY_PREFIX = /^\[((?:audit|upkeep):[a-z0-9-]+)\]/;
-const QUALITY_TOKEN = /\[((?:audit|upkeep):[a-z0-9-]+)\]/g;
+const QUALITY_PREFIX = /^\[((?:audit|upkeep|regression):[a-z0-9-]+)\]/;
+const QUALITY_TOKEN = /\[((?:audit|upkeep|regression):[a-z0-9-]+)\]/g;
 const OCCURRENCE = /[—-]\s*occurrence\s+(\d+)\b/i;
 const OUT_OF_SCOPE_HEADING = /^##\s+Consciously out of scope\b/i;
 /** `{ marker, known, kind?, command?, size?, conditional?, occurrence }` for a Task cell that begins with a quality marker, else null. */
@@ -54,6 +58,68 @@ export function qualityMarker(title) {
   if (!m) return null;
   const occ = OCCURRENCE.exec(title);
   return { marker: m[1], known: Object.hasOwn(QUALITY_MARKERS, m[1]), ...(QUALITY_MARKERS[m[1]] ?? {}), occurrence: occ ? Number(occ[1]) : null };
+}
+
+// Regression tags on criteria — .claude/skills/backlog/quality-tasks.md → Regression.
+export const REGRESSION_TAG_PREFIX = 'regression tag:';
+const REGRESSION_TAG = /^\[reg P[0-2]\]$/;
+// Anything that reads as a tag (`[reg …]`, `[reg: P0]`, `[regression P0]`), but not the `[regression:<id>]` marker syntax.
+const REGRESSION_TAG_TOKEN = /\[\s*reg(?:ression)?\b(?!:[a-z0-9-]+\])[^\]]*\]/gi;
+
+/** The text outside code spans, by the §7c step-5 rule: a run of N backticks is closed only by a run of exactly N; an unclosed run makes the rest a span. */
+function outsideCodeSpans(s) {
+  let out = '';
+  let i = 0;
+  const runEnd = (k) => { while (k < s.length && s[k] === '`') k++; return k; };
+  while (i < s.length) {
+    if (s[i] !== '`') { out += s[i++]; continue; }
+    const open = runEnd(i);
+    const len = open - i;
+    let j = open;
+    let close = -1;
+    while (j < s.length) {
+      if (s[j] !== '`') { j++; continue; }
+      const k = runEnd(j);
+      if (k - j === len) { close = k; break; }
+      j = k;
+    }
+    if (close === -1) return out;
+    out += ' ';
+    i = close;
+  }
+  return out;
+}
+
+/**
+ * The regression tag of one criterion text (after its id): `{ priority, problem, withdrawn, token }`.
+ * `priority` is `P0`/`P1`/`P2` for a valid leading tag, else null; `problem` names a form error.
+ */
+export function regressionTag(text) {
+  const stripped = String(text ?? '').replace(/^\s*[—–\-:.]?\s*/, '');
+  if (/^\(withdrawn\)/i.test(stripped)) return { priority: null, problem: null, withdrawn: true, token: null };
+  const tokens = outsideCodeSpans(stripped).match(REGRESSION_TAG_TOKEN) ?? [];
+  const result = (priority, problem, token) => ({ priority, problem, withdrawn: false, token });
+  if (!tokens.length) return result(null, null, null);
+  if (tokens.length > 1) return result(null, 'more than one regression tag', tokens[0]);
+  const [token] = tokens;
+  if (!REGRESSION_TAG.test(token)) return result(null, `malformed tag "${token}" — use [reg P0], [reg P1] or [reg P2]`, token);
+  if (!stripped.startsWith(token)) return result(null, 'the tag must lead the criterion text', token);
+  const rest = stripped.slice(token.length);
+  if (rest.trim() === '') return result(null, 'a tag with no criterion text', token);
+  // §7c step 4b strips the tag only before a space: glued to the text it would stay in the fingerprint.
+  if (rest[0] !== ' ') return result(null, 'the tag must be followed by a space', token);
+  return result(token.slice(5, 7), null, token);
+}
+
+/** Regression adoption (`.claude/regression.json` exists) and the profile's `app_surface` (`unknown` when absent or unreadable). */
+export function readRegressionState(root) {
+  const adopted = fs.existsSync(path.join(root, '.claude', 'regression.json'));
+  let surface = 'unknown';
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'project-profile.json'), 'utf8')).app_surface;
+    if (typeof value === 'string') surface = value;
+  } catch { /* no or invalid profile → unknown */ }
+  return { adopted, surface };
 }
 const OUTSIDE_ID = /^X-\d+$/;
 export const OUTSIDE_HEADING = /^##\s+Outside the dev backlog\b/;
@@ -659,8 +725,11 @@ function epicFilePath(b, epic) {
   return path.posix.join(EPIC_DIR, name);
 }
 
-/** Every backlog check. `backlog` is the markdown or the `parseBacklog` result. */
-export function checkBacklog({ backlog, inventory, system }) {
+/**
+ * Every backlog check. `backlog` is the markdown or the `parseBacklog` result. `regression`
+ * (`readRegressionState`) switches the regression marker rules on; absent → none of them runs.
+ */
+export function checkBacklog({ backlog, inventory, system, regression }) {
   const b = typeof backlog === 'string' ? parseBacklog(backlog) : backlog;
   if (b.legacy) return { errors: [], warnings: [], legacy: true };
   if (b.preScope) return { errors: [PRE_SCOPE_MESSAGE], warnings: [], legacy: false, preScope: true };
@@ -832,7 +901,8 @@ export function checkBacklog({ backlog, inventory, system }) {
     }
     if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0 && !qualityMarker(t.title)?.known) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
   }
-  if (!taskCycle) { const q = qualityChecks(b, live); errors.push(...q.errors); warnings.push(...q.warnings); }
+  if (!taskCycle) { const q = qualityChecks(b, live, regression); errors.push(...q.errors); warnings.push(...q.warnings); }
+  if (regression) warnings.push(...regressionChecks(b, live, regression));
   // --- outside rows: work the dev team needs but does not do; their traces count for coverage
   const tracedOutside = new Set();
   const seenOutside = new Set();
@@ -921,7 +991,7 @@ function scopeWarnings(live) {
 }
 
 /** Quality Tasks (quality-tasks.md) over a valid DAG: closing audits wait for all product work, the recurring cadence, and nothing left unplanned. */
-function qualityChecks(b, live) {
+function qualityChecks(b, live, regression) {
   const errors = [];
   const warnings = [];
   const q = new Map(live.map((t) => [t.id, qualityMarker(t.title)]));
@@ -946,7 +1016,10 @@ function qualityChecks(b, live) {
     const m = q.get(t.id);
     if (!m) continue;
     if (!m.known) { warnings.push(`Task ${t.id}: unknown quality marker [${m.marker}] — use one of ${known}`); continue; }
-    if (t.type !== 'tech' || t.scope !== 'MUST' || t.size !== m.size) warnings.push(`Task ${t.id} [${m.marker}]: expected tech · ${m.size} · MUST, found ${t.type} · ${t.size} · ${t.scope}`);
+    // Without .claude/regression.json no regression rule fires (quality-tasks.md → Regression).
+    if (m.kind === 'regression' && !regression?.adopted) continue;
+    const sizes = m.sizes ?? [m.size];
+    if (t.type !== 'tech' || t.scope !== 'MUST' || !sizes.includes(t.size)) warnings.push(`Task ${t.id} [${m.marker}]: expected tech · ${sizes.join(' or ')} · MUST, found ${t.type} · ${t.size} · ${t.scope}`);
     if (m.kind === 'closing' && newest.get(m.marker) === t.id && (t.status === 'TODO' || t.status === 'BLOCKED')) {
       const anc = ancestors(t);
       const missing = new Set(product.filter(open).map((p) => p.id).filter((id) => !anc.has(id)));
@@ -964,6 +1037,56 @@ function qualityChecks(b, live) {
   const ruledOut = new Set(b.ruledOut ?? []);
   const missing = Object.entries(QUALITY_MARKERS).filter(([marker, def]) => def.planned && !planned.has(marker) && !(def.conditional && ruledOut.has(marker))).map(([marker]) => `[${marker}]`);
   if (missing.length) warnings.push(`quality Tasks not planned: ${missing.join(', ')} — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only ${conditional} may be ruled out under ## Consciously out of scope`);
+  return { errors, warnings };
+}
+
+/** The regression Tasks (quality-tasks.md → Regression): planned when adopted, else ruled out on a web surface. Warnings only. */
+function regressionChecks(b, live, regression) {
+  const warnings = [];
+  const markerOf = (t) => qualityMarker(t.title)?.marker;
+  const has = (marker) => live.some((t) => markerOf(t) === marker);
+  const ruledOut = (b.ruledOut ?? []).includes('regression:foundation');
+  if (regression.adopted) {
+    const missing = ['regression:foundation', 'regression:baseline'].filter((m) => !has(m)).map((m) => `[${m}]`);
+    if (missing.length) warnings.push(`regression Tasks not planned: ${missing.join(', ')} — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md → Regression)`);
+    if (ruledOut) warnings.push('regression adopted (.claude/regression.json): the rule-out of [regression:foundation] under ## Consciously out of scope does not count — plan the regression Tasks');
+    const baselines = live.filter((t) => markerOf(t) === 'regression:baseline').length;
+    if (baselines > 3) warnings.push(`[regression:baseline]: ${baselines} live Tasks planned, at most 3`);
+  } else if (regression.surface === 'web' && !has('regression:foundation') && !has('regression:baseline') && !ruledOut) {
+    warnings.push('regression neither planned nor ruled out — app_surface web and no .claude/regression.json: plan [regression:foundation] and [regression:baseline], or rule out [regression:foundation] under ## Consciously out of scope (.claude/skills/backlog/quality-tasks.md → Regression)');
+  }
+  return warnings;
+}
+
+/**
+ * The tag rules on the current criteria (`resolveTask`), only when regression is adopted: every
+ * tag-form problem is an error naming the criterion; under `**Detail:** full` every live critical
+ * flow needs a `[reg P0]` criterion on the Tasks that trace it, and a backlog with no tag at all warns.
+ */
+export function regressionTagChecks(root, parsed, inventory, regression) {
+  const errors = [];
+  const warnings = [];
+  if (!regression?.adopted) return { errors, warnings };
+  const live = parsed.tasks.filter((t) => !t.withdrawn);
+  const p0 = new Set();
+  let valid = 0;
+  for (const t of live) {
+    for (const c of resolveTask(root, parsed, t).current) {
+      const tag = regressionTag(c.text);
+      if (c.withdrawn || tag.withdrawn) continue;
+      if (tag.problem) { errors.push(`${REGRESSION_TAG_PREFIX} ${c.id}: ${tag.problem}`); continue; }
+      if (!tag.priority) continue;
+      valid += 1;
+      if (tag.priority === 'P0') p0.add(t.id);
+    }
+  }
+  if (parsed.detail !== 'full') return { errors, warnings };
+  if (valid === 0) warnings.push('regression adopted (.claude/regression.json) but no criterion carries a [reg P0|P1|P2] tag — /setup:delivery-plan tags them');
+  for (const f of (inventory?.flows ?? []).filter((x) => x.critical && !x.withdrawn)) {
+    const ids = new Set([f.id, ...f.activities.filter((a) => !a.withdrawn).map((a) => a.id)]);
+    const tracing = live.filter((t) => t.traces.some((id) => ids.has(id))).map((t) => t.id).sort(byIdAsc);
+    if (tracing.length && !tracing.some((id) => p0.has(id))) errors.push(`${REGRESSION_TAG_PREFIX} ${f.id} (critical flow): no [reg P0] criterion on the Tasks that trace it (${tracing.join(', ')})`);
+  }
   return { errors, warnings };
 }
 
@@ -1324,17 +1447,22 @@ export function checkAgainstRoot(root, parsed, inventory = loadInventory(root, p
   const errors = [];
   let system = null;
   try { system = loadSystem(root); } catch (err) { errors.push(err.message); }
-  const res = checkBacklog({ backlog: parsed, inventory, system });
+  const regression = readRegressionState(root);
+  const res = checkBacklog({ backlog: parsed, inventory, system, regression });
   // Under `full` every live Task resolves to ≥ 1 active criterion — from its Epic file or from the
   // approved spec in its Ref (a missing, Draft or criterion-less spec exempts nothing).
   const criteria = [];
-  if (parsed.detail === 'full' && !parsed.legacy && !parsed.preScope && !parsed.preDetail && !(parsed.problems ?? []).length) {
-    for (const t of parsed.tasks) {
-      if (t.withdrawn || resolveTask(root, parsed, t).current.some((a) => !a.withdrawn)) continue;
-      criteria.push(`Task ${t.id}: no acceptance criterion (expected - **${t.id}.AC1** — … in ${epicFilePath(parsed, t.epic)}, or an approved spec in Ref)`);
+  const tags = { errors: [], warnings: [] };
+  if (!parsed.legacy && !parsed.preScope && !parsed.preDetail && !(parsed.problems ?? []).length) {
+    if (parsed.detail === 'full') {
+      for (const t of parsed.tasks) {
+        if (t.withdrawn || resolveTask(root, parsed, t).current.some((a) => !a.withdrawn)) continue;
+        criteria.push(`Task ${t.id}: no acceptance criterion (expected - **${t.id}.AC1** — … in ${epicFilePath(parsed, t.epic)}, or an approved spec in Ref)`);
+      }
     }
+    Object.assign(tags, regressionTagChecks(root, parsed, inventory, regression));
   }
-  return { ...res, errors: [...errors, ...res.errors, ...criteria], inventory };
+  return { ...res, errors: [...errors, ...res.errors, ...criteria, ...tags.errors], warnings: [...res.warnings, ...tags.warnings], inventory };
 }
 
 export function main(argv = process.argv.slice(2)) {
