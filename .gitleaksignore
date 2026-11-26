@@ -1,0 +1,14 @@
+# Synthetic canaries of the touch-input masker and prompt replay tests (#321). Each source line
+# carries guard-push:allow, which gitleaks does not read. Fingerprints are commit-bound, so any
+# other finding stays live.
+c78d12d585c063b61ffd1a64878baf3794c9b602:.claude/lib/tests/touches-test.sh:private-key:377
+c78d12d585c063b61ffd1a64878baf3794c9b602:.claude/lib/tests/touches-test.sh:curl-auth-header:380
+c78d12d585c063b61ffd1a64878baf3794c9b602:.claude/lib/tests/touches-test.sh:curl-auth-user:380
+c78d12d585c063b61ffd1a64878baf3794c9b602:.claude/lib/tests/touches-test.sh:curl-auth-user:395
+70bae3bd38a6258afb4720d9909711a639e5ca23:.claude/lib/tests/prompt-replay-test.sh:curl-auth-header:42
+70bae3bd38a6258afb4720d9909711a639e5ca23:.claude/lib/tests/prompt-replay-test.sh:curl-auth-user:42
+# The same canaries on the lines the QA helper rewrite (add_cmd) moved.
+22ea56e77c51fdbb57aa785c81e0c834ae680b63:.claude/lib/tests/touches-test.sh:private-key:375
+22ea56e77c51fdbb57aa785c81e0c834ae680b63:.claude/lib/tests/touches-test.sh:curl-auth-header:378
+22ea56e77c51fdbb57aa785c81e0c834ae680b63:.claude/lib/tests/touches-test.sh:curl-auth-user:378
+22ea56e77c51fdbb57aa785c81e0c834ae680b63:.claude/lib/tests/touches-test.sh:curl-auth-user:407

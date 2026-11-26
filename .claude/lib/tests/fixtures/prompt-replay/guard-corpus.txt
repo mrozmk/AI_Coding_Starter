@@ -1,0 +1,6 @@
+# Excerpt of .claude/lib/tests/fixtures/guard-corpus.txt (three rows) for prompt-replay-test.sh:
+# the egress guard's expected verdict for the Supervisor in a main checkout with no local gh rules
+# and the Bash(python3 -) / Bash(python3 -c *) opt-ins. Format: <ask|none>|<command>.
+none|gh issue view 172 --repo o/r --json body --jq .body
+none|gh pr view 261 --repo o/r --json state,mergeCommit --jq '.state, .mergeCommit.oid'
+ask|gh issue create --repo o/r --title x --body-file b.md

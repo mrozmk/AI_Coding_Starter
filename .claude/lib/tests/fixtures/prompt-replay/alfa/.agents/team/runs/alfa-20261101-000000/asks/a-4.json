@@ -1,0 +1,23 @@
+{
+  "id": "a-4",
+  "kind": "permission",
+  "role": "coder",
+  "attempt": 1,
+  "round": 1,
+  "session_id": "S2",
+  "agent_id": "",
+  "agent_type": "",
+  "payload": {
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "${FIXTURE}/main/README.md",
+      "old_string": "a",
+      "new_string": "b"
+    },
+    "cwd": "${FIXTURE}/alfa"
+  },
+  "tier": "operator",
+  "tier_cause": "outside clone",
+  "state": "answered",
+  "filed_at": "2026-11-01T00:05:00Z"
+}

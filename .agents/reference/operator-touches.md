@@ -19,6 +19,8 @@ Writer, reader and hook: `.claude/lib/touches.py`, run through `.claude/lib/touc
 - Appends are a single `write` of a line under 4 KiB to a file opened `O_APPEND`, so concurrent
   sessions never interleave lines. The directory and file are opened through pinned directory
   fds: a symlinked `.agents/touches`, a FIFO or a hard-linked month file is refused, never written.
+- The 4 KiB rule holds with `input`: a line over it has its longest `input` field cut first
+  (`cut` names it), then `input` dropped, then today's 60-character cut of `where`/`what`/`answer`.
 
 ## Entry
 
@@ -37,6 +39,7 @@ Keys, in this order:
 | `wait_s` | int or null | — | seconds from the stop to the answer, when known |
 | `relayed_by` | string, optional | 60 | `Supervisor` when the Supervisor relayed the Operator's answer (`team-lead.sh decision relay`); absent otherwise |
 | `relayed_session` | string, optional | 100 | the Supervisor's session id for a relayed answer; absent otherwise |
+| `input` | object, optional | line | the touched tool call, masked (Privacy): `tool`; `fields` — the full masked `command` / `url` / `file_path` / `path` / `notebook_path` / `skill` / `pattern` it has, newlines kept; `keys` — the names of all its keys when it has any other; `cwd`; `role` (the team role, `TeamLead`, else `$TEAM_SESSION_ROLE`, else `solo`); `session`; `cut` — `{<field>: <original length>}` for a value shortened to fit the line. Absent when the touch has no tool call (a plan gate, a startup dialog, a question decision, a `block` line) |
 
 Reason codes — the field reports group by — and who assigns each:
 
@@ -69,12 +72,12 @@ The global opt-in skips steps 1–3 (see **Global opt-in**).
 
 | Writer | When | Entry |
 |---|---|---|
-| `team-lead.sh decision answer` | a human answered a TeamLead decision | `kind` from the bound ask (`question`/`permission`/`plan`/`text`), else `plan` for a `--gate plan`, else `decision`; `reason` = the decision's `touch_reason`; `what` = the question; `answer` normalised for a permission/plan ask; `wait_s` = answered − created; `where` = `team <team> / <ticket> / <stage>` |
+| `team-lead.sh decision answer` | a human answered a TeamLead decision | `kind` from the bound ask (`question`/`permission`/`plan`/`text`), else `plan` for a `--gate plan`, else `decision`; `reason` = the decision's `touch_reason`; `what` = the question; `answer` normalised for a permission/plan ask; `wait_s` = answered − created; `where` = `team <team> / <ticket> / <stage>`; a bound permission ask adds its `input` (`add --input-file <ask file>`) |
 | the runner's dialog watch (`team-run-dialog.sh`) | a TeamLead or stage session first seen at the folder trust or MCP servers dialog | `other` / `direct`, `startup dialog <trust\|mcp> in <role>`; once per session and dialog kind (`runs/<run>/<decision>-<kind>.touched`) |
-| the Notification hook (`touch-notify.sh`) | any session, team or solo, waits at a permission prompt | `permission`, `direct` — or `channel-failed` in a lead-run stage no ask covered |
-| the egress guard (`record_touch`) | a Supervisor main-checkout session is stopped for the Operator | `permission` / `guard`; its shell fallback writes `where: "solo ?"` |
+| the Notification hook (`touch-notify.sh`) | any session, team or solo, waits at a permission prompt | `permission`, `direct` — or `channel-failed` in a lead-run stage no ask covered; `input` from the one pending tool call it finds in the transcript |
+| the egress guard (`record_touch`) | a Supervisor main-checkout session is stopped for the Operator | `permission` / `guard`; `input` from a valid hook payload only (never the unreadable-payload line or the shell fallback; a missing `touches.py` writes the line without it); its shell fallback writes `where: "solo ?"` |
 | a refusing PreToolUse hook (`touches.sh block --source <hook> --what <text>`) | the hook exits 2: guard-push, guard-team-verdict, guard-teamlead-bash, guard-teamlead-write, guard-memory, guard-team-memory, guard-jira-transition | `block` / `hook`, `what` = `<hook>: <text>`, `answer` empty, `wait_s` null; fire-and-forget — always exit 0, never output, a missing log or main checkout is a silent no-op; `TOUCHES_BLOCK_OFF=1` (set by `team-suite.sh`) stands it down, since test fixtures point `main_root` at the real checkout |
-| by hand: `touches.sh add` | anything else that reached the Operator (a restart, a manual fix) | as given; the Supervisor passes `--where "team <team> / <ticket> / <role>"` for a team's matter so its wrapup counts it |
+| by hand: `touches.sh add` | anything else that reached the Operator (a restart, a manual fix) | as given; the Supervisor passes `--where "team <team> / <ticket> / <role>"` for a team's matter so its wrapup counts it; `--input-file <json>` (an ask file or a hook payload) adds `input` — unreadable or invalid → a `warn:` line and the entry without it, still exit 0 |
 
 Every scripted caller survives a missing or failing `touches.sh`: one `warn: touch not recorded
 (<source>)` line, the caller's own result unchanged.
@@ -123,16 +126,22 @@ Every scripted caller survives a missing or failing `touches.sh`: one `warn: tou
 
 ## Privacy
 
-- Every text field is one line, at most 200 characters (`machine`, `who` at 100); control
-  characters become spaces.
+- Every text field but `input` is one line, at most 200 characters (`machine`, `who` at 100);
+  control characters become spaces. `input` values keep newlines and tabs and are cut only to fit
+  the line.
 - Secrets are masked before the cap: labelled values (`password=…`, `"token": "…"`,
   `DB_PASSWORD=…`, `AccessKey=…;`, quoted values with escapes or doubled quotes, even when cut
   before the closing quote), secret flags (`--password …`, `--sas-token …`), `Bearer …`, and
   known token formats by prefix (`ghp_…`, `github_pat_…`, `sk-ant-…`, `AKIA…`, `xox?-…`,
   `glpat-…`, `AIza…`, `npm_…`, private key blocks, credentials in a database URL) — a token cut
-  short by an earlier truncation is still masked. Pattern-based: a floor, not a guarantee.
-- No transcript, prompt or full answer is stored; the hook reads only the pending tool call's name
-  and its command, path or URL.
+  short by an earlier truncation is still masked; also multiline private-key blocks (to the `END`
+  line, or to the end of an unterminated value), emails (never an scp-like `git@host:path`), URL
+  userinfo of any scheme (scheme, `@` and host kept: `https://***@host/…`), `Authorization:`,
+  `Proxy-Authorization:` and `Cookie:` values, and `curl -u/--user` credentials. In `input`, a
+  value under a secret-named key (`password`, `api_key`, `Authorization`, …) is masked whole.
+  Masking runs on the full value before any cut. Pattern-based: a floor, not a guarantee.
+- No transcript, prompt or full answer is stored; the full masked tool input of the touched call
+  is kept in `input` (newlines kept), file paths unmasked.
 - Log examples are never published: the wrapup shares only counts.
 
 ## Global opt-in

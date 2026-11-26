@@ -1,0 +1,6 @@
+{
+  "id": "a-4",
+  "authority": "operator",
+  "behavior": "deny",
+  "why": "outside the clone"
+}

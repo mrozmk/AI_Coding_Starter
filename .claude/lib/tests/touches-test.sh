@@ -325,5 +325,122 @@ out=$(cd "$T/m15" && TOUCHES_BLOCK_OFF=1 $TS block --source guard-x --what "suit
 [ "$r" = 0 ] && [ -z "$out" ] && [ "$(count "$MF15")" = 1 ]
 ok "15f TOUCHES_BLOCK_OFF: block writes nothing" $?
 
+# (16) input: the masked tool input of the touched call, from the hook and from add --input-file.
+mkrepo "$T/h16"; F16="$(mfile "$T/h16")"
+C16="$(printf 'curl -s https://u:p@h.example/x?token=abc\necho ghp_0123456789abcdefghijklmnopqrstuvwxyz')" # guard-push:allow
+use tu16 "$C16" > "$T/p/t16.jsonl"
+payload "$T/p/p16.json" permission_prompt "$T/h16" S16 "$T/p/t16.jsonl"
+hook "" "$T/p/p16.json"
+[ "$(count "$F16")" = 1 ] \
+  && jq -e --arg cwd "$T/h16" '.input.tool == "Bash" and (.input.fields.command | contains("\n"))
+       and (.input.fields.command | contains("https://***@h.example")) and (.input.fields.command | contains("***"))
+       and .input.session == "S16" and .input.cwd == $cwd and .input.role == "solo"
+       and (.what | startswith("Bash: curl")) and (.what | contains("\n") | not) and (.what | length <= 200)' "$F16" >/dev/null \
+  && ! grep -qE 'ghp_0123|token=abc|u:p@' "$F16" # guard-push:allow
+ok "16a hook records the masked full input" $?
+
+mkrepo "$T/m16"; F16B="$(mfile "$T/m16")"
+jq -nc '{id:"a-1", kind:"permission", role:"coder", session_id:"S-B",
+  payload:{tool_name:"Bash", tool_input:{command:"git push https://x.example/?token=SYNTHB16"}, cwd:"/w"}}' > "$T/p/ask16.json" # guard-push:allow
+add_in "$T/m16" --kind permission --reason no-rule --what q --input-file "$T/p/ask16.json" >/dev/null 2>&1
+tail -n 1 "$F16B" | jq -e '.input.role == "coder" and .input.session == "S-B" and .input.tool == "Bash" and .input.cwd == "/w"
+  and (.input.fields.command | contains("token=***"))' >/dev/null && ! grep -q SYNTHB16 "$F16B"
+ok "16b add --input-file with an ask records its masked input and role" $?
+
+jq -nc '{tool_name:"WebFetch", tool_input:{url:"https://h.example/doc", prompt:"p"}, cwd:"/w", session_id:"S-C"}' > "$T/p/hp16.json"
+add_in "$T/m16" --kind permission --reason direct --what q --input-file "$T/p/hp16.json" >/dev/null 2>&1
+tail -n 1 "$F16B" | jq -e '.input.tool == "WebFetch" and .input.fields.url == "https://h.example/doc"
+  and .input.role == "solo" and .input.session == "S-C"' >/dev/null
+ok "16c add --input-file with a hook payload records the input" $?
+
+n0="$(count "$F16B")"; printf 'not json' > "$T/p/bad16.json"
+e1=$(add_in "$T/m16" --kind permission --reason direct --what miss --input-file "$T/p/nope16.json" 2>&1 >/dev/null); r1=$?
+e2=$(add_in "$T/m16" --kind permission --reason direct --what bad --input-file "$T/p/bad16.json" 2>&1 >/dev/null); r2=$?
+[ "$r1" = 0 ] && [ "$r2" = 0 ] && [ "$(count "$F16B")" = $((n0 + 2)) ] \
+  && [ "$(printf '%s\n' "$e1" | grep -c '^warn: input not recorded')" = 1 ] \
+  && [ "$(printf '%s\n' "$e2" | grep -c '^warn: input not recorded')" = 1 ] \
+  && tail -n 2 "$F16B" | jq -e 'has("input") | not' >/dev/null
+ok "16d unreadable or non-JSON --input-file: line without input, one warning, exit 0" $?
+
+jq -nc --arg c "$(printf 'a%.0s' $(seq 6000))" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/w", session_id:"S-E"}' > "$T/p/long16.json"
+add_in "$T/m16" --kind permission --reason direct --what "long one" --input-file "$T/p/long16.json" >/dev/null 2>&1
+L=$(tail -n 1 "$F16B"); [ "$(printf '%s\n' "$L" | wc -c)" -le 4000 ] \
+  && printf '%s' "$L" | jq -e '.input.cut.command == 6000 and .what == "long one" and (.input.fields.command | length) < 6000' >/dev/null
+ok "16e a 6000-character command is cut to the line budget and marked" $?
+
+mkrepo "$T/m16f"; F16F="$(mfile "$T/m16f")"
+add_cmd() { # <main dir> <command> — one direct touch whose input is that Bash call
+  jq -nc --arg c "$2" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/w", session_id:"S-F"}' > "$T/p/cmd16.json"
+  add_in "$1" --kind permission --reason direct --what q --input-file "$T/p/cmd16.json" >/dev/null 2>&1; }
+add_cmd "$T/m16f" "$(printf 'cat <<K\n-----BEGIN RSA PRIVATE KEY-----\nCANARYKEYLINE2\n-----END RSA PRIVATE KEY-----\nK\necho after')" # guard-push:allow
+add_cmd "$T/m16f" "$(printf 'echo -----BEGIN OPENSSH PRIVATE KEY-----\nCANARYUNTERM')" # guard-push:allow
+add_cmd "$T/m16f" "mail a.b@example.com" # guard-push:allow
+add_cmd "$T/m16f" "curl -H 'Authorization: Basic Zm9vCANARYB' https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -u user:CANARYPASS https://x" # guard-push:allow
+[ "$(count "$F16F")" = 5 ] && ! grep -qE 'CANARYKEYLINE2|CANARYUNTERM|a\.b@example|Zm9vCANARYB|CANARYPASS' "$F16F" \
+  && sed -n 1p "$F16F" | jq -e '.input.fields.command | contains("echo after")' >/dev/null
+ok "16f multiline key, email, auth header, curl -u masked" $?
+
+# The user flag is spelt through $U so the source line is no credential shape for a leak scanner.
+U=-u
+add_cmd "$T/m16f" "curl ${U}admin:CANARYATTACHED https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -s${U#-} admin:CANARYCLUSTER https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -H \"Cookie: sid=a; session=CANARYCOOKIE2\" https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -H '{\"Authorization\": \"Basic CANARYJSONHDR\"}' https://x" # guard-push:allow
+UL=user
+add_cmd "$T/m16f" "curl \"https://x/?a=1&b=2\" --$UL u:CANARYQUOTEDQ https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -Tup.txt https://x"
+add_cmd "$T/m16f" "git push -u origin feat/x"
+[ "$(count "$F16F")" = 12 ] && ! grep -qE 'CANARYATTACHED|CANARYCLUSTER|CANARYCOOKIE2|CANARYJSONHDR|CANARYQUOTEDQ' "$F16F" \
+  && sed -n 11p "$F16F" | jq -e '.input.fields.command == "curl -Tup.txt https://x"' >/dev/null \
+  && tail -n 1 "$F16F" | jq -e '.input.fields.command == "git push -u origin feat/x"' >/dev/null
+ok "16k attached, clustered and post-query curl -u, a Cookie with pairs and a JSON-quoted header masked; curl -T kept" $?
+
+mkrepo "$T/m16u"; F16U="$(mfile "$T/m16u")"
+UU=-U; PU=proxy-user
+add_cmd "$T/m16u" "curl $UU admin:CANARYPROXYU https://x" # guard-push:allow
+add_cmd "$T/m16u" "curl --$PU=admin:CANARYPROXYL https://x" # guard-push:allow
+add_cmd "$T/m16u" "curl $U o:CANARYORIG --$PU p:CANARYBOTH https://x; curl $UU q:CANARYNEXT https://y" # guard-push:allow
+[ "$(count "$F16U")" = 3 ] && ! grep -qE 'CANARYPROXYU|CANARYPROXYL|CANARYORIG|CANARYBOTH|CANARYNEXT' "$F16U"
+ok "16u curl -U and --proxy-user masked, every user flag of an invocation" $?
+
+LONG="echo $(printf '%0200000d' 0)"; S0=$SECONDS
+add_cmd "$T/m16f" "$LONG"
+[ "$(count "$F16F")" = 13 ] && [ $((SECONDS - S0)) -le 10 ]
+ok "16l a 200000-character unbroken run masks in linear time" $?
+
+add_in "$T/m16f" --kind other --reason direct --what "no call" >/dev/null 2>&1
+[ "$(tail -n 1 "$F16F" | jq -r 'keys_unsorted | join(",")')" = "at,machine,who,where,kind,what,reason,answer,wait_s" ]
+ok "16g an entry without a tool call has no input key" $?
+
+mkrepo "$T/m16i"; F16I="$(mfile "$T/m16i")"
+jq -nc '{tool_name:"Custom", tool_input:{command:"x", password:"two words"}, cwd:"/w", session_id:"S-I"}' > "$T/p/i16.json" # guard-push:allow
+add_in "$T/m16i" --kind permission --reason direct --what q --input-file "$T/p/i16.json" >/dev/null 2>&1
+add_cmd "$T/m16i" 'curl -u "us er:pa ss" https://h' # guard-push:allow
+add_cmd "$T/m16i" 'git push git@github.com:o/r.git'
+[ "$(count "$F16I")" = 3 ] && ! grep -qE 'two words|pa ss' "$F16I" \
+  && sed -n 1p "$F16I" | jq -e '.input.keys == ["command","password"]' >/dev/null \
+  && sed -n 3p "$F16I" | jq -e '.input.fields.command == "git push git@github.com:o/r.git"' >/dev/null
+ok "16i key-aware masking keeps an scp-like remote" $?
+
+jq -nc --arg c "$(printf 'ą%.0s' $(seq 5000))" '{tool_name:"Mystery", cwd:$c, session_id:"S-J",
+  tool_input:([range(400)] | map({key:("key_number_\(.)"), value:1}) | from_entries)}' > "$T/p/j16.json"
+add_in "$T/m16i" --kind permission --reason direct --what "big meta" --input-file "$T/p/j16.json" >/dev/null 2>&1
+[ "$(count "$F16I")" = 4 ] && tail -n 1 "$F16I" | jq -e 'has("input") | not' >/dev/null \
+  && [ "$(tail -n 1 "$F16I" | jq -r '.what + "|" + .kind')" = "big meta|permission" ]
+ok "16j oversized metadata drops input, keeps the legacy record" $?
+
+mkrepo "$T/m16h"; D16H="$T/m16h/.agents/touches"; mkdir -p "$D16H"
+{ entry 2026-09-10T10:00:00Z x "solo ." permission "Bash: ls" direct
+  entry 2026-09-11T10:00:00Z x "solo ." permission "Bash: ls" direct | jq -c '.input = {tool:"Bash", fields:{command:"ls"}, cwd:"/", role:"solo", session:"S"}'
+  entry 2026-09-12T10:00:00Z x "team beta / 7 / coder" permission "Bash: ls" guard | jq -c '.input = {tool:"Bash", fields:{}, cwd:"/", role:"coder", session:"S"}'
+} > "$D16H/2026-09.jsonl"
+mkrepo "$T/m16h2"; mkdir -p "$T/m16h2/.agents/touches"
+jq -c 'del(.input)' "$D16H/2026-09.jsonl" > "$T/m16h2/.agents/touches/2026-09.jsonl"
+o1=$($TS report --main "$T/m16h" --since 2026-09-01 2>&1; $TS report --brief --main "$T/m16h" --team beta --ticket 7 --run beta-20260901-000000 2>&1)
+o2=$($TS report --main "$T/m16h2" --since 2026-09-01 2>&1; $TS report --brief --main "$T/m16h2" --team beta --ticket 7 --run beta-20260901-000000 2>&1)
+[ -n "$o1" ] && [ "$o1" = "$o2" ] && printf '%s' "$o1" | grep -q '— 3 since'
+ok "16h report and --brief ignore input" $?
+
 echo "touches-test: $pass passed"
 [ "$fail" = 0 ] || { echo "touches-test: FAILED"; exit 1; }

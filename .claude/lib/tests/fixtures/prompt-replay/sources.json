@@ -1,0 +1,13 @@
+{
+  "checkouts": [
+    {"path": "${FIXTURE}/main", "project": "proj", "role_hint": "main"},
+    {"path": "${FIXTURE}/alfa", "project": "proj", "role_hint": "clone"}
+  ],
+  "transcript_roots": [{"dir": "${FIXTURE}/home/.claude/projects", "checkouts": "listed"}],
+  "touch_logs": [{"path": "${FIXTURE}/main/.agents/touches", "project": "proj"}],
+  "teamlead_logs": [{"path": "${FIXTURE}/main/.agents/team/teamlead-log.md", "project": "proj"}],
+  "guard_corpus": "${FIXTURE}/guard-corpus.txt",
+  "policy": "${FIXTURE}/main/.claude/settings.local.json",
+  "former_paths": {},
+  "cutoff": "2026-11-20T00:00:00Z"
+}

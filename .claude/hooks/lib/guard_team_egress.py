@@ -415,7 +415,7 @@ def main():
         return
     if reason:
         print(json.dumps(verdict(reason)))
-        record_touch(project, payload.get("cwd"), reason)
+        record_touch(project, payload.get("cwd"), reason, payload)
 
 
 if __name__ == "__main__":

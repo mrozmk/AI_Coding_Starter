@@ -393,10 +393,33 @@ def supervisor_verdict(cmd, project, egress_in, width=0):
     return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs])
 
 
-def record_touch(project, cwd, reason):
+def _touches():
+    """The touches module; None when touches.py is missing or fails to import. Imported lazily:
+    a missing file must never break the guard's verdict."""
+    try:
+        lib = os.path.join(HERE, "..", "..", "lib")
+        if lib not in sys.path:
+            sys.path.insert(0, lib)
+        import touches
+        return touches
+    except Exception:
+        return None
+
+
+def _touch_input(t, payload):
+    """The masked input of the asked call; the role is the Supervisor (supervisor_main_checkout)."""
+    return t.make_input(payload.get("tool_name"), payload.get("tool_input") or {}, payload.get("cwd"),
+                        "Supervisor", payload.get("session_id"))
+
+
+def _encoded(entry):
+    return (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def record_touch(project, cwd, reason, payload=None):
     """Append one Operator touch-log line for a Supervisor ask to .agents/touches/<yyyy-mm>.jsonl
     through pinned directory fds (no symlinked dir, FIFO or hard-linked file); a no-op for every
-    other session. Never raises."""
+    other session. With the parsed hook payload the line carries its masked `input`. Never raises."""
     if not supervisor_main_checkout(project):
         return
     fds = []
@@ -409,12 +432,25 @@ def record_touch(project, cwd, reason):
                  "where": ("solo " + ("?" if rel.startswith("..") else rel))[:200],
                  "kind": "permission", "what": str(reason)[:200], "reason": "guard",
                  "answer": "", "wait_s": None}
-        line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
-        if len(line) > 4000:
-            entry["where"], entry["what"] = entry["where"][:60], entry["what"][:60]
-            line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+        line = None
+        t = _touches() if isinstance(payload, dict) else None
+        if t is not None:
+            try:
+                entry["input"] = _touch_input(t, payload)
+                # touches._line cuts the longest field, then drops input, then cuts where/what.
+                line = t._line(entry)
+                if line is None:
+                    return
+            except Exception:
+                entry.pop("input", None)
+                line = None
+        if line is None:
+            line = _encoded(entry)
             if len(line) > 4000:
-                return
+                entry["where"], entry["what"] = entry["where"][:60], entry["what"][:60]
+                line = _encoded(entry)
+                if len(line) > 4000:
+                    return
         fds.append(os.open(project, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
         for name in (".agents", "touches"):
             try:
@@ -442,7 +478,7 @@ def record_touch(project, cwd, reason):
         if st.st_size > 0 and os.pread(fds[-1], 1, st.st_size - 1) != b"\n":
             line = b"\n" + line
         os.write(fds[-1], line)
-    except (OSError, ValueError, TypeError):
+    except Exception:  # a raise here would turn the printed verdict into the wrapper's fail-closed ask
         return
     finally:
         for fd in fds:
