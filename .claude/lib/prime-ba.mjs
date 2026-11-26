@@ -446,7 +446,7 @@ export function pendingSources(root) {
     const f = readText(root, c.path);
     if (!f) continue;
     const hash = sha12(f.buf);
-    const item = { ...c, size: f.size, hash, pending: true, changed: null };
+    const item = { ...c, size: f.size, hash, pending: true, changed: null, waiting: null };
     if (proc) {
       if (proc.hashes.has(hash)) item.pending = false;
       else {

@@ -53,13 +53,7 @@ Refusals, in this order:
    URL, a design link). Never pick a backlog Task, never "the next free Task".
 3. **No `/prime-ba` in this session** → ask for it, then continue.
 
-**Resume.** The argument is a requirements spec (`**Kind:** requirements`) whose `**Status:**` starts
-with `Waiting —` → read it, take the reply from the invocation or the chat, and resume at Step 1 for
-the rows its open question affects, plus every row whose `**Verified against:**` revision moved while
-it waited (a Task that shipped or became protected meanwhile is judged again); the rest of the spec
-stands. A reply that opens a new question keeps it `Waiting`, the new paste-ready text replacing the
-old. A `Draft` one is a run that stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has
-moved, and continue at Step 4 with the spec as it stands — never a second spec for the same input.
+**Resume.** The argument is a requirements spec (`**Kind:** requirements`) whose `**Status:**` starts with `Waiting —` → read it, take the reply from the invocation or the chat, and resume at Step 1 for the rows its open question affects, plus every row whose `**Verified against:**` revision moved while it waited (a Task that shipped or became protected meanwhile is judged again); the rest of the spec stands. A reply that opens a new question keeps it `Waiting`, the new paste-ready text replacing the old. A `Draft` one is a run that stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has moved, and continue at Step 4 with the spec as it stands — never a second spec for the same input.
 
 **Backlog format** — read the Task table header of `.agents/backlog.md` once, testing in this order:
 `Wave` / `Slice` and no `Scope` → pre-Scope (such a header may carry `| Size |` and `| Depends on |`
@@ -184,11 +178,7 @@ go on. The step is never skipped silently.
 - More than eight open points → offer one numbered list for a batch answer instead of eight dialogs.
 - These are shaping rules — they yield to the CERTAINTY-GATE.
 
-**Waiting exit.** An answer only someone else can give → write the spec (Step 5 template) with
-`**Status:** Waiting — <role>`, the question as paste-ready text for that person under
-`## Open questions`, run the stage end marker, and stop. `/brainstorm-ba <spec>` with the reply
-resumes it (Step 0 → Resume). Drafting other stakeholder messages is not this
-command's job.
+**Waiting exit.** An answer only someone else can give → write the spec (Step 5 template) with `**Status:** Waiting — <role>`, the question as paste-ready text for that person under `## Open questions`, run the stage end marker, and stop. `/brainstorm-ba <spec>` with the reply resumes it (Step 0 → Resume). Drafting other stakeholder messages is not this command's job.
 
 ### Step 3 — Shape the Tasks
 
@@ -255,13 +245,7 @@ Read the spec once more and fix inline: placeholders; internal consistency; **cr
 
 ### Step 7 — Cross-model review (optional)
 
-Optional in the BA-profile sense (`.agents/specs/ba-profile/decisions.md` D-A17): runs when `codex`
-is installed, is never a condition of the verdict, and the BA may skip it by stating a reason →
-`**Cross-model review:** skipped — <reason>`. Mechanics:
-[.agents/reference/spec-cross-review.md](../../.agents/reference/spec-cross-review.md) with
-`BOUND_SECTIONS` = `## Tasks` + `## Decisions` + `## Open questions`, `WAKEUP_PROMPT` = this
-`/brainstorm-ba` input verbatim, `CONTINUE_TO` = Step 8, `STEP_LABEL` = `Step 7`. Absent codex →
-`**Cross-model review:** skipped — codex not on PATH`.
+Optional in the BA-profile sense (`.agents/specs/ba-profile/decisions.md` D-A17): runs when `codex` is installed, is never a condition of the verdict, and the BA may skip it by stating a reason → `**Cross-model review:** skipped — <reason>`. Mechanics: [.agents/reference/spec-cross-review.md](../../.agents/reference/spec-cross-review.md) with `BOUND_SECTIONS` = `## Tasks` + `## Decisions` + `## Open questions`, `WAKEUP_PROMPT` = this `/brainstorm-ba` input verbatim, `CONTINUE_TO` = Step 8, `STEP_LABEL` = `Step 7`. Absent codex → `**Cross-model review:** skipped — codex not on PATH`.
 
 The prompt (fill `<spec-path>`):
 
