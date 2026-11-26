@@ -74,8 +74,9 @@ fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a
   processed its earlier version.
 - **"BA direct decision"** — a decision the user states in chat is a source too; quote it.
 - **Missing quality Tasks** — `node .claude/lib/backlog-check.mjs` (read-only) prints a `quality
-  Tasks not planned` warning → `.claude/skills/backlog/quality-tasks.md` is a source too (Phase 3
-  → Quality Tasks), with or without arguments.
+  Tasks not planned`, a `regression Tasks not planned` or a `regression neither planned nor ruled
+  out` warning → `.claude/skills/backlog/quality-tasks.md` is a source too (Phase 3 → Quality
+  Tasks), with or without arguments.
 - Nothing pending, no chat decision and no missing quality Tasks → "nothing to process", stop.
 
 ## Phase 2 — Load
@@ -100,6 +101,7 @@ Scan each source for backlog-actionable statements and build
 |---|---|---|
 | `add` (story) | new `R-n` (next id, `Added: <new Current>`, `Source` / `Quote`) unless the source names an existing **untraced** active `R-n` | new Task (next id), `Traces` incl. that `R-n`, `Status: TODO`, `Jira: —`, AC from `nextAc` |
 | `add` (tech) | none (traces `AD-n` / `NFR-n`; a quality Task — `.claude/skills/backlog/quality-tasks.md` — traces nothing) | new Task; a quality Task takes its row, Summary and (under `**Detail:** full`) criteria from that file |
+| `retag` | none | the AC line's leading tag only, in place — no withdraw / new id, on any Task (protected included) whose criterion lives in its Epic file; a spec-owned criterion is refused with "revise <spec> — /brainstorm <Task id>" |
 | `edit` — same meaning | none, or an `editorial` `D-n` for a register wording fix | **unprotected** Task: prose / AC edited — AC text under an existing id is never edited: withdraw it and add a new id |
 | `edit` — meaning changed | old `R-n` `(superseded by R-m per D-k)`, new `R-m` | unprotected Task: `Traces` → `R-m`, AC withdraw + new; **protected Task untouched** + a `delta-linked` intent |
 | `delta-linked` | the `R-m` from the row above | new Task, `Relates: <protected id>`, `Traces: R-m` (a delta of a delta relates to the original protected Task) |
@@ -127,7 +129,8 @@ history, so it is never protected); a withdrawn `R-n` → a question whether the
 **Protection.** A Task is **protected** when `Status ≠ TODO`, or `Ref` is non-empty (a spec or plan
 exists), or its `Jira` key's live status is not in the project's backlog / waiting set — read
 read-only with the refresh `brainstorm.md` Step 0 a′ uses; tracker unreachable → every keyed Task
-counts as protected (say so once). A protected Task is never edited in place.
+counts as protected (say so once). A protected Task is never edited in place — a `retag` intent is
+the one edit a protected Task takes in place (quality-tasks.md → Regression: the fingerprint stays).
 
 **Quality Tasks** (`.claude/skills/backlog/quality-tasks.md`). A change that adds a live `CORE` /
 `MUST` product Task that is a new sink adds it to the `Depends on` of the open closing audit
@@ -149,6 +152,8 @@ interface re-decides `[audit:seo-geo]` / `[audit:wcag]` by that file's **Planned
 rule in the same candidate: plan the audit with its release and staging edges and drop the
 rule-out line, or the reverse (withdraw a `TODO` audit, add the rule-out line). A backlog written before quality Tasks existed gets them through
 `add (tech)` intents from that file, after the checker's `quality Tasks not planned` warning.
+Regression Tasks and criterion tags follow that file's `## Regression`; new criteria written under
+`**Detail:** full` carry their tag when `.claude/regression.json` exists.
 
 ## Phase 4 — Clarification loop
 

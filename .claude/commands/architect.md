@@ -50,8 +50,9 @@ command **defines** `AD-n` (decision-table row, first cell `AD-n`, `Status` `act
 
 **HARD GATE — no code, no scaffolding, no project files.** This command writes exactly:
 `docs/architecture.md`, `docs/map/system.yaml` (creating `docs/map/` if missing), the PRD's `## 7.
-Core Architecture & Patterns` and `## 8. Technology Stack` sections, and appended entries in
-`.agents/memory/decisions.md`. Never `.agents/memory/architecture.md` (the directory map
+Core Architecture & Patterns` and `## 8. Technology Stack` sections, appended entries in
+`.agents/memory/decisions.md`, and the one key `app_surface` of `.claude/project-profile.json`
+(Phase 9b). Never `.agents/memory/architecture.md` (the directory map
 `/setup:create-CLAUDE_MD` regenerates), never `CLAUDE.md`, never a manifest or a dependency.
 
 All chat with the user — questions, previews, the final report — is in the project's
@@ -313,6 +314,25 @@ A superseding `AD-m` adds its own entry; the superseded `AD-n`'s entry is **neve
 removed** — the table row carries `superseded by AD-m`, and the new entry's `**Why:**` names what it
 replaces. `withdrawn` rows get no new entry.
 
+## Phase 9b — App surface
+
+Runs only when Phase 7 published the architecture (`**Status:** reviewed`); a draft →
+`app_surface: not written — architecture is a draft`. Derive the surface from `## Stack` and
+`## C4 — containers`: a browser-served UI → `web` (also beside a native app); else a native mobile
+app → `mobile`, a desktop app → `desktop`, a terminal UI or a CLI → `tui`, no user interface →
+`none`. `/setup:start` step 5 and the backlog writers read it (`qa-env.json`, regression).
+
+Write it only while the profile's value is absent or `unknown` (`$SCRATCH` as in Phase 6):
+
+```bash
+jq --arg s <value> '.app_surface = $s' .claude/project-profile.json > "$SCRATCH/profile.json" && mv "$SCRATCH/profile.json" .claude/project-profile.json
+```
+
+- No profile file → create `{"schema":1,"app_surface":"<value>"}`.
+- A profile that is not valid JSON → write nothing; report `app_surface: not written — the profile is not valid JSON`.
+- A different known value already there → keep it; report
+  `app_surface: profile says <x>, the stack says <y> — kept`.
+
 ## Phase 10 — Report
 
 In chat, in the project's communication language, ≤40 lines — unless a 🔶 rethink signal or an
@@ -324,11 +344,14 @@ unresolved blocker needs its evidence quoted, which is never compressed:
 2. **Subdomains** — one line per context: type, evidence id.
 3. **Decisions** — count of `AD-n` active / superseded / withdrawn; deferred cells with triggers;
    open cells with `Q-n` and owner, flagged when they block slice 1.
-4. **Stack** — the recommendation in one line with its wrong-when scenario and confidence.
+4. **Stack** — the recommendation in one line with its wrong-when scenario and confidence; then
+   `app_surface: <value> (written | kept | not written — <why>)` (Phase 9b).
 5. **Map** — nodes / links / flows counts; `--system-only` exit status (or the not-validated line).
 6. **Review** — critic verdict per round and the kept/dropped tally; every dropped blocker/major
    with its evidence; Codex verdict or the skip reason; any 🔶 rethink signal.
 7. **Next steps**, in order: `/maintain:refresh-brief` (the PRD's §7–§8 changed) → `/prime` →
+   for `app_surface` `web`, `/setup:regression` (catalog stage — before the backlog, so it plans
+   the regression Tasks and the delivery plan tags the criteria) →
    `/setup:create-backlog` (Tasks get `Node` and `AD-n` traces from these files). For a UI-heavy
    product add one line: `/design-ui` is available now for the key screens of the critical flow
    (`FL-n` with `**Critical:** yes`) — optional, never a gate.

@@ -281,7 +281,7 @@ test('stale when only the criterion changes', () => {
   fs.writeFileSync(epic, fs.readFileSync(epic, 'utf8').replace('then the line total follows.', 'then the line total and the cart total follow.'));
   const row = rowOf(cartRow(root), 'CART-001');
   assert.equal(row.automation, 'stale');
-  assert.match(row.automation_reason, /E1-1\.AC1: header fingerprint \[d742c9\] differs from the current criterion/);
+  assert.match(row.automation_reason, /E1-1\.AC1: header fingerprint \[5def01\] differs from the current criterion/);
 });
 
 test('missing when Spec is a dash', () => {
@@ -333,6 +333,16 @@ test('criterion fingerprint matches the original bullet', () => {
     assert.match(original ?? '', /^[0-9a-f]{6}$/);
     assert.deepEqual(currentFingerprint(root, id, ctx), { fp: original }, id);
   }
+});
+
+test('a regression tag is outside the fingerprint', () => {
+  const block = extractFingerprintBlock(REPO);
+  assert.ok(block.block, block.error);
+  const text = 'Given one line in the cart, when the quantity is raised to the maximum, then the line total follows.';
+  const untagged = fingerprint(block.block, `- **E1-1.AC1** — ${text}`);
+  assert.equal(untagged, '5def01');
+  assert.equal(fingerprint(block.block, `- **E1-1.AC1** — [reg P0] ${text}`), untagged);
+  assert.equal(fingerprint(block.block, `- **E1-1.AC1** — [reg P1] ${text}`), fingerprint(block.block, `- **E1-1.AC1** — [reg P0] ${text}`));
 });
 
 test('planned coverage counts tags after any separator', () => {

@@ -60,7 +60,9 @@ RUBRIC:   .claude/skills/backlog/backlog-rubric.md
 MODE:     structure | detail   (from **Detail:** — structure defers the criteria rules, see the rubric's Modes)
 SOURCES:  docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
           + every approved spec named in the Ref cell of an in-scope Task
-          + .claude/skills/backlog/quality-tasks.md when an in-scope Task carries a quality marker
+          + .claude/regression.json and .claude/skills/backlog/quality-tasks.md when .claude/regression.json
+            exists (every critic call — K12 grades product criteria), else quality-tasks.md when
+            an in-scope Task carries a quality or `[regression:` marker
 ROUND:    1
 PRIOR:    (the checker warnings, verbatim, as known context)
 SCOPE:    all | E<n> | <the --since Task set>   (+ the in-scope rows of ## Outside the dev backlog)
@@ -68,13 +70,17 @@ RULES:    (see below)
 METHOD:   .claude/commands/setup/create-backlog.md   (Phase 3 split patterns and developer-only scope, Phase 4 CORE rules — K2 / K3 / K9 / K11 cite)
 ```
 
-- ≤ ~25 live Tasks, or a narrow `--epic` / `--since`: **one call, all rules**.
-- Otherwise: one call per in-scope Epic with `RULES: K1,K2,K5,K7,K11`, `SCOPE: E<n>` (K11 for
+- ≤ ~25 live Tasks, or a narrow `--epic` / `--since`: **one call, all rules** (K12 only with
+  `.claude/regression.json`).
+- Otherwise: one call per in-scope Epic with `RULES: K1,K2,K5,K7,K11,K12` (K12 only when
+  `.claude/regression.json` exists; it is criteria-based, so `MODE: structure` grades only existing
+  criteria), `SCOPE: E<n>` (K11 for
   that Epic's Tasks) and `ARTIFACT` = `.agents/backlog.md`, that Epic's file and the current view;
   `K5` stays in both modes — under `MODE: structure` the critic grades the criteria that exist and
   raises nothing for a Summary-only Task's missing ones. Plus one global call with `RULES: K3,K4,K6,K8,K9,K10,K11 (outside rows only)`
   and `SCOPE` = the selection plus the in-scope rows of `## Outside the dev backlog` (every row on a
-  whole-backlog run, also one with `Needed by: —`). The union of the calls is K1–K11; every call
+  whole-backlog run, also one with `Needed by: —`). The union of the calls is K1–K12 (K12 only
+  with `.claude/regression.json`); every call
   carries the same `MODE`.
 
 Deduplicate findings by (rule, id). A spawn failure → `Critic: not-reviewed — <reason>`; the
@@ -98,8 +104,9 @@ answers become **intents** in `/update-backlog`'s model:
 | change a Task's `Scope` / resize | `edit` of the structural cells |
 | move a non-developer Task to the outside section, or add / edit / remove an `X-n` row | the outside-row intent of `/update-backlog` (the moved Task leaves the plan by its removal rule; the new `X-n` row takes its traces and lists its dependents under `Needed by` and its own prerequisites under `Starts after`) |
 | a soft relation / a chain | `edit` adding `Relates` / `Chain` |
+| a retag (quality-tasks.md → Regression: add, replace or remove a valid leading `[reg P0|P1|P2]` tag — the fingerprint stays) — **backlog-owned** | `retag` — the AC keeps its id and wording; allowed on a protected Task too. A malformed, misplaced or duplicate token changes the fingerprint: it is a "rewrite a criterion" row below |
 | rewrite a criterion — **backlog-owned** (the current view's `source` starts with `.agents/backlog` — an Epic file) | withdraw the AC id + a new id |
-| rewrite a criterion — **spec-owned** (`source` is anything else — an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec)"; a backlog rewrite would not change the criteria QA verifies |
+| rewrite or retag a criterion — **spec-owned** (`source` is anything else — an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec; a tag is written in the spec too)"; a backlog rewrite would not change the criteria QA verifies |
 
 A split or merge whose dependent is protected, or whose redirect is ambiguous, becomes a question —
 never a silent rewire.
@@ -166,11 +173,13 @@ bash .claude/lib/codex-bg.sh
 > in-scope live Task). MODE: `<structure | detail>` — in structure mode the rubric's criteria rules
 > are deferred as its Modes paragraph states; grade the Summary lines and any criteria that exist,
 > and raise nothing for criteria not written yet. The rubric is
-> `.claude/skills/backlog/backlog-rubric.md` (K1–K11). The sources the backlog must trace to are
+> `.claude/skills/backlog/backlog-rubric.md` (K1–K12; K12 applies only when `.claude/regression.json`
+> exists). The sources the backlog must trace to are
 > `<docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml — those that exist>`
 > plus `<every approved spec named in the Ref cell of an in-scope Task, or "no specs">`. Quality
-> Tasks (a `[audit:` / `[upkeep:` marker) are backed by `.claude/skills/backlog/quality-tasks.md`,
-> not by the PRD. The method
+> and regression Tasks (a `[audit:` / `[upkeep:` / `[regression:` marker) are backed by
+> `.claude/skills/backlog/quality-tasks.md`, not by the PRD; with `.claude/regression.json` present,
+> criteria tags follow its `## Regression`. The method
 > reference is `.claude/commands/setup/create-backlog.md` (Phase 3 developer-only scope and split
 > patterns, Phase 4 CORE rules). SCOPE: `<all | E<n> | the --since Task set>` plus the in-scope rows
 > of `## Outside the dev backlog` — report nothing outside it. Read `.claude/agents/start-critic.md`

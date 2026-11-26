@@ -44,8 +44,10 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 
 | Stage | Regression artifact | Shipped |
 |---|---|---|
+| `/architect` | `app_surface` in `.claude/project-profile.json` from the stack; `web` → the report names `/setup:regression`. | yes |
 | `/setup:regression`, catalog stage | `.claude/regression.json` with the `catalog` section (area codes proposed from the system map or the route list). | yes |
-| `/setup:delivery-plan` | Every browser-observable criterion carries `[reg P0|P1|P2]`. | (not yet shipped) |
+| `/setup:create-backlog` | `[regression:foundation]`, 1–3 `[regression:baseline]`, optional `[regression:smoke]` (`quality-tasks.md` → Regression), or a rule-out line. | yes |
+| `/setup:delivery-plan` | Every browser-observable criterion carries `[reg P0|P1|P2]`. | yes |
 | `/brainstorm` | The scenario blocks for the Task's tagged criteria, written into the catalog on the Task's branch. | (not yet shipped) |
 | `/plan-feature`, `/execute` | The catalog change lands with the code; no spec is written, no app is started. | (not yet shipped) |
 | `/check-implementation` | The catalog validates; every tagged criterion has a scenario citing its current fingerprint. | (not yet shipped) |
@@ -143,9 +145,9 @@ canonical §7c block of `qa-evidence-families.md`, run through `bash` (one imple
 hash). A tracker key is not readable offline: its fingerprint is compared catalog ↔ header. A
 scenario citing only flows, `live` or `code` has nothing to go stale by: header present = `verified`.
 
-**The `[reg Pn]` tag is part of the criterion text, so it is inside the fingerprint** (the same bytes
-`/qa-verify` hashes): retagging a criterion makes the specs that cite it `stale` until they are
-re-cited.
+**The `[reg Pn]` tag is outside the fingerprint** — §7c step 4b strips a leading tag, so tagging,
+retagging or untagging a criterion changes no fingerprint: no spec goes `stale` and no QA record is
+invalidated. Every other edit of the criterion text does.
 
 ## 8. Scripts and commands
 
@@ -162,7 +164,9 @@ node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
 - `catalog.mjs` validates (each error `<file>:<line>: <message>`); `--status` prints counts by
   `Status` × `Priority`, per priority planned / written / automated, the READY ids without a spec
   and the stale ids; `--json` prints the same numbers with every scenario row. Planned = `[reg Pn]`
-  tags on the current, non-withdrawn criteria of the backlog's Tasks (`n/a` without a backlog);
+  tags on the current, non-withdrawn criteria of the backlog's Tasks (`n/a` without a backlog) —
+  the tag form and the critical-flow P0 rule are checked by `backlog-check.mjs`
+  (`quality-tasks.md` → Regression);
   written = scenarios not `DROPPED`; automated = written scenarios whose state is `verified`.
 - `setup.mjs` is the only writer of `regression.json`: `catalog` never overwrites an existing file;
   `baseline` adds each absent section of `runner` / `environments` and never alters an existing

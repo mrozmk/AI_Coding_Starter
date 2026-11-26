@@ -20,7 +20,8 @@ critic judges your file after you; you never judge it yourself.
 | `FILE` | `.agents/backlog/E<n>-<slug>.md` — the only file you write |
 | `SOURCES` | `docs/PRD.md`, `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` — the ones that exist |
 | `BACKLOG` | `.agents/backlog.md` — the Epic map and the Task table (Scope, Size, Depends on, Traces, Ref) you read, never write |
-| `TASKS` | per Task id to detail: `missing` (a subset of `goal`, `inScope`, `outOfScope`, `criteria`), `source` (its Epic file, or the approved spec that owns its criteria), `nextAc` (the first free criterion id) and, for a protected Task, `protected: true` |
+| `TASKS` | per Task id to detail: `missing` (a subset of `goal`, `inScope`, `outOfScope`, `criteria`, `tags`), `source` (its Epic file, or the approved spec that owns its criteria), `nextAc` (the first free criterion id) and, for a protected Task, `protected: true` |
+| `REGRESSION` | `on` when `.claude/regression.json` exists, else `off` |
 
 A checker report or a list of remaining ids in a later message (`SendMessage`) means: fix exactly
 those errors, or detail exactly those Tasks, in `FILE`, then answer as below.
@@ -64,8 +65,16 @@ Two marks decide what a Task gets:
    the sources state the behaviour, each one conditional on that decision.
 
    A **quality Task** — its Task cell begins with a marker from
-   `.claude/skills/backlog/quality-tasks.md` — takes its Goal, In scope, Out of scope and criteria from that file's detail templates
+   `.claude/skills/backlog/quality-tasks.md` (a `[regression:` Task included) — takes its Goal, In scope, Out of scope and criteria from that file's detail templates
    for its kind, with its command and prerequisites filled in; it needs no trace and no PRD source.
+
+   **Regression tags** — only when `REGRESSION` is `on`: every criterion you write, and every
+   existing Epic-file criterion of a Task in `TASKS` (protected included), gets its tag by
+   `.claude/skills/backlog/quality-tasks.md` → Regression. A Task whose `missing` is only `tags`:
+   apply retags (that file's definition) to its criteria, change nothing else; a malformed,
+   misplaced or duplicate token is a fingerprint-changing repair — on an unprotected Task withdraw
+   the criterion and add it under a new id with the valid tag, on a protected Task report it as a
+   proposal. `off` → write no tag.
 
    A Task that already has criteria keeps every one of them unchanged: you add the three lines,
    and a criterion only where a traced requirement has none. A spec-owned Task and a protected
@@ -82,7 +91,8 @@ order.
 
 - Write only `FILE`. Never a heading, the `>` meta line, a Summary line, the Task table, another
   Epic's file or any other file; never run a command.
-- Criterion text under an existing id is never rewritten and an id is never reused or renumbered.
+- Criterion text under an existing id is never rewritten — a retag is not a rewrite — and an id is
+  never reused or renumbered.
 - No technical approach — no library, framework, class, table or endpoint names; criteria state
   what can be observed, not how it is built.
 - Nothing the sources do not support. (The quality-Task templates are a source.) An assumption you needed is listed in your final message,
@@ -99,5 +109,6 @@ order.
   split or depends on something its row does not name is reported, never restructured.
 
 Your final message lists: the Tasks detailed, the number of criteria written, every assumption,
-every size doubt, every missing trace, every outside-row proposal and every structural or
-frozen-criterion proposal — nothing else.
+every size doubt, every missing trace, every outside-row proposal, every structural or
+frozen-criterion proposal and every spec-owned Task whose criteria need tags
+(`/brainstorm <Task id>`) — nothing else.

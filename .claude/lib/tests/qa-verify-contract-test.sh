@@ -196,6 +196,12 @@ fpv '- [x](http://a/b) The menu opens on click' 7a76cf
 fpv '- [x]' e3b0c4
 printf '%s\n' '- [x]' > "$WORK/box-nl.txt"
 [ "$(bash "$WORK/fp.sh" < "$WORK/box-nl.txt")" = e3b0c4 ]; check $? "fingerprint: an empty checkbox with a trailing newline"
+# a leading regression tag is metadata, not wording (#335, step 4b)
+fpv '- **AC1** — [reg P0] The banner shows the decline reason' f21723
+fpv '- **E1-2.AC3**: [reg P2] The banner shows the decline reason' f21723
+fpv '- **AC1** — [reg p0] The banner shows the decline reason' 5770be
+fpv '[reg P1] The banner shows the decline reason' f21723
+fpv 'The banner says [reg P0] mid-text' f74058
 
 # pipefail: a failing stage fails the block
 sed 's/cut -c1-6/false/' "$WORK/fp.sh" > "$WORK/fp-broken.sh"

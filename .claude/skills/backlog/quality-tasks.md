@@ -2,8 +2,8 @@
 
 Read by `/setup:create-backlog` (Phase 4.5), `@backlog-author`, `@backlog-epic-author`,
 `/update-backlog`, `/check-backlog`, `/setup:delivery-plan` and the backlog rubric. The marker
-table is mirrored in code by `QUALITY_MARKERS` in `.claude/lib/backlog-check.mjs`; change both
-together.
+table and the regression markers (`## Regression`) are mirrored in code by `QUALITY_MARKERS` in
+`.claude/lib/backlog-check.mjs`; change both together.
 
 ## Markers
 
@@ -113,6 +113,69 @@ answers **Add the Task** (`refresh-brief`, `cleanup-workflow` or `architecture-r
   - *Given this Task is open, when a whole-codebase run of `<command>` in `<home checkout>` finishes and prints `upkeep: recorded <id> in <path>`, where `<path>` resolved from `<home checkout>` is `<record>`, then `<record>` holds that run as the item's `last_run` and the run's result is committed.* (`<record>` is the item's `record` from `upkeep.sh due --format json`, relative to the checkout that ran `/check-backlog` — e.g. `../review-home/.agents/upkeep.json` — while the run in the home checkout prints the path relative to itself, `.agents/upkeep.json`; both name one file.)
 - Crediting: a run that records itself while the Task is open closes it once the run's result is committed (the criterion above) — it has no prerequisites. A run that records nothing (a focused `/architecture-review`, a moved `HEAD`, a PRD changed during the refresh) leaves it open. The person closes it through its status owner.
 
+## Regression
+
+The regression Tasks and the criterion tags of `.agents/reference/regression.md`. The backlog
+writers apply this section; `backlog-check.mjs` checks it (its tag and critical-flow errors start
+`regression tag:`).
+
+**When.** Only with `.claude/regression.json` (regression adopted, `/setup:regression`): plan the
+Tasks below and tag the criteria. Not adopted and the profile's `app_surface` is `web` → one line
+under `## Consciously out of scope`, which rules out the whole family:
+`- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /setup:delivery-plan tags the criteria and /update-backlog adds the Tasks`.
+Otherwise nothing — no Task, no line, no tag. Adopted → a rule-out does not count. The order in
+that line matters: on a `full` backlog the adoption turns every untagged critical flow into a
+`regression tag:` error, which every checker-gated writer refuses except `/setup:delivery-plan`
+(its tag pass), so the tags come before `/update-backlog` adds the Tasks.
+
+| Marker | Command | Kind | Size | Planned |
+|---|---|---|---|---|
+| `[regression:foundation]` | `/setup:regression` (baseline stage) + the test-data adapter | regression | `H` (`XH` with a sandbox integration) | always when adopted |
+| `[regression:baseline]` | — (specs by hand until the author lane ships) | regression | `H` | 1–3 when adopted: b = min(3, max(1, ceil(P / 160))) |
+| `[regression:smoke]` | — | regression | `M` | optional — an early P0 smoke set |
+
+Row fields as quality Tasks: `Type` `tech` · `Scope` `MUST` · `Node` `—` · `Traces` `—`; Epic
+`Quality & upkeep`. Titles: `[regression:foundation] Set up the regression run` ·
+`[regression:baseline] Write the regression baseline — part <k>` · `[regression:smoke] Write the P0
+smoke set`. Unlike `[audit:` and `[upkeep:`, a regression Task is **developer work designed with
+`/brainstorm` or `/quick-change`**, like a product Task.
+
+**Order — `Depends on` only.** The foundation depends on every product sink; baseline part `k` on
+the foundation and every product sink. With `[regression:smoke]` planned the foundation depends
+only on the sinks of the Tasks tracing a critical flow, and the smoke Task on the foundation. The
+checker does not check placement. A release outside row **never lists a regression Task** in its
+`Starts after` (no gates — Operator decision).
+
+**Tags.** With `.claude/regression.json` present every browser-observable current criterion leads
+its text with `[reg P0]` (an outcome on a critical flow — `FL-n` with `**Critical:** yes`),
+`[reg P1]` (another main path) or `[reg P2]` (an edge or unwanted-behaviour path); a criterion
+that is not browser-observable carries no tag. Form: directly after the id separator
+(`- **E1-2.AC3** — [reg P0] Given …`), followed by a space; a withdrawn criterion keeps
+`(withdrawn)` first. Exactly `[reg P0]`, `[reg P1]` or `[reg P2]` — one per criterion.
+
+- The tag is **outside the criterion fingerprint** (`qa-evidence-families.md` §7c step 4b).
+- A **retag** is an edit that leaves the fingerprint unchanged: adding a valid leading tag to an
+  untagged criterion, replacing one valid leading tag by another, or removing a valid leading tag.
+  A retag is not a rewrite — it is allowed in place, also on a protected Task's Epic-file criterion.
+- Every other tag repair — a malformed, misplaced or duplicate token — **changes the fingerprint**
+  (the bad token is still text) and is a rewrite: the criterion-change and protection rules apply
+  (unprotected: withdraw + a new id; protected: a proposal for `/update-backlog`).
+- A spec-owned criterion is tagged only in its spec (`/brainstorm <Task id>`).
+- Without `.claude/regression.json` no tag is written.
+- The checker: a tag-form problem is an error naming the criterion; under `**Detail:** full` every
+  live critical flow needs a `[reg P0]` criterion on the Tasks that trace it, and a backlog with
+  no tag at all warns.
+
+**Summary lines.**
+
+- **Foundation:** *Set up the regression run for this product: `/setup:regression` baseline stage
+  (runner, environments, Playwright config and fixtures) and the test-data adapter of
+  `.agents/reference/regression-test-data.md` for the test environment.*
+- **Baseline:** *Write the Playwright specs for the READY P0/P1 scenarios of `<areas>` and make
+  them pass on the test environment.*
+- **Smoke:** *Write the specs of the catalog's `smoke` priorities first, so a P0 smoke set runs
+  before the full baseline.*
+
 ## Detail templates (`/setup:delivery-plan` step 2, `/update-backlog` under `**Detail:** full`)
 
 - **Reminder Task** — an unnumbered `[upkeep:<id>] Run <command>` with `Depends on` `—` (any of the three upkeep ids): Goal, scope lines and criterion from **Reminder Tasks** above, never the occurrence template. (An unnumbered follow-up run `/update-backlog` adds after a protected occurrence has prerequisites and keeps the occurrence template.)
@@ -136,5 +199,30 @@ answers **Add the Task** (`refresh-brief`, `cleanup-workflow` or `architecture-r
   - *Given this occurrence's prerequisites are done, when `<command>` runs over the whole codebase
     in `<its home checkout>`, then its result is committed.* (Fill in the checkout from Crediting a
     run, so the criterion reads on its own in a tracker.)
+- **Regression foundation** — Goal: *the product's regression run is configured and its test data
+  is under control on the test environment.* In scope: *the `/setup:regression` baseline stage and
+  the test-data adapter (`.agents/reference/regression-test-data.md`).* Out of scope: *writing
+  scenario specs — the baseline Tasks.* Criteria (`setup.mjs check` only proves that configuration
+  and program files exist, so the adapter's behaviour gets its own criteria; each adapter criterion
+  is proven by a test in the foundation Task itself):
+  - *Given a test environment named in `.claude/regression.json`, when
+    `node .claude/lib/regression/setup.mjs check` runs, then it prints `foundation complete`.*
+  - *Given the test environment, when the adapter's `check` runs, then it exits 0 when every
+    account and data prerequisite is in place.*
+  - *IF a prerequisite is missing, THEN `check` exits 1, names it by key only and changes nothing.*
+  - *Given an account key, when `session` runs, then it prints one path to a storage-state file in
+    a gitignored directory and exits 0.*
+  - *Given a run id, when `reset --run <id>` runs on the test environment, then only that run's
+    data is reset.*
+  - *IF `REGRESSION_ENV_KIND` is absent or not `test`, THEN `provision` and `reset` exit 3 and
+    change nothing.*
+- **Regression baseline** — Goal: *the READY P0/P1 scenarios of `<areas>` run green.* In scope:
+  *one spec per READY P0/P1 scenario of `<areas>` without one.* Out of scope: *P2 scenarios and
+  scenarios of other areas.* Criterion:
+  - *Given the READY P0/P1 scenarios of `<areas>`, when their specs run against the test
+    environment, then each passes repeated runs with zero retries on every device project of its
+    scenario.*
+- **Regression smoke** — the baseline template, for the scenarios of the catalog's `smoke`
+  priorities.
 
 A quality Task needs no trace and no PRD source: this file is its source.
