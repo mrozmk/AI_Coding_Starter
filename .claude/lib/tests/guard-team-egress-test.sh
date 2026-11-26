@@ -1111,6 +1111,21 @@ for c in 'cd "$R/.claude" && cp x hooks/guard.sh' 'cd "$R" && cp x .claude/hooks
 done
 got=$(kind_of Advisor "$D/proj" Bash 'cd "$R" && cp x .claude/hooks/guard.sh')
 ok "#322 qa unresolvable cd: a non-stage hooks write gets no class, d-4 (got $got)" [ "$got" != deny ]
+# A copy or move into a directory writes each source under its own name there.
+for c in 'cp /tmp/evil/settings.json .claude/' 'cp -t .claude a/settings.local.json' \
+  'mv /tmp/x/Supervisor.settings.json .claude/team/sessions/'; do
+  drv deny "#322 qa settings write into a directory: $c" "$D/proj" Bash "$c" @cwd="$D/proj"
+done
+ndrv "#322 qa an ordinary file copied into .claude/" "$D/proj" Bash 'cp /tmp/notes.md .claude/' @cwd="$D/proj"
+# A git read checks every URL word (a value option such as --branch can come first); a curl URL
+# glob is many requests, never the one-GET pass form.
+drv ask "#322 qa git clone --branch v <url> of a privately resolving host" "$D/proj" Bash \
+  'git clone --branch main https://git.corp-ish.com/x/y' git.corp-ish.com=10.1.2.3
+drv pass "#322 qa git clone --branch v <url> of a public host" "$D/proj" Bash \
+  'git clone --branch main https://github.com/o/r' github.com=140.82.112.3
+for u in 'https://docs.python.org/{a,b}' 'https://docs.python.org/p[1-9]'; do
+  drv ask "#322 qa curl URL glob $u" "$D/proj" Bash "curl -s '$u'" docs.python.org=151.101.0.223
+done
 # Hooks narrowing: a team clone (team t, ticket 9) with a starter root and the run's starter worktree.
 for d in hk hk2; do
   mkdir -p "$D/$d/clone/.claude/hooks/lib" "$D/$d/clone/.agents/team" "$D/$d/starter-t-9/.claude/hooks" "$D/$d/main/.claude/hooks"
@@ -1164,6 +1179,9 @@ git -C "$D/gp" config --unset "url.$D/gp-up.git.pushInsteadOf"
 gp ask  "a command-local config option" 'git -c remote.origin.pushurl=x push origin'
 gp ask  "an exec-path option (runs git-remote-* from that dir)" 'git --exec-path=/tmp/x push origin HEAD'
 gp none "back to origin after the config is gone" 'git push origin HEAD'
+# #322 QA: a GIT_* environment changes the repository or transport the origin check read.
+drv operator "#322 git push: a command-local GIT_DIR" "$D/gp" Bash 'GIT_DIR=/tmp/o/.git git push origin HEAD' @cwd="$D/gp"
+drv operator "#322 git push: an exported GIT_SSH_COMMAND" "$D/gp" Bash 'export GIT_SSH_COMMAND=x; git push origin HEAD' @cwd="$D/gp"
 check ask "#322 git push: not a repository" "$(hook "$(bash_cwd 'git push origin HEAD' "$D/noteam")")"
 # A deny is a mechanical block in the Supervisor's touch log, never a permission touch.
 mkdir -p "$D/supblk/.claude"; cp .claude/settings.json "$D/supblk/.claude/settings.json"

@@ -449,7 +449,9 @@ def curl_get_ok(vals, project):
         else:
             urls.append(a)
             i += 1
-    return (len(urls) == 1 and outs <= 1 and public_get(urls[0], project) and not curl_config_present())
+    # curl expands `{a,b}` / `[1-9]` in a URL itself: one word, many requests.
+    return (len(urls) == 1 and outs <= 1 and not re.search(r"[{}\[\]]", urls[0])
+            and public_get(urls[0], project) and not curl_config_present())
 
 
 def net_read(vals, project):

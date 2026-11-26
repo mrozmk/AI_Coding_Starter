@@ -274,9 +274,12 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             read = git_sub(words) in ("fetch", "pull", "clone", "ls-remote")
             if read and git_runs_command(words, tokens):
                 return "git %s with an option that runs a local command" % git_sub(words)
-            for k, arg in enumerate([git_repo_arg(words) or ""] + git_config_urls(words)):
+            cfg = git_config_urls(words)
+            # Every URL word too: a value option (`clone --branch main <url>`) can stand before it.
+            urls = [w for w in words[1:] if URL_SCHEME.match(w) and w not in cfg]
+            for k, arg in enumerate([git_repo_arg(words) or ""] + cfg + urls):
                 host = repo_host(arg)
-                if host and not git_host_ok(host, read and k == 0):
+                if host and not git_host_ok(host, read and (k == 0 or k > len(cfg))):
                     return "git to " + host
         if depth >= 3:
             continue

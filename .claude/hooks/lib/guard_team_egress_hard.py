@@ -32,6 +32,7 @@ EGRESS_VERBS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp", "gh"
                 "pip3", "pipx", "uvx", "git"}
 CRED_ENV = re.compile(r"^(?:GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|NPM_TOKEN|NODE_AUTH_TOKEN"
                       r"|[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|ACCESS_KEY))=")
+GIT_ENV = re.compile(r"^GIT_[A-Z0-9_]*=")
 CRED_HEADER = re.compile(r"^\s*(?:proxy-)?authorization\s*:|^\s*cookie\s*:|token|api[-_]?key", re.I)
 WGET_OPERATOR = re.compile(r"^--(?:post-data|method|user|password|http-user|http-password|header"
                            r"|proxy-user|proxy-password)(?:=|$)")
@@ -408,6 +409,9 @@ def operator_words(raw, words, cwd, project):
         return "credentials in the environment of " + verb
     if verb in EGRESS_VERBS and any(re.match(r"^GH_(?:HOST|REPO)=", w) for w in prefix):
         return "GH_HOST/GH_REPO before " + verb
+    # GIT_DIR, GIT_CONFIG_*, GIT_SSH_COMMAND … change the repository or transport the origin check read.
+    if verb == "git" and "push" in words and any(GIT_ENV.match(w) for w in prefix):
+        return "git push with a command-local GIT_* environment"
     for w in words if verb in ("curl", "wget", "git") else []:
         for m in URL_WORD.finditer(w):
             try:
@@ -453,6 +457,10 @@ def operator_reason(cmd, project, cwd):
     if "gh" in verbs and any(w[:1] and w[0] in ("export", "declare", "typeset", "local", "readonly")
                              and any(re.match(r"^GH_(?:HOST|REPO)=", a) for a in w[1:]) for _, w in found):
         return "GH_HOST/GH_REPO with gh"
+    if any(w[:1] == ["git"] and "push" in w[1:] for _, w in found) and any(
+            w[:1] and w[0] in ("export", "declare", "typeset", "local", "readonly")
+            and any(GIT_ENV.match(a) for a in w[1:]) for _, w in found):
+        return "git push with an exported GIT_* environment"
     for raw, words in found:
         why = operator_words(raw, words, top.get(tuple(raw), base), project)
         if why:

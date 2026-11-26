@@ -277,7 +277,10 @@ def word_targets(words):
             elif a.startswith("--target-directory="):
                 out.append(a.split("=", 1)[1])
         pos = positional(args, ("-t", "-S", "--suffix", "-m", "--mode", "-o", "-g", "--owner", "--group"))
-        return out + pos[-1:] if len(pos) >= 2 or out else out
+        dests = out + pos[-1:] if len(pos) >= 2 or out else out
+        # A destination that is a directory receives each source under its own name.
+        srcs = pos if out else pos[:-1]
+        return dests + [d.rstrip("/") + "/" + os.path.basename(s.rstrip("/")) for d in dests for s in srcs]
     if verb in ("sed", "gsed") and any(re.match(r"^-[A-Za-z]*i|^--in-place", a) for a in args):
         # The first operand is the script only when no -e/-f (or --expression/--file) gave one.
         script = any(a in ("-e", "-f") or re.match(r"^(-[ef].|--expression|--file)", a) for a in args)

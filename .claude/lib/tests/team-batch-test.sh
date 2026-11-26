@@ -135,6 +135,15 @@ ok '[ "$BOUT" != allow ]' "#322 batch: a matching entry with a second refusal ap
 TL decision revoke beta d-1 --why "plan changed"
 try e3r "$C3"
 ok '[ "$TLRC" = 0 ] && [ "$BOUT" != allow ] && grep -q "^revoked_at: " "$D"' "#322 batch: revoked — after entry 1 and 2 were used, entry 3 no longer matches ($(cat "$T/tl.out"))"
+# A symlinked prefix retargeted after the approval: the install would read other files than the pins.
+newrun gs; fresh_web; printf '{"lockfileVersion":3}\n' > "$P/package-lock.json"
+rm -rf "$CLONE/web2" "$CLONE/wl"; cp -R "$P" "$CLONE/web2"; ln -s "$P" "$CLONE/wl"
+CS="npm --prefix $CLONE/wl ci"; ES="$(ent "$CS" "[\"$CLONE/wl/package.json\",\"$CLONE/wl/package-lock.json\"]")"
+bfile "$T/bs.json" "[$ES,$ES]"; openb "$T/bs.json"
+try sl1 "$CS"; SL1="$BOUT"
+rm "$CLONE/wl"; ln -s "$CLONE/web2" "$CLONE/wl"
+try sl2 "$CS"
+ok '[ "$SL1" = allow ] && [ "$BOUT" != allow ]' "#322 batch: a symlinked prefix retargeted after the approval → no match (before: $SL1, after: $BOUT)"
 
 # ================================================================================================
 # invalidation: the stored copy, pins, expiry, withdrawn, denied, unverifiable, concurrency

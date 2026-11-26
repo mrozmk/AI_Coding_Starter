@@ -287,6 +287,15 @@ def entry_matches(obj, state, fm, k, inp, now):
     cwd = inp.get("cwd")
     if not isinstance(cwd, str) or os.path.realpath(cwd) != e["cwd"]:
         return False
+    # The install's inputs read again: a symlinked prefix or requirements path retargeted after the
+    # approval resolves elsewhere than the pinned files.
+    try:
+        ikind, required, locks = install_inputs(e["command"], e["cwd"])
+    except Refused:
+        return False
+    pinned = {p["path"] for p in e["pins"]}
+    if not set(required) <= pinned or (ikind == "npm" and not any(l in pinned or l in e["outputs"] for l in locks)):
+        return False
     for p in e["pins"]:
         if p["sha256"] == "absent":
             if file_digest(p["path"]) is None or p["created_by"] not in used:
