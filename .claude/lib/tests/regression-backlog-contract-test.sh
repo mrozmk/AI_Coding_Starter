@@ -52,6 +52,8 @@ QT|| `[regression:smoke]` |
 QT|outside the criterion fingerprint
 QT|never lists a regression Task
 QT|regression not adopted (no .claude/regression.json)
+QT|then /setup:delivery-plan tags the criteria and /update-backlog adds the Tasks
+CR|then /setup:delivery-plan tags the criteria and /update-backlog adds the Tasks
 RB|**K12 Regression tags**
 RB|not a bracket label
 EA|| `REGRESSION` |
@@ -72,6 +74,7 @@ AR|app_surface
 ST|skipped(app_surface <value> — no browser QA)
 ST|still `unknown`
 ST|the answer given in this rerun
+ST|no credentials — no `user:pass@`
 QB|Test environment and accounts
 CB|RULES: K1,K2,K5,K7,K11,K12
 CB|K1–K12

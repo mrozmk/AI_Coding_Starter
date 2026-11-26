@@ -122,8 +122,11 @@ writers apply this section; `backlog-check.mjs` checks it (its tag and critical-
 **When.** Only with `.claude/regression.json` (regression adopted, `/setup:regression`): plan the
 Tasks below and tag the criteria. Not adopted and the profile's `app_surface` is `web` → one line
 under `## Consciously out of scope`, which rules out the whole family:
-`- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /update-backlog adds the Tasks`.
-Otherwise nothing — no Task, no line, no tag. Adopted → a rule-out does not count.
+`- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /setup:delivery-plan tags the criteria and /update-backlog adds the Tasks`.
+Otherwise nothing — no Task, no line, no tag. Adopted → a rule-out does not count. The order in
+that line matters: on a `full` backlog the adoption turns every untagged critical flow into a
+`regression tag:` error, which every checker-gated writer refuses except `/setup:delivery-plan`
+(its tag pass), so the tags come before `/update-backlog` adds the Tasks.
 
 | Marker | Command | Kind | Size | Planned |
 |---|---|---|---|---|

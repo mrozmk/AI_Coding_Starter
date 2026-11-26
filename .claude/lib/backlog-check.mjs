@@ -1,7 +1,7 @@
 // Validator + generator for `.agents/backlog.md` (Epics + Tasks), its Epic files
 // (`.agents/backlog/E<n>-<slug>.md` — per-Task Summary / Goal / scope and acceptance criteria) and
 // `docs/map/system.yaml`. Owns every check a model must not self-grade: ids, DAG, sizes, trace
-// coverage, system-tree integrity, Scope order, quality Tasks, the `## Outside the dev backlog` rows, where each
+// coverage, system-tree integrity, Scope order, quality Tasks, regression markers and criterion tags, the `## Outside the dev backlog` rows, where each
 // criterion lives, and the derived story map + Epic-file meta lines it writes back (`--write`).
 // Scheduling lives in `delivery-plan.mjs`, not here. Also warns on a Task delivered by a done plan
 // whose Status / Ref was never written back. `--candidate <dir>` validates `<dir>/PRD.md` +
@@ -62,9 +62,10 @@ export function qualityMarker(title) {
 
 // Regression tags on criteria — .claude/skills/backlog/quality-tasks.md → Regression.
 export const REGRESSION_TAG_PREFIX = 'regression tag:';
-const REGRESSION_TAG = /^\[reg P[0-2]\]$/;
-// Anything that reads as a tag (`[reg …]`, `[reg: P0]`, `[regression P0]`), but not the `[regression:<id>]` marker syntax.
-const REGRESSION_TAG_TOKEN = /\[\s*reg(?:ression)?\b(?!:[a-z0-9-]+\])[^\]]*\]/gi;
+const REGRESSION_TAG = /^\[reg (P[0-2])\]$/;
+// Anything that reads as a tag (`[reg …]`, `[reg:P0]`, `[reg: P0]`, `[regression P0]`), but not the
+// `[regression:<id>]` marker syntax and not a Markdown link label (`[regression report](…)` is prose).
+const REGRESSION_TAG_TOKEN = /\[\s*(?:regression\b(?!:[a-z0-9-]+\])|reg\b)[^\]]*\](?!\()/gi;
 
 /** The text outside code spans, by the §7c step-5 rule: a run of N backticks is closed only by a run of exactly N; an unclosed run makes the rest a span. */
 function outsideCodeSpans(s) {
@@ -91,24 +92,25 @@ function outsideCodeSpans(s) {
 }
 
 /**
- * The regression tag of one criterion text (after its id): `{ priority, problem, withdrawn, token }`.
+ * The regression tag of one criterion text (after its id): `{ priority, problem, withdrawn }`.
  * `priority` is `P0`/`P1`/`P2` for a valid leading tag, else null; `problem` names a form error.
  */
 export function regressionTag(text) {
   const stripped = String(text ?? '').replace(/^\s*[—–\-:.]?\s*/, '');
-  if (/^\(withdrawn\)/i.test(stripped)) return { priority: null, problem: null, withdrawn: true, token: null };
+  if (/^\(withdrawn\)/i.test(stripped)) return { priority: null, problem: null, withdrawn: true };
   const tokens = outsideCodeSpans(stripped).match(REGRESSION_TAG_TOKEN) ?? [];
-  const result = (priority, problem, token) => ({ priority, problem, withdrawn: false, token });
-  if (!tokens.length) return result(null, null, null);
-  if (tokens.length > 1) return result(null, 'more than one regression tag', tokens[0]);
+  const result = (priority, problem) => ({ priority, problem, withdrawn: false });
+  if (!tokens.length) return result(null, null);
+  if (tokens.length > 1) return result(null, 'more than one regression tag');
   const [token] = tokens;
-  if (!REGRESSION_TAG.test(token)) return result(null, `malformed tag "${token}" — use [reg P0], [reg P1] or [reg P2]`, token);
-  if (!stripped.startsWith(token)) return result(null, 'the tag must lead the criterion text', token);
+  const valid = REGRESSION_TAG.exec(token);
+  if (!valid) return result(null, `malformed tag "${token}" — use [reg P0], [reg P1] or [reg P2]`);
+  if (!stripped.startsWith(token)) return result(null, 'the tag must lead the criterion text');
   const rest = stripped.slice(token.length);
-  if (rest.trim() === '') return result(null, 'a tag with no criterion text', token);
+  if (rest.trim() === '') return result(null, 'a tag with no criterion text');
   // §7c step 4b strips the tag only before a space: glued to the text it would stay in the fingerprint.
-  if (rest[0] !== ' ') return result(null, 'the tag must be followed by a space', token);
-  return result(token.slice(5, 7), null, token);
+  if (rest[0] !== ' ') return result(null, 'the tag must be followed by a space');
+  return result(valid[1], null);
 }
 
 /** Regression adoption (`.claude/regression.json` exists) and the profile's `app_surface` (`unknown` when absent or unreadable). */
@@ -121,6 +123,7 @@ export function readRegressionState(root) {
   } catch { /* no or invalid profile → unknown */ }
   return { adopted, surface };
 }
+
 const OUTSIDE_ID = /^X-\d+$/;
 export const OUTSIDE_HEADING = /^##\s+Outside the dev backlog\b/;
 export const PRE_SCOPE_MESSAGE = 'pre-Scope backlog (Wave / Slice columns) — run: node .claude/lib/backlog-migrate.mjs --write';
@@ -727,9 +730,10 @@ function epicFilePath(b, epic) {
 
 /**
  * Every backlog check. `backlog` is the markdown or the `parseBacklog` result. `regression`
- * (`readRegressionState`) switches the regression marker rules on; absent → none of them runs.
+ * (`readRegressionState`) switches the regression marker rules on; absent → not adopted, surface
+ * `unknown`, so none of them fires.
  */
-export function checkBacklog({ backlog, inventory, system, regression }) {
+export function checkBacklog({ backlog, inventory, system, regression = { adopted: false, surface: 'unknown' } }) {
   const b = typeof backlog === 'string' ? parseBacklog(backlog) : backlog;
   if (b.legacy) return { errors: [], warnings: [], legacy: true };
   if (b.preScope) return { errors: [PRE_SCOPE_MESSAGE], warnings: [], legacy: false, preScope: true };
@@ -902,7 +906,7 @@ export function checkBacklog({ backlog, inventory, system, regression }) {
     if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0 && !qualityMarker(t.title)?.known) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
   }
   if (!taskCycle) { const q = qualityChecks(b, live, regression); errors.push(...q.errors); warnings.push(...q.warnings); }
-  if (regression) warnings.push(...regressionChecks(b, live, regression));
+  warnings.push(...regressionChecks(b, live, regression));
   // --- outside rows: work the dev team needs but does not do; their traces count for coverage
   const tracedOutside = new Set();
   const seenOutside = new Set();
@@ -1017,7 +1021,7 @@ function qualityChecks(b, live, regression) {
     if (!m) continue;
     if (!m.known) { warnings.push(`Task ${t.id}: unknown quality marker [${m.marker}] — use one of ${known}`); continue; }
     // Without .claude/regression.json no regression rule fires (quality-tasks.md → Regression).
-    if (m.kind === 'regression' && !regression?.adopted) continue;
+    if (m.kind === 'regression' && !regression.adopted) continue;
     const sizes = m.sizes ?? [m.size];
     if (t.type !== 'tech' || t.scope !== 'MUST' || !sizes.includes(t.size)) warnings.push(`Task ${t.id} [${m.marker}]: expected tech · ${sizes.join(' or ')} · MUST, found ${t.type} · ${t.size} · ${t.scope}`);
     if (m.kind === 'closing' && newest.get(m.marker) === t.id && (t.status === 'TODO' || t.status === 'BLOCKED')) {
@@ -1414,7 +1418,7 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains] [--next-ids] [--impact <ids>] [--candidate <dir>] [--fingerprint]
-  --root         project root (default: cwd); reads .agents/backlog.md, .agents/backlog/E*.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
+  --root         project root (default: cwd); reads .agents/backlog.md, .agents/backlog/E*.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml, .claude/regression.json (existence) and .claude/project-profile.json (app_surface)
   --prd          PRD path override (default: the backlog header's **Source PRD:**, else docs/PRD.md)
   --write        regenerate the storymap marker region in .agents/backlog.md and the \`>\` meta line under every Task heading of the Epic files (only when there are no errors)
   --json         print { errors, warnings, notes, outsideCovered } instead of text
@@ -1440,8 +1444,9 @@ function report(result, { json, notes = [] }) {
 /**
  * `checkBacklog` against the project's own sources: the inventory of `root` (loaded here unless the
  * caller already has it) and `docs/map/system.yaml`. A broken system.yaml is an error, not a throw.
- * Adds the one root-aware rule: under `**Detail:** full` every live Task resolves (`resolveTask`)
- * to at least one active criterion. Returns the `checkBacklog` result plus `inventory`.
+ * Adds the root-aware rules: under `**Detail:** full` every live Task resolves (`resolveTask`)
+ * to at least one active criterion, and with regression adopted the tag rules
+ * (`regressionTagChecks`). Returns the `checkBacklog` result plus `inventory`.
  */
 export function checkAgainstRoot(root, parsed, inventory = loadInventory(root, parsed.sourcePrd ?? 'docs/PRD.md')) {
   const errors = [];

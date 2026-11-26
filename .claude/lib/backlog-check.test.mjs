@@ -11,6 +11,7 @@ import {
   loadPlanTasks, staleTaskWarnings, SCOPES, PRE_SCOPE_MESSAGE, NO_CORE_WARNING,
   PRE_DETAIL_MESSAGE, EPIC_DIR, readBacklogFiles, backlogFingerprint, epicSlug, epicFileName,
   renderMeta, renderEpicFile, checkAgainstRoot, fenceScanner, QUALITY_MARKERS, regressionTag,
+  REGRESSION_TAG_PREFIX,
 } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
@@ -1906,7 +1907,7 @@ function regProject({ acs = ACS, backlog, adopted = true, surface, discovery = D
   if (surface) fs.writeFileSync(path.join(dir, '.claude', 'project-profile.json'), JSON.stringify({ schema: 1, app_surface: surface }));
   return dir;
 }
-const regErrors = (res) => res.errors.filter((e) => e.startsWith('regression tag:'));
+const regErrors = (res) => res.errors.filter((e) => e.startsWith(REGRESSION_TAG_PREFIX));
 const regWarnings = (res) => res.warnings.filter((w) => /regression|\[reg /.test(w));
 const ZERO_TAGS = 'regression adopted (.claude/regression.json) but no criterion carries a [reg P0|P1|P2] tag — /setup:delivery-plan tags them';
 const FL1_NO_P0 = 'regression tag: FL-1 (critical flow): no [reg P0] criterion on the Tasks that trace it (E1-1, E1-2, E1-3)';
@@ -1922,7 +1923,7 @@ const baseline = (k) => `| E3-${8 + k} | E3 | [regression:baseline] Write the re
 const regQuality = (rows, { adopted = true, surface, ...opts } = {}) => check(regProject({ backlog: qmd(rows, opts), adopted, surface }));
 
 test('regression: regressionTag parses the leading tag after any separator', () => {
-  const t = (text) => regressionTag(text);
+  const t = regressionTag;
   assert.equal(t('— [reg P0] x').priority, 'P0');
   assert.equal(t(': [reg P1] x').priority, 'P1');
   assert.equal(t('– [reg P2] x').priority, 'P2');
@@ -1938,6 +1939,12 @@ test('regression: regressionTag parses the leading tag after any separator', () 
   assert.equal(t('[reg P0]Given x').problem, 'the tag must be followed by a space');
   assert.match(t('[regression P0] x').problem ?? '', /^malformed tag "\[regression P0\]"/);
   assert.match(t('[reg: P0] x').problem ?? '', /^malformed tag "\[reg: P0\]"/);
+  // The `[regression:<id>]` marker exclusion does not reach the short form: `[reg:P0]` is a malformed tag.
+  assert.match(t('[reg:P0] x').problem ?? '', /^malformed tag "\[reg:P0\]"/);
+  assert.match(t('[reg:p1] x').problem ?? '', /^malformed tag "\[reg:p1\]"/);
+  // A Markdown link label is prose, not a tag.
+  assert.deepEqual([t('Given a run, the user opens the [regression report](/r)').priority, t('Given a run, the user opens the [regression report](/r)').problem], [null, null]);
+  assert.equal(t('[reg P0] Given a run, the user opens the [regression report](/r)').priority, 'P0');
   assert.deepEqual([t('see [regression:foundation] x').priority, t('see [regression:foundation] x').problem], [null, null]);
   assert.deepEqual([t('the [region] x').priority, t('the [region] x').problem], [null, null]);
   // The tag sits between two spans; the triple run inside the double-backtick span does not close it.
@@ -2012,7 +2019,7 @@ test('regression: markers planned, ruled out and missing', () => {
   const NOT_PLANNED = 'regression Tasks not planned: [regression:foundation], [regression:baseline] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md → Regression)';
   const RULED_OUT = 'regression adopted (.claude/regression.json): the rule-out of [regression:foundation] under ## Consciously out of scope does not count — plan the regression Tasks';
   const NEITHER = 'regression neither planned nor ruled out — app_surface web and no .claude/regression.json: plan [regression:foundation] and [regression:baseline], or rule out [regression:foundation] under ## Consciously out of scope (.claude/skills/backlog/quality-tasks.md → Regression)';
-  const ruleOut = ['- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /update-backlog adds the Tasks'];
+  const ruleOut = ['- [regression:foundation] — regression not adopted (no .claude/regression.json); run /setup:regression, then /setup:delivery-plan tags the criteria and /update-backlog adds the Tasks'];
   const plain = { epics: [...BASE_EPICS, QUALITY_EPIC] };
 
   const planned = regQuality([...QUALITY_ROWS, FOUNDATION, baseline(1)], { epics: [...BASE_EPICS, qepic(56)] });
