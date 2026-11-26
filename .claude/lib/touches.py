@@ -141,17 +141,20 @@ def _team(project, session_id):
         return tj.get("team", "?"), tj.get("ticket", "?"), "TeamLead"
     return (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?")) if sj else None
 
-def default_where(main, project, cwd, session_id):
-    """Team files come from project's repository; cwd only names the solo path."""
-    t = _team(project, session_id)
+_UNSET = object()
+
+def default_where(main, project, cwd, session_id, team=_UNSET):
+    """Team files come from project's repository; cwd only names the solo path. team: an
+    already resolved _team() result."""
+    t = _team(project, session_id) if team is _UNSET else team
     if t:
         return "team %s / %s / %s" % t
     rel = os.path.relpath(os.path.realpath(cwd), os.path.realpath(main))
     return "solo " + ("?" if rel.startswith("..") else rel)
 
-def _role(project, session_id):
+def _role(project, session_id, team=_UNSET):
     """The role of input: like default_where, else $TEAM_SESSION_ROLE, else solo."""
-    t = _team(project, session_id)
+    t = _team(project, session_id) if team is _UNSET else team
     if t:
         return _ident(t[2]) or "?"
     return _ident(os.environ.get("TEAM_SESSION_ROLE")) or "solo"
@@ -480,9 +483,10 @@ def hook(glob):
     if not main:
         return 0
     what = "%s: %s" % pend[:2] if pend else (msg or "permission prompt")
-    entry = make_entry("permission", what, reason, where=default_where(main, project, cwd, sid))
+    team = _team(project, sid)
+    entry = make_entry("permission", what, reason, where=default_where(main, project, cwd, sid, team))
     if pend:
-        entry["input"] = make_input(pend[0], pend[2], cwd, _role(project, sid), sid)
+        entry["input"] = make_input(pend[0], pend[2], cwd, _role(project, sid, team), sid)
     if reason == "direct" and _guard_recent(main, entry):
         return 0
     if glob and not _ensure_ignored(main, ".agents/touches/%s.jsonl" % entry["at"][:7]):

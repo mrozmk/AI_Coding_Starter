@@ -52,9 +52,9 @@ ask "$RUN/asks/a-3.json" a-3 Bash '{"command":"echo Authorization: x; git rebase
 ask "$RUN/asks/a-5.json" a-5 mcp__x__call '{"password":"two words","headers":{"Authorization":"Basic CANARYHDR"}}' lead # guard-push:allow
 S1SIZE=$(wc -c < "$S1" | tr -d ' ')
 $PR build --sources "$FX/sources.json" --out "$T/c1" > "$T/b1.out" 2>&1; r=$?
-C="$T/c1"
-[ "$r" = 0 ] && for f in touched.jsonl replay.jsonl.gz policy.json labelling-sheet.csv manifest.json; do [ -f "$C/$f" ] || exit 1; done \
-  && jq -e '.complete == true' "$C/manifest.json" >/dev/null
+C="$T/c1"; five=0
+for f in touched.jsonl replay.jsonl.gz policy.json labelling-sheet.csv manifest.json; do [ -f "$C/$f" ] || five=1; done
+[ "$r" = 0 ] && [ "$five" = 0 ] && jq -e '.complete == true' "$C/manifest.json" >/dev/null
 ok "b1 build writes the five files, complete" $?
 $PR build --sources "$FX/sources.json" --out "$T/c1b" >/dev/null 2>&1
 [ "$(jq -cS .files "$C/manifest.json")" = "$(jq -cS .files "$T/c1b/manifest.json")" ]
@@ -142,12 +142,51 @@ jq -r 'select(.source == "touch" and (.evidence.what | endswith("SUFFIXMARK"))) 
   && jq -e 'select(.source == "touch" and .evidence.what == "Bash: rm x") | select(.modeled == true and .modeled_why == "input cut to the line budget")' "$T/c13/touched.jsonl" >/dev/null
 ok "b14 a masked what past raw char 200 joins its call; a cut touch input is modeled" $?
 
+# A `checkouts: all` root names one dir's project, so that project's touch log joins its calls.
+FX15="$T/fx15"; mkfx "$FX15"; D15="$FX15/dts/$(slug "$FX15/mq")"; mkdir -p "$D15"
+tu M1 2026-11-12T09:00:00.000Z "$FX15/mq" tm1 "curl -s https://h.example/m" > "$D15/m1.jsonl"
+jq -nc '{at:"2026-11-12T09:00:03Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:"curl in command position",
+  reason:"guard", answer:"", wait_s:null}' > "$FX15/mq-touches.jsonl"
+jq --arg d "$FX15/dts" --arg m "$FX15/mq" --arg l "$FX15/mq-touches.jsonl" \
+  '.transcript_roots += [{dir: $d, checkouts: "all", project: "other", projects: {($m): "mq"}}] | .touch_logs += [{path: $l, project: "mq"}]' \
+  "$FX15/sources.json" > "$T/s15.json"
+jq 'del(.transcript_roots[-1].projects)' "$T/s15.json" > "$T/s15b.json"
+$PR build --sources "$T/s15.json" --out "$T/c15" >/dev/null 2>&1
+$PR build --sources "$T/s15b.json" --out "$T/c15b" >/dev/null 2>&1
+jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:1") | .join + "|" + (.replayable | tostring)' "$T/c15/touched.jsonl" | grep -q '^inferred .*/m1\.jsonl:1#tm1|true$' \
+  && [ "$(jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:1") | .join' "$T/c15b/touched.jsonl")" = none ]
+ok "b15 a root's per-dir project joins that project's touch rows; without it they join nothing" $?
+
+FX16="$T/fx16"; mkfx "$FX16"; P16="$FX16/home/.claude/projects/$(slug "$FX16/main")"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use"' > "$P16/tail.jsonl"
+$PR build --sources "$FX16/sources.json" --out "$T/c16" >/dev/null 2>&1; r1=$?
+printf '["tool_use"]\n' > "$P16/odd.jsonl"
+$PR build --sources "$FX16/sources.json" --out "$T/c16b" >/dev/null 2>&1; r2=$?
+$PR verify --corpus "$T/c16b" --require-complete > /dev/null 2> "$T/v16.err"; r3=$?
+[ "$r1" = 0 ] && jq -e '.complete == true and ([.roots[].partial_tail // 0] | add) == 1' "$T/c16/manifest.json" >/dev/null \
+  && [ "$r2" = 0 ] && [ "$r3" = 3 ] && jq -e '.complete == false' "$T/c16b/manifest.json" >/dev/null && grep -q 'parse error' "$T/v16.err"
+ok "b16 a partial last line costs nothing; a non-object line is a parse error that makes the corpus incomplete" $?
+
+FX17="$T/fx17"; mkfx "$FX17"
+jq -nc --arg c "$FX17/alfa" --arg x "cat $FX17/gamma/x" '{at:"2026-11-10T12:00:00Z", machine:"m", who:"u", where:"team alfa / 8 / coder",
+  kind:"permission", what:"Bash: cat x", reason:"direct", answer:"", wait_s:null, input:{tool:"Bash", fields:{command:$x}, cwd:$c,
+  role:"coder", session:"S2"}}' >> "$FX17/main/.agents/touches/2026-11.jsonl"
+jq --arg g "$FX17/gamma" '.checkouts += [{path: $g, project: "proj", role_hint: "clone", removed: true}]' "$FX17/sources.json" > "$T/s17.json"
+$PR build --sources "$T/s17.json" --out "$T/c17" >/dev/null 2>&1
+jq -e 'select(.source == "touch" and .evidence.what == "Bash: cat x") | select(.ctx == "stage" and .modeled == true and .modeled_why == "path into another checkout")' "$T/c17/touched.jsonl" >/dev/null
+ok "b17 a stage touch input naming another clone's path is modeled" $?
+
 $PR verify --corpus "$C" >/dev/null 2>&1; r1=$?
 mkdir "$T/cv"; cp "$C"/* "$T/cv/"; sed '1s/"source"/"sourcf"/' "$C/touched.jsonl" > "$T/cv/touched.jsonl"
 e2=$($PR verify --corpus "$T/cv" 2>&1); r2=$?
 $PR run --corpus "$T/cv" --impl "$SRC" >/dev/null 2>&1; r3=$?
 [ "$r1" = 0 ] && [ "$r2" = 3 ] && [ "$r3" = 3 ] && printf '%s' "$e2" | grep -q 'touched.jsonl'
 ok "v1 verify refuses a flipped byte" $?
+mkdir "$T/cs"; cp "$C"/* "$T/cs/"; $PR sheet --corpus "$T/cs" >/dev/null 2>&1; r1=$?
+$PR verify --corpus "$T/cs" >/dev/null 2>&1; r2=$?
+printf 'x' >> "$T/cs/labelling-sheet.csv"; e3=$($PR verify --corpus "$T/cs" 2>&1); r3=$?
+[ "$r1" = 0 ] && [ "$r2" = 0 ] && [ "$r3" = 3 ] && printf '%s' "$e3" | grep -q 'labelling-sheet.csv'
+ok "v2 the labelling sheet is hashed; sheet rewrites the same bytes" $?
 
 # ---- run: the source tree is gone, the corpus alone replays --------------------------------
 mv "$FX" "$T/fx.gone"

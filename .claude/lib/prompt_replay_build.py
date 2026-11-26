@@ -27,7 +27,9 @@ STAGE_ROLES = ("planner", "coder", "qa", "wrapup", "cli")
 # The replayed tools and the tool_input field the guard reads for each.
 REPLAY_FIELD = {"Bash": "command", "WebFetch": "url"}
 REQUIRED = ("transcripts", "asks", "decisions", "touch-logs", "guard-corpus", "policy")
-CORPUS_FILES = ("touched.jsonl", "replay.jsonl.gz", "policy.json")
+# Hashed in manifest.json; the labelling sheet too — the Advisors label from it (`sheet` rewrites
+# the same bytes from touched.jsonl).
+CORPUS_FILES = ("touched.jsonl", "replay.jsonl.gz", "policy.json", "labelling-sheet.csv")
 TMP_ROOTS = ("/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/")
 POLICY_PREFIXES = ("Bash(gh", "Bash(python3", "WebFetch(domain:")
 SHEET = ("intervention", "ids", "source", "project", "ctx", "tool", "exact", "observed", "evidence",
@@ -113,7 +115,8 @@ class Acq:
         return data
 
     def lines(self, r, path):
-        """(line number, bytes) up to the size at open, streamed; a grown file keeps those bytes."""
+        """(line number, bytes, terminated) up to the size at open, streamed; a grown file keeps
+        those bytes. terminated is False only for a last line without its newline."""
         f, size = self._open(r, path)
         if f is None:
             return
@@ -128,11 +131,18 @@ class Acq:
                 rest = parts.pop()
                 for p in parts:
                     no += 1
-                    yield no, p
+                    yield no, p, True
             if rest:
                 no += 1
-                yield no, rest
+                yield no, rest, False
         self._done(r, path, size - left)
+
+    @staticmethod
+    def bad_line(r, terminated):
+        """Count a line that does not parse: a parse error, or — the unterminated last line of a
+        file a writer was appending to at open — a partial tail, which costs no completeness."""
+        k = "parse_errors" if terminated else "partial_tail"
+        r[k] = r.get(k, 0) + 1
 
 
 def walk(d, suffix):
@@ -153,6 +163,10 @@ def completeness(m):
             why.append("missing %s root %s" % (r["family"], r["path"]))
         elif r["family"] == "transcripts" and not r.get("files_read"):
             why.append("transcript root %s read no file" % r["path"])
+        if r.get("parse_errors"):
+            # A record that does not parse is a record the corpus lost (a malformed policy would
+            # otherwise become an empty allowlist).
+            why.append("%d parse error(s) in %s root %s" % (r["parse_errors"], r["family"], r["path"]))
         why += ["skipped %s (%s)" % (s["path"], s["why"]) for s in r.get("skipped", [])
                 if s.get("why") != "vanished"]
     for fam in REQUIRED:
@@ -280,17 +294,23 @@ class Builder:
                         self.read_transcript(r, t, name, names[name], f)
 
     def read_transcript(self, r, t, name, co, f):
-        project = (co or {}).get("project") or t.get("project") or name
+        # `projects` ({<checkout path>: <project>}) names the project of one dir of a `checkouts:
+        # all` root: the join key its touch log carries, so the log's rows meet their calls.
+        dirs = {slug(os.path.expanduser(p)): v for p, v in (t.get("projects") or {}).items()}
+        project = (co or {}).get("project") or dirs.get(name) or t.get("project") or name
         home, rel = None, os.path.relpath(f, t["dir"])
-        for no, raw in self.acq.lines(r, f):
+        for no, raw, term in self.acq.lines(r, f):
             if b'"tool_use"' not in raw:
                 continue
             try:
                 e = json.loads(raw)
             except ValueError:
-                r["parse_errors"] += 1
+                self.acq.bad_line(r, term)
                 continue
-            c = (e.get("message") or {}).get("content") if isinstance(e, dict) else None
+            if not isinstance(e, dict):
+                self.acq.bad_line(r, term)
+                continue
+            c = (e.get("message") or {}).get("content")
             if e.get("type") != "assistant" or not isinstance(c, list):
                 continue
             for item in c:
@@ -424,11 +444,12 @@ class Builder:
             files = [os.path.join(t["path"], n) for n in sorted(os.listdir(t["path"])) if touches.MONTH_RE.match(n)] \
                 if os.path.isdir(t["path"]) else [t["path"]]
             for f in files:
-                data = self.acq.read(r, f)
-                for no, raw in enumerate((data or b"").decode("utf-8", "replace").splitlines(), 1):
+                data = self.acq.read(r, f) or b""
+                lines = data.decode("utf-8", "replace").splitlines()
+                for no, raw in enumerate(lines, 1):
                     e, why = touches._parse_entry(raw) if raw.strip() else (None, None)
                     if why:
-                        r["parse_errors"] += 1
+                        self.acq.bad_line(r, no < len(lines) or data.endswith(b"\n"))
                     if not e:
                         continue
                     if e["kind"] == "block":
@@ -460,6 +481,8 @@ class Builder:
             if inp.get("cut"):
                 # A decision on the surviving prefix is not the original call's decision.
                 rec.update(modeled=True, modeled_why="input cut to the line budget")
+            elif rec["ctx"] == "stage" and foreign(self.src, json.dumps(ti, ensure_ascii=False), rec["paths"]):
+                rec.update(modeled=True, modeled_why="path into another checkout")
         return rec
 
     def read_teamlead_logs(self):

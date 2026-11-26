@@ -9,6 +9,7 @@ Procedure: .agents/reference/permission-probes.md. Stdlib only."""
 import argparse
 import json
 import os
+import shlex
 import sys
 import time
 sys.dont_write_bytecode = True
@@ -48,7 +49,7 @@ def hook(log, sleep):
 
 
 def _command(log, sleep):
-    cmd = "python3 -I %s hook --log %s" % (json.dumps(os.path.abspath(__file__)), json.dumps(os.path.abspath(log)))
+    cmd = "python3 -I %s hook --log %s" % (shlex.quote(os.path.abspath(__file__)), shlex.quote(os.path.abspath(log)))
     return cmd + (" --sleep %d" % sleep if sleep else "")
 
 
