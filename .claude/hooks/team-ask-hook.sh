@@ -484,7 +484,8 @@ case "$EV:$TOOL" in
       "tier: operator — "*) tier=operator; cause="${line#tier: operator — }" ;;
       *) exit 0 ;;
     esac
-    # #322: an egress-only operator tier may be answered by one unused entry of an allowed batch.
+    # #322: one unused entry of an allowed batch may answer an egress-only operator tier — authority
+    # `operator (batch d-<n>)` (batch_claim, team-ask-batch.sh).
     if [ "$tier" = operator ] && [ "$(sed -n 's/^batch: //p' <<<"$out")" = eligible ] && ! stopped \
         && batch_claim; then
       exit 0
