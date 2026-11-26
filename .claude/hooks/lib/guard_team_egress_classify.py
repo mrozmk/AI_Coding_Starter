@@ -235,7 +235,12 @@ def classify_webfetch(url, project):
 def body_file(verb, args):
     """A request body or upload from a file or stdin, judged on one command's words."""
     if verb == "curl":
+        # --data-raw / --form-string values are literal text, never a file (the operator tier's).
+        literal = [args[k + 1] for k, a in enumerate(args[:-1]) if a in ("--data-raw", "--form-string")]
         for cls, val in curl_options(args):
+            if cls == "body" and val in literal:
+                literal.remove(val)
+                continue
             if cls == "upload" or (cls in ("body", "url") and (val.startswith("@") or "=@" in val
                                                                or "=<" in val)):
                 return True

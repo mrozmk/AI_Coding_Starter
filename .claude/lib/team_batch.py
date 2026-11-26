@@ -113,6 +113,10 @@ class Refused(Exception):
     pass
 
 
+INSTALL_VERBS = {"npm", "pip", "pip3", "npx", "pipx", "uvx", "yarn", "pnpm", "gem", "cargo", "brew", "apt",
+                 "apt-get"}
+
+
 def install_inputs(command, cwd):
     """(kind, required pins, lock paths) of an install form batch matching supports; kind None for a
     command that is no install; raises Refused for an install form with no recognised inputs."""
@@ -121,6 +125,11 @@ def install_inputs(command, cwd):
         return None, [], []
     verb = os.path.basename(words[0])
     args = words[1:]
+    # Only a leading installer has its inputs read; one behind `cd … &&`, a wrapper or a pipe would
+    # run with no pin at all, so it is refused here.
+    rest = args[2:] if verb in ("python3", "python") and args[:2] == ["-m", "pip"] else args
+    if any(os.path.basename(w.lstrip("(")) in INSTALL_VERBS for w in rest):
+        raise Refused("an installer that is not the entry's first word is not batched — give it its own entry")
     if verb in ("python3", "python") and args[:2] == ["-m", "pip"]:
         verb, args = "pip", args[2:]
     i = 0  # npm's global options may come before its command: `npm --prefix P ci`

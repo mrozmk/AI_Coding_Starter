@@ -209,7 +209,10 @@ def word_targets(words):
         pos = positional(args, ("-t", "-S", "--suffix", "-m", "--mode", "-o", "-g", "--owner", "--group"))
         return out + pos[-1:] if len(pos) >= 2 or out else out
     if verb in ("sed", "gsed") and any(re.match(r"^-[A-Za-z]*i|^--in-place", a) for a in args):
-        return positional([a for a in args if a != "''"], ("-e", "-f", "--expression", "--file"))[1:]
+        # The first operand is the script only when no -e/-f (or --expression/--file) gave one.
+        script = any(a in ("-e", "-f") or re.match(r"^(-[ef].|--expression|--file)", a) for a in args)
+        pos = positional([a for a in args if a != "''"], ("-e", "-f", "--expression", "--file"))
+        return pos if script else pos[1:]
     if verb in ("perl", "ruby") and any(re.match(r"^-[A-Za-z]*i", a) for a in args):
         # In-place edit: every operand after the code (`-e CODE`, or the script when there is none).
         files, code, skip = [], False, False

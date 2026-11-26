@@ -919,6 +919,8 @@ drv operator "#322 mandatory fixture kind: WebFetch link-local" "$D/proj" WebFet
 drv operator "#322 mandatory fixture kind: WebFetch private literal" "$D/proj" WebFetch https://10.0.0.1/x
 drv ask "#322 mandatory fixture kind: curl -L" "$D/proj" Bash 'curl -sSfL https://docs.python.org/r'
 drv operator "#322: a literal --data-urlencode body stays operator" "$D/proj" Bash 'curl --data-urlencode q=a@b https://docs.python.org/x'
+drv operator "#322: a --data-raw body is literal text, operator" "$D/proj" Bash "curl --data-raw 'msg=@alice hi' https://docs.python.org/x"
+drv deny "#322: --data-raw does not hide a -d @file" "$D/proj" Bash "curl --data-raw @f -d @f https://docs.python.org/x"
 # The DTS Fable loop (#320): an Advisor's literal loop over gh reads passes.
 check none "#322 DTS Fable loop passes for an Advisor" "$(role Advisor "$D/proj" "$(bash_cmd 'for n in 170 171 172 173; do gh issue view $n --repo o/r --json title -q .title; done')")"
 # Passes for every role (hook): the read forms, a literal head over a gh read, py_code_safe code.
