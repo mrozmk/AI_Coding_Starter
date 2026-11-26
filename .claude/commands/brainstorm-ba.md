@@ -173,7 +173,12 @@ go on. The step is never skipped silently.
 - List what is still below 99 % after Step 1: the why, scope edges, ownership and routing (our Task ·
   another team's work → an outside row · the client's task · a question for a stakeholder · a tester
   list), every conflict found, granularity forks.
-- Show the findings first, then ask — the BA sees why each question exists.
+- Show the findings first, then ask — the BA sees why each question exists. The message that asks
+  carries, above its questions, the environment line, the lane and the Step 1 coverage and
+  consistency table with every row's evidence (a dialog takes the table in the message before it).
+- A conflict question quotes both sides verbatim next to the input's point: the recorded source (the
+  `D-n`, `AD-n` or `R-n` text) and, when the code shows the behaviour, the code evidence
+  (`<repo>@<sha>:<path>:<line>`, the symbol, what it does).
 - Independent questions go into one `AskUserQuestion` call (up to four); dependent ones in order.
   Each carries the recommendation first and, where it uses design or technical jargon, a
   plain-language line with a concrete on-screen example. In the project's communication language.
