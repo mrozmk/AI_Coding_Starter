@@ -250,6 +250,31 @@ def wild(what, text):
     return bool(re.fullmatch(pat, text, re.S) or (len(what) in (60, 200) and re.match(pat, text, re.S)))
 
 
+WORD_WINDOW = 10
+
+
+def word_hits(what, at, window):
+    """The calls a guard reason names by its word — `<tool> in command position`, `git to <host>
+    (…)`, `<host> not in WebFetch allowlist` — within WORD_WINDOW s of the row: the nearest one,
+    or every call tied nearest (ambiguous). Another reason shape names no call."""
+    m = re.match(r"^(\S+) in command position$", what)
+    g = re.match(r"^git to (\S+) \(not in the WebFetch allowlist\)$", what)
+    h = re.match(r"^(\S+) not in WebFetch allowlist$", what)
+
+    def names(c):
+        text = c["ti"].get(REPLAY_FIELD[c["tool"]])
+        if not isinstance(text, str):
+            return False
+        if m:
+            return c["tool"] == "Bash" and bool(re.search(r"(?<![\w./-])%s(?![\w-])" % re.escape(m.group(1)), text))
+        if g:
+            return c["tool"] == "Bash" and bool(re.search(r"\bgit\b", text)) and g.group(1) in text
+        return bool(h) and h.group(1) in text
+
+    near = sorted((abs(x - at), c["ref"], c) for x, _, c in window if abs(x - at) <= WORD_WINDOW and names(c))
+    return [c for d, _, c in near if d == near[0][0]] if near else []
+
+
 def frontmatter(text):
     fm, body = {}, text
     m = re.match(r"^---\n(.*?)\n---\n?(.*)$", text, re.S)
@@ -272,8 +297,18 @@ class Builder:
     def __init__(self, src, out):
         self.src, self.out, self.acq = src, out, Acq()
         self.touched, self.calls, self.session_roles = [], [], {}
-        self.counts = {"touch_block_rows": 0}
+        self.counts = {"touch_block_rows": 0, "after_cutoff": 0}
         self.ev, self.policy = None, None
+        self.cut = touches._epoch(utc(src.cutoff)) if src.cutoff else None
+
+    def late(self, at):
+        """True (and counted) when a record's time is after the sources' cutoff: a rebuild with the
+        same cutoff admits nothing newer. A record without a readable time is kept."""
+        x = touches._epoch(utc(at)) if self.cut is not None else None
+        if x is not None and x > self.cut:
+            self.counts["after_cutoff"] += 1
+            return True
+        return False
 
     # ---- readers ------------------------------------------------------------------------------
     def read_transcripts(self):
@@ -294,10 +329,7 @@ class Builder:
                         self.read_transcript(r, t, name, names[name], f)
 
     def read_transcript(self, r, t, name, co, f):
-        # `projects` ({<checkout path>: <project>}) names the project of one dir of a `checkouts:
-        # all` root: the join key its touch log carries, so the log's rows meet their calls.
-        dirs = {slug(os.path.expanduser(p)): v for p, v in (t.get("projects") or {}).items()}
-        project = (co or {}).get("project") or dirs.get(name) or t.get("project") or name
+        project = (co or {}).get("project") or t.get("project") or name
         home, rel = None, os.path.relpath(f, t["dir"])
         for no, raw, term in self.acq.lines(r, f):
             if b'"tool_use"' not in raw:
@@ -319,6 +351,8 @@ class Builder:
                     continue
                 cwd = e.get("cwd") if isinstance(e.get("cwd"), str) else ""
                 home = home or (cwd if co is None else None)
+                if self.late(e.get("timestamp")):
+                    continue
                 self.calls.append({"ref": "%s:%d#%s" % (rel, no, item.get("id") or ""), "at": utc(e.get("timestamp")),
                                    "session": str(e.get("sessionId") or os.path.basename(f)[:-6]),
                                    "cwd": cwd, "tool": item["name"], "ti": item["input"], "project": project,
@@ -387,14 +421,17 @@ class Builder:
                         except ValueError:
                             ra["parse_errors"] += 1
                             continue
-                        if isinstance(a, dict):
+                        if isinstance(a, dict) and not self.late(a.get("filed_at")):
                             asks.append(self.ask_record(co, run, n[:-5], a, side.get(n[:-5], [])))
             if os.path.isdir(dd):
                 for n in sorted(os.listdir(dd)):
                     if DEC_NAME.match(n):
                         data = self.acq.read(rd, os.path.join(dd, n))
-                        if data is not None:
-                            decs.append(self.dec_record(co, run, team, ticket, n[:-3], data.decode("utf-8", "replace")))
+                        text = data.decode("utf-8", "replace") if data is not None else None
+                        fm = frontmatter(text)[0] if text is not None else {}
+                        # A decision opened before the cutoff stays, even when answered after it.
+                        if text is not None and not self.late(fm.get("created_at") or fm.get("answered_at")):
+                            decs.append(self.dec_record(co, run, team, ticket, n[:-3], text))
 
     def ask_record(self, co, run, aid, a, side):
         p = a.get("payload") if isinstance(a.get("payload"), dict) else {}
@@ -452,6 +489,8 @@ class Builder:
                         self.acq.bad_line(r, no < len(lines) or data.endswith(b"\n"))
                     if not e:
                         continue
+                    if self.late(e["at"]):
+                        continue
                     if e["kind"] == "block":
                         self.counts["touch_block_rows"] += 1
                         continue
@@ -471,7 +510,12 @@ class Builder:
         rec.update(observed="operator", prompted=True,
                    evidence={"reason": e["reason"], "kind": e["kind"], "what": touches.mask_value(e["what"]),
                              "answer": touches.mask_value(e["answer"])},
-                   _row=e, join="none")
+                   # `join_project`: the transcripts' project whose sessions write this log, when the
+                   # log's own label differs (DTS sessions of every checkout write the MQL5 log).
+                   # `match: word`: the log's guard rows came from another project's guard and policy,
+                   # which the corpus does not hold, so their reason is matched by its word, not
+                   # recomputed (word_hits).
+                   _row=e, _join=t.get("join_project") or project, _match=t.get("match") or "reason", join="none")
         if inp:
             ti = {k: v for k, v in (inp.get("fields") or {}).items() if isinstance(v, str)}
             rec.update(input=dict(tool_input=ti, cwd=inp.get("cwd", "")), exact=not inp.get("cut") and "keys" not in inp,
@@ -590,19 +634,20 @@ class Builder:
             if r["id"] in linked or r["join"] == "input":
                 continue
             e, at = r["_row"], touches._epoch(r["at"])
-            lst = idx.get(r["project"], [])
+            lst = idx.get(r["_join"], [])
             if at is None or e["kind"] != "permission" or e["reason"] not in ("guard", "direct", "channel-failed"):
                 continue
             lo, hi = bisect.bisect_left(lst, (at - 120,)), bisect.bisect_right(lst, (at + 5, "￿"))
-            hits = []
-            for _, _, c in lst[lo:hi]:
-                if e["reason"] == "guard":
+            if e["reason"] == "guard" and r["_match"] == "word":
+                hits = word_hits(e["what"], at, lst[lo:hi])
+            elif e["reason"] == "guard":
+                hits = []
+                for _, _, c in lst[lo:hi]:
                     reason = self.evaluator().guard("supervisor", c["tool"], c["ti"])
-                    ok = reason[:200] == e["what"] or (len(e["what"]) == 60 and reason.startswith(e["what"]))
-                else:
-                    ok = wild(e["what"], summary(c["tool"], c["ti"]))
-                if ok:
-                    hits.append(c)
+                    if reason[:200] == e["what"] or (len(e["what"]) == 60 and reason.startswith(e["what"])):
+                        hits.append(c)
+            else:
+                hits = [c for _, _, c in lst[lo:hi] if wild(e["what"], summary(c["tool"], c["ti"]))]
             if len(hits) == 1:
                 c = hits[0]
                 r["join"] = "inferred " + c["ref"]

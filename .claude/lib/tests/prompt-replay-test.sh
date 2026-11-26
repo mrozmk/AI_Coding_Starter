@@ -142,20 +142,34 @@ jq -r 'select(.source == "touch" and (.evidence.what | endswith("SUFFIXMARK"))) 
   && jq -e 'select(.source == "touch" and .evidence.what == "Bash: rm x") | select(.modeled == true and .modeled_why == "input cut to the line budget")' "$T/c13/touched.jsonl" >/dev/null
 ok "b14 a masked what past raw char 200 joins its call; a cut touch input is modeled" $?
 
-# A `checkouts: all` root names one dir's project, so that project's touch log joins its calls.
-FX15="$T/fx15"; mkfx "$FX15"; D15="$FX15/dts/$(slug "$FX15/mq")"; mkdir -p "$D15"
-tu M1 2026-11-12T09:00:00.000Z "$FX15/mq" tm1 "curl -s https://h.example/m" > "$D15/m1.jsonl"
+# A touch log labelled apart from the transcripts that write it joins them through join_project.
+FX15="$T/fx15"; mkfx "$FX15"; D15="$FX15/dts/$(slug "$FX15/other")"; mkdir -p "$D15"
+tu M1 2026-11-12T09:00:00.000Z "$FX15/other" tm1 "curl -s https://h.example/m" > "$D15/m1.jsonl"
 jq -nc '{at:"2026-11-12T09:00:03Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:"curl in command position",
   reason:"guard", answer:"", wait_s:null}' > "$FX15/mq-touches.jsonl"
-jq --arg d "$FX15/dts" --arg m "$FX15/mq" --arg l "$FX15/mq-touches.jsonl" \
-  '.transcript_roots += [{dir: $d, checkouts: "all", project: "other", projects: {($m): "mq"}}] | .touch_logs += [{path: $l, project: "mq"}]' \
+jq --arg d "$FX15/dts" --arg l "$FX15/mq-touches.jsonl" \
+  '.transcript_roots += [{dir: $d, checkouts: "all", project: "dtsx"}] | .touch_logs += [{path: $l, project: "mq", join_project: "dtsx"}]' \
   "$FX15/sources.json" > "$T/s15.json"
-jq 'del(.transcript_roots[-1].projects)' "$T/s15.json" > "$T/s15b.json"
+jq 'del(.touch_logs[-1].join_project)' "$T/s15.json" > "$T/s15b.json"
 $PR build --sources "$T/s15.json" --out "$T/c15" >/dev/null 2>&1
 $PR build --sources "$T/s15b.json" --out "$T/c15b" >/dev/null 2>&1
 jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:1") | .join + "|" + (.replayable | tostring)' "$T/c15/touched.jsonl" | grep -q '^inferred .*/m1\.jsonl:1#tm1|true$' \
   && [ "$(jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:1") | .join' "$T/c15b/touched.jsonl")" = none ]
-ok "b15 a root's per-dir project joins that project's touch rows; without it they join nothing" $?
+ok "b15 a touch log joins the transcripts of its join_project; without it its rows join nothing" $?
+
+# Another project's guard row whose reason today's guard does not give: match by its word.
+{ tu M2 2026-11-12T10:00:00.000Z "$FX15/other" tw1 "python3 tools/a.py"
+  tu M2 2026-11-12T10:00:40.000Z "$FX15/other" tw2 "python3 tools/b.py"
+  tu M2 2026-11-12T10:00:44.000Z "$FX15/other" tw3 "ls"; } > "$D15/m2.jsonl"
+jq -nc '{at:"2026-11-12T10:00:41Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:"python3 in command position",
+  reason:"guard", answer:"", wait_s:null}' >> "$FX15/mq-touches.jsonl"
+jq '.touch_logs[-1].match = "word"' "$T/s15.json" > "$T/s15w.json"
+$PR build --sources "$T/s15w.json" --out "$T/c15w" >/dev/null 2>&1
+$PR build --sources "$T/s15.json" --out "$T/c15r" >/dev/null 2>&1
+jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:2") | .join' "$T/c15w/touched.jsonl" | grep -q '^inferred .*/m2\.jsonl:2#tw2$' \
+  && [ "$(jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:2") | .join' "$T/c15r/touched.jsonl")" = none ] \
+  && jq -r 'select(.ref == "mq:touches/mq-touches.jsonl:1") | .join' "$T/c15w/touched.jsonl" | grep -q '^inferred .*/m1\.jsonl:1#tm1$'
+ok "b15w match word joins a guard row by its tool word, nearest call; reason mode recomputes and finds none" $?
 
 FX16="$T/fx16"; mkfx "$FX16"; P16="$FX16/home/.claude/projects/$(slug "$FX16/main")"
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use"' > "$P16/tail.jsonl"
@@ -175,6 +189,20 @@ jq --arg g "$FX17/gamma" '.checkouts += [{path: $g, project: "proj", role_hint: 
 $PR build --sources "$T/s17.json" --out "$T/c17" >/dev/null 2>&1
 jq -e 'select(.source == "touch" and .evidence.what == "Bash: cat x") | select(.ctx == "stage" and .modeled == true and .modeled_why == "path into another checkout")' "$T/c17/touched.jsonl" >/dev/null
 ok "b17 a stage touch input naming another clone's path is modeled" $?
+
+# The fixture's cutoff is 2026-11-20T00:00:00Z: a rebuild admits nothing newer.
+FX18="$T/fx18"; mkfx "$FX18"; R18="$FX18/alfa/.agents/team/runs/alfa-20261121-000000/asks"; mkdir -p "$R18"
+$PR build --sources "$FX18/sources.json" --out "$T/c18a" >/dev/null 2>&1
+FX="$FX18" ask "$R18/a-1.json" a-1 Bash '{"command":"ls"}' lead
+jq '.filed_at = "2026-11-21T00:00:00Z"' "$R18/a-1.json" > "$R18/a-1.tmp" && mv "$R18/a-1.tmp" "$R18/a-1.json"
+tu S1 2026-11-21T09:00:00.000Z "$FX18/main" late1 "echo LATECALL" >> "$FX18/home/.claude/projects/$(slug "$FX18/main")/s1.jsonl"
+jq -nc '{at:"2026-11-21T09:00:02Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:"Bash: echo LATECALL",
+  reason:"direct", answer:"", wait_s:null}' >> "$FX18/main/.agents/touches/2026-11.jsonl"
+$PR build --sources "$FX18/sources.json" --out "$T/c18" >/dev/null 2>&1
+! all_text "$T/c18" | grep -q LATECALL && ! grep -q 'alfa-20261121-000000' "$T/c18/touched.jsonl" \
+  && jq -e '.counts.after_cutoff == 3 and .cutoff == "2026-11-20T00:00:00Z"' "$T/c18/manifest.json" >/dev/null \
+  && [ "$(jq -cS '[.id, .intervention]' "$T/c18a/touched.jsonl" | sort)" = "$(jq -cS '[.id, .intervention]' "$T/c18/touched.jsonl" | sort)" ]
+ok "b18 records after the cutoff stay out; every earlier record keeps its id and intervention" $?
 
 $PR verify --corpus "$C" >/dev/null 2>&1; r1=$?
 mkdir "$T/cv"; cp "$C"/* "$T/cv/"; sed '1s/"source"/"sourcf"/' "$C/touched.jsonl" > "$T/cv/touched.jsonl"
