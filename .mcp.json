@@ -10,7 +10,7 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--isolated", "--output-dir", ".playwright-mcp"]
+      "args": ["-y", "@playwright/mcp@0.0.86", "--isolated", "--output-dir", ".playwright-mcp"]
     }
   }
 }
