@@ -55,13 +55,21 @@ jq 'keys' .claude/regression.json
 
 1. Ask (one `AskUserQuestion`): the e2e directory (default `e2e`), the device names (runner projects
    for `desktop` and `mobile`), and the environments — for each a name, its host (an `http(s)://` URL
-   without credentials or a trailing slash, or `qa-env` to take `base_url` from `.claude/qa-env.json`) and whether it
-   is a test environment (`kind: "test"`; otherwise it is production).
+   without credentials or a trailing slash, or `qa-env` to take `base_url` from `.claude/qa-env.json`;
+   never a local server) and its `kind` — `test`, or production (the default). State the production
+   defaults with the question: `writes: refuse`, one worker, guard allowlist = its own host, every
+   WebSocket closed, a confirmation before every run; and that `default_env` may name only a test
+   environment (regression.md §10). Write only `host`, `kind` and, when the user names one, a
+   test `default_env` — every other policy key keeps its default until the project declares it.
 2. Copy each template of `.claude/templates/regression/` into the e2e directory **only when the target
    is absent** — never overwrite: `playwright.config.ts.template` → `<e2e>/playwright.config.ts`,
    `fixtures.ts.template` → `<e2e>/fixtures.ts`, `spec-header.ts.template` → keep as
-   `<e2e>/regression/_spec-header.example.ts`. Fill the placeholders each template lists; report every
-   target that existed and was kept.
+   `<e2e>/regression/_spec-header.example.ts`. Fill the placeholders each template lists — in both
+   the config and the fixtures `<guard-module-relative>` is the path from the copied file's directory
+   to `.claude/lib/regression/guard.mjs` (`<e2e>/…` → `../.claude/lib/regression/guard.mjs`); report
+   every target that existed and was kept. A kept config or fixtures file from before the request
+   guard does not import `guard.mjs`: say that a production run refuses it until both are re-copied
+   (regression.md §11, migration).
 3. Build the fragment with whichever of `runner` / `environments` is absent (shape:
    `.claude/regression.json.example`; every path repo-root-relative) and write it with the Write tool
    to the session scratchpad, then:

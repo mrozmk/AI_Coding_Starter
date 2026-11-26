@@ -14,10 +14,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readBacklogFiles, parseBacklog, resolveTask } from '../backlog-check.mjs';
-import { CONFIG_PATH, PRIORITIES, loadConfig, catalogSettings } from './config.mjs';
+import { CONFIG_PATH, PRIORITIES, NEED_KEY, loadConfig, catalogSettings } from './config.mjs';
 
 const REQUIRED = ['Priority', 'Viewport', 'Status', 'Effect', 'Goal', 'Steps', 'Expected', 'Source', 'Spec'];
-const OPTIONAL = ['Data'];
+// `Needs`: the safe means / guard operations a scenario relies on (` · `-separated keys); the
+// environment check is policy.mjs's — here only the key grammar.
+const OPTIONAL = ['Data', 'Needs'];
 const ENUMS = { Priority: PRIORITIES, Viewport: ['desktop', 'mobile', 'both'], Effect: ['read', 'write'] };
 export const STATUSES = ['READY', 'BLOCKED', 'DROPPED'];
 const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
@@ -110,6 +112,12 @@ export function sourceTokens(value) {
   });
 }
 
+/** Keys of a `Needs` value (` · `-separated, trimmed); `[]` for `—`, empty or absent. */
+export function needsKeys(value) {
+  if (value === undefined || value === null || isEmpty(value)) return [];
+  return oneLine(value).split(' · ').map((k) => k.trim()).filter((k) => k !== '');
+}
+
 /** `{path, title}` of a `Spec` value, `null` for `—`, `{error}` when malformed. */
 export function parseSpec(value, id) {
   if (isEmpty(value)) return null;
@@ -162,6 +170,15 @@ export function validateCatalog(blocks, settings) {
     if (spec) {
       const s = parseSpec(spec.value, b.id);
       if (s?.error) err(b, spec.line, s.error);
+    }
+    const needs = b.fields.Needs;
+    if (needs) {
+      const seen = new Set();
+      for (const k of needsKeys(needs.value)) {
+        if (!NEED_KEY.test(k)) err(b, needs.line, `malformed Needs key ${k} — expected ${NEED_KEY.source}`);
+        else if (seen.has(k)) err(b, needs.line, `duplicate Needs key ${k}`);
+        seen.add(k);
+      }
     }
   }
   const groups = new Map();
@@ -272,6 +289,7 @@ export function scenarioRow(root, b, ctx) {
     priority: b.fields.Priority?.value ?? null, viewport: b.fields.Viewport?.value ?? null,
     status: status ?? null, ref: ref?.trim() ?? null, effect: b.fields.Effect?.value ?? null,
     source: b.fields.Source?.value ?? null, spec: isEmpty(spec) ? null : spec,
+    needs: needsKeys(b.fields.Needs?.value),
     automation: a.state, automation_reason: a.reason,
   };
 }

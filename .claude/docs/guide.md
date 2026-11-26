@@ -70,7 +70,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Business analyst** | `/prime-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/create-task`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
-| **QA and security** | `/prime-qa`, `/qa-verify`, `/audit-security`, `/seo-geo-audit`, `/ai-act-audit`, `/wcag-audit` |
+| **QA and security** | `/prime-qa`, `/qa-verify`, `/regression-tests` (deterministic regression run against a named environment, status), `/audit-security`, `/seo-geo-audit`, `/ai-act-audit`, `/wcag-audit` |
 | **Teams (opt-in)** | `/setup:teams`, `/roles`, `/start-team`, `/tasks-status` |
 | **Session and upkeep** | `/handoff`, `/hc`, `/analysis`, `/simply`, `/retro`, `/maintain:refresh-brief`, `/maintain:cleanup-workflow`, `/maintain:sync-from-starter`, `/maintain:sync-herdr-kit` |
 
@@ -368,7 +368,7 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete and, when a backlog exists, marks the Task `DONE`. `/execute codex` has Codex write the code while Claude supervises.
 
-> E2E regression tests: no command writes them yet — one is planned. Today they come from the Operator's QA run (`/qa-verify`), promoted by hand with [the regression-test procedure](../../.agents/reference/qa-to-regression-test.md).
+> E2E regression tests: `/regression-tests` runs them against a named deployed environment and records a deterministic verdict (production only after a confirmation each time — [regression.md](../../.agents/reference/regression.md) §12). No command writes the specs yet — one is planned. Today they come from the Operator's QA run (`/qa-verify`), promoted by hand with [the regression-test procedure](../../.agents/reference/qa-to-regression-test.md).
 
 ### 10. Check the implementation
 

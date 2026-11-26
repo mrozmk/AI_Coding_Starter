@@ -1,0 +1,14 @@
+{
+  "config": {
+    "version": "1.64.0",
+    "rootDir": "e2e/regression"
+  },
+  "suites": [],
+  "errors": [],
+  "stats": {
+    "expected": 0,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  }
+}

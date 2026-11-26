@@ -1,28 +1,90 @@
 // Regression fixtures — copied by /setup:regression next to the specs (never over an existing file).
 // Placeholders:
-//   <session-command>  runner.test_data.session split into argv, e.g. ['e2e/test-data/adapter.sh', 'session']
+//   <session-command>        runner.test_data.session split into argv, e.g. ['e2e/test-data/adapter.sh', 'session']
+//   <guard-module-relative>  the path from this file's directory to .claude/lib/regression/guard.mjs
+//                            (fixtures e2e/fixtures.ts → '../.claude/lib/regression/guard.mjs')
 // A spec picks its account with `test.use({ account: '<account-key>' })` (the key named in the scenario's
 // Data field — never a value); `account: null` runs anonymous. The adapter prints only the PATH of a
 // storage-state file, never a secret (.agents/reference/regression-test-data.md).
+// The request guard lives in .claude/lib/regression/guard.mjs (synced from the starter); this file only
+// wires it: every browser context is guarded before its first navigation (regression.md §11).
+// Without REGRESSION_RUN (a spec run by hand, not through /regression-tests) this module refuses to load.
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import {
+  loadRunManifest, installGuard, guardRequestContext, createLedger, setCurrentTest, clearCurrentTest, stopRun,
+} from '<guard-module-relative>';
 
 const SESSION_COMMAND: string[] = <session-command>;
+const manifest = loadRunManifest();
+const ledger = createLedger(manifest.run_dir, { nonce: manifest.nonce });
+const repoRelative = (file: string) => path.relative(process.cwd(), file).split(path.sep).join('/');
 
-export const test = base.extend<{ account: string | null }>({
+export const test = base.extend<{ account: string | null; regressionGuard: void }>({
   account: [null, { option: true }],
+
+  // Runs for every test, before any session call or context: refuses a case outside this run's
+  // selection, attributes every guard event to the test, and fails the test after it when the guard
+  // aborted one of its requests (a test that swallowed the aborted request cannot pass).
+  regressionGuard: [async ({}, use, testInfo) => {
+    const id = testInfo.title.split(' — ')[0].trim();
+    const project = testInfo.project.name;
+    const spec = repoRelative(testInfo.file);
+    if (!manifest.selection.some((c: { id: string; project: string; spec: string }) => c.id === id && c.project === project && c.spec === spec)) {
+      throw new Error(`regression guard: ${id} / ${project} (${spec}) is not in this run's selection`);
+    }
+    if (ledger.stopped()) throw new Error('regression guard: the run is stopped');
+    setCurrentTest({ testId: testInfo.testId, id, project });
+    try {
+      await use();
+      const blocked = ledger.blockedFor(testInfo.testId);
+      if (blocked.length) {
+        throw new Error(`regression guard blocked ${blocked.length} request(s): ${blocked.map((e: { reason: string; method: string; url: string }) => `${e.reason} ${e.method} ${e.url}`).join('; ')}`);
+      }
+    } finally {
+      clearCurrentTest();
+    }
+  }, { auto: true }],
+
+  // A context a test creates itself is guarded too (and never runs service workers).
+  browser: [async ({ browser }, use) => {
+    const newContext = browser.newContext.bind(browser);
+    browser.newContext = async (options = {}) => {
+      const context = await newContext({ ...options, serviceWorkers: 'block' });
+      await installGuard(context, manifest);
+      return context;
+    };
+    await use(browser);
+  }, { scope: 'worker' }],
+
   // The browser context is created already signed in: the adapter's `session <env> <account>` prints the
-  // storage-state file path, which becomes this test's storageState.
-  storageState: async ({ account }, use) => {
+  // storage-state file path, which becomes this test's storageState. REGRESSION_RUN is inherited, so on
+  // production the adapter signs in through guard.mjs and calls attestSession(manifest, account).
+  storageState: async ({ regressionGuard, account }, use) => {
     if (!account) return use(undefined);
     const env = process.env.REGRESSION_ENV;
     if (!env) throw new Error('REGRESSION_ENV is not set');
     const [program, ...args] = SESSION_COMMAND;
-    const file = execFileSync(program, [...args, env, account], { encoding: 'utf8' }).trim();
+    ledger.record({ kind: 'session-start', account });
+    const file = execFileSync(program, [...args, env, account], { encoding: 'utf8', env: process.env }).trim();
+    if (manifest.kind === 'production' && !ledger.events().some((e: { kind: string; account?: string }) => e.kind === 'session' && e.account === account)) {
+      stopRun(`session not guard-attested for ${account}`, manifest);
+      throw new Error(`session not guard-attested for ${account}`);
+    }
     await use(file);
+  },
+
+  context: async ({ regressionGuard, context }, use, testInfo) => {
+    await installGuard(context, manifest, { testInfo });
+    if (manifest.consent?.cookies?.length) await context.addCookies(manifest.consent.cookies);
+    await use(context);
+  },
+
+  // Playwright's `request` fixture is not routed by the context: it takes the same guard.
+  request: async ({ request }, use) => {
+    await use(guardRequestContext(request, manifest));
   },
 });
 
-// request guard: installed here, before the first navigation (regression.md §3, "Safe on production by default")
-
-export { expect };
+export { expect, stopRun };
