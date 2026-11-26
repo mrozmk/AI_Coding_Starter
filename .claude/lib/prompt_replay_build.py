@@ -306,7 +306,10 @@ class Builder:
         asks, decs = [], []
         for co in self.src.checkouts:
             td = os.path.join(co["path"], ".agents", "team")
-            ra, rd = self.acq.root(td, "asks"), self.acq.root(td, "decisions")
+            # A checkout marked `removed` is gone from disk: its transcripts and path mapping stay,
+            # its run roots are recorded absent without failing completeness.
+            req = not co.get("removed")
+            ra, rd = self.acq.root(td, "asks", required=req), self.acq.root(td, "decisions", required=req)
             ra["sessions"] = 0
             runs = []
             for base, arch in ((os.path.join(td, "runs"), None), (os.path.join(td, "archive"), True)):

@@ -95,6 +95,15 @@ $PR verify --corpus "$T/c9b" >/dev/null 2>&1; r2=$?
 [ "$r1" = 3 ] && [ "$r2" = 3 ] \
   && [ "$(jq -r --arg k "$(slug "$FX/main")/s1.jsonl" '.roots[] | select(.family == "transcripts") | .size_at_read[$k]' "$C/manifest.json")" = "$S1SIZE" ]
 ok "b9 a missing transcript root or an unhashed file refuses; size_at_read recorded" $?
+jq --arg d "$T/gone" '.checkouts += [{path: $d, project: "p", role_hint: "clone"}]' "$FX/sources.json" > "$T/s9c.json"
+$PR build --sources "$T/s9c.json" --out "$T/c9c" >/dev/null 2>&1
+$PR verify --corpus "$T/c9c" --require-complete >/dev/null 2>&1; r1=$?
+jq '.checkouts[-1].removed = true' "$T/s9c.json" > "$T/s9d.json"
+$PR build --sources "$T/s9d.json" --out "$T/c9d" >/dev/null 2>&1
+$PR verify --corpus "$T/c9d" --require-complete >/dev/null 2>&1; r2=$?
+[ "$r1" = 3 ] && [ "$r2" = 0 ] \
+  && jq -e --arg d "$T/gone/.agents/team" '[.roots[] | select(.path == $d)] | length == 2 and all(.required == false and .present == false)' "$T/c9d/manifest.json" >/dev/null
+ok "b9c a vanished checkout refuses; marked removed, its run roots are recorded absent and not required" $?
 
 FX10="$T/fx10"; mkfx "$FX10"; R10="$FX10/alfa/.agents/team/runs/alfa-20261102-000000/asks"; mkdir -p "$R10"
 FX="$FX10" ask "$R10/a-1.json" a-1 Bash '{"command":"ls"}' lead
