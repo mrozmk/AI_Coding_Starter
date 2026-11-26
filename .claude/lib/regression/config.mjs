@@ -24,14 +24,17 @@ export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isA
 const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
 export const docKey = (k) => k.startsWith('_');
 
-/** A base URL both sources must satisfy: http(s), a host, no credentials, no whitespace, no trailing `/`. */
-export function isBaseUrl(s) {
-  if (typeof s !== 'string' || s === '' || /\s/.test(s) || s.endsWith('/')) return false;
+/** An http(s) URL with a host, no credentials and no whitespace. */
+function isHttpUrl(s) {
+  if (typeof s !== 'string' || s === '' || /\s/.test(s)) return false;
   let u;
   try { u = new URL(s); } catch { return false; }
   // The config is committed and `env` prints the URL: credentials in it would leak.
   return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== '' && u.username === '' && u.password === '';
 }
+
+/** A base URL both sources must satisfy: an http(s) URL (isHttpUrl) without a trailing `/`. */
+export const isBaseUrl = (s) => isHttpUrl(s) && !s.endsWith('/');
 
 /** An environment's kind; absent means production, so nothing destructive runs by omission. */
 export const envKind = (entry) => entry?.kind ?? 'production';
@@ -58,6 +61,7 @@ const urlHost = (s) => { try { return new URL(s).hostname; } catch { return ''; 
 const compiles = (s) => { try { new RegExp(s); return true; } catch { return false; } };
 const isRegex = (v) => isFilled(v) && compiles(v);
 const nonNeg = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+const positive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
 /**
  * The environment's policy with every default filled: production-safe when a key is absent.
@@ -121,77 +125,81 @@ function validateEnvPolicy(name, entry) {
     if (!isObject(entry.pacing)) errors.push(`${at('pacing')}: must be an object`);
     else for (const k of PACING_KEYS) if (k in entry.pacing && !nonNeg(entry.pacing[k])) errors.push(`${at(`pacing.${k}`)}: must be a non-negative number`);
   }
-  if ('guard' in entry) {
-    const g = entry.guard;
-    if (!isObject(g)) errors.push(`${at('guard')}: must be an object`);
-    else {
-      if ('hosts' in g && (!Array.isArray(g.hosts) || g.hosts.some((h) => typeof h !== 'string' || !HOSTNAME.test(h)))) {
-        errors.push(`${at('guard.hosts')}: must be an array of hostnames or *.domain entries`);
-      }
-      if ('header' in g && !(isObject(g.header) && isFilled(g.header.name) && typeof (g.header.value ?? '') === 'string')) {
-        errors.push(`${at('guard.header')}: must be {name, value} strings`);
-      }
-      let costed = false;
-      if ('operations' in g) {
-        if (!isObject(g.operations)) errors.push(`${at('guard.operations')}: must be an object of <name>: {method, url, body?, cost?, backend_calls?}`);
-        else {
-          for (const [op, o] of Object.entries(g.operations)) {
-            if (docKey(op)) continue;
-            const p = `guard.operations.${op}`;
-            if (!NEED_KEY.test(op)) errors.push(`${at(p)}: name must match ${NEED_KEY.source}`);
-            if (means.includes(op)) errors.push(`${at(p)}: name is also a means key — a Needs key must resolve to one of them`);
-            if (!isObject(o)) { errors.push(`${at(p)}: must be an object`); continue; }
-            if (!isFilled(o.method)) errors.push(`${at(`${p}.method`)}: must be a non-empty string`);
-            if (!isRegex(o.url)) errors.push(`${at(`${p}.url`)}: must be a regex that compiles`);
-            if ('body' in o && !isRegex(o.body)) errors.push(`${at(`${p}.body`)}: must be a regex that compiles`);
-            if ('cost' in o) {
-              if (!(typeof o.cost === 'number' && Number.isFinite(o.cost) && o.cost > 0)) errors.push(`${at(`${p}.cost`)}: must be a positive number`);
-              else costed = true;
-            }
-            if ('backend_calls' in o && !(Number.isInteger(o.backend_calls) && o.backend_calls >= 1)) errors.push(`${at(`${p}.backend_calls`)}: must be an integer ≥ 1`);
-          }
-        }
-      }
-      if ('rpc' in g) {
-        if (!Array.isArray(g.rpc) || g.rpc.some((r) => !isObject(r) || !isRegex(r.url) || !isRegex(r.mutating))) {
-          errors.push(`${at('guard.rpc')}: must be an array of {url, mutating} regexes`);
-        }
-      }
-      if ('budget' in g && !(typeof g.budget === 'number' && Number.isFinite(g.budget) && g.budget > 0)) errors.push(`${at('guard.budget')}: must be a positive number`);
-      else if (!('budget' in g) && costed && envKind(entry) === 'production') errors.push(`${at('guard.budget')}: required on a production environment with a costed operation`);
-      if ('stop' in g) {
-        const s = g.stop;
-        if (!isObject(s)) errors.push(`${at('guard.stop')}: must be an object`);
-        else {
-          for (const k of STOP_KEYS) if (k in s && !Array.isArray(s[k])) errors.push(`${at(`guard.stop.${k}`)}: must be an array`);
-          if (Array.isArray(s.statuses) && s.statuses.some((c) => !(Number.isInteger(c) && c >= 100 && c <= 599))) errors.push(`${at('guard.stop.statuses')}: must be HTTP status codes`);
-          for (const k of ['watch_4xx', 'challenge']) if (Array.isArray(s[k]) && s[k].some((r) => !isRegex(r))) errors.push(`${at(`guard.stop.${k}`)}: must be regexes that compile`);
-          if (Array.isArray(s.error_signals) && s.error_signals.some((r) => !isObject(r) || !isRegex(r.url) || !isRegex(r.body))) {
-            errors.push(`${at('guard.stop.error_signals')}: must be an array of {url, body} regexes`);
-          }
-        }
-      }
-    }
-  }
-  if ('consent' in entry) {
-    const c = entry.consent;
-    if (!isObject(c)) errors.push(`${at('consent')}: must be an object`);
-    else {
-      if ('strategy' in c && !CONSENT_STRATEGIES.includes(c.strategy)) errors.push(`${at('consent.strategy')}: must be ${CONSENT_STRATEGIES.join('|')}`);
-      if ('cookies' in c) {
-        const bad = !Array.isArray(c.cookies) || c.cookies.some((k) => !isObject(k) || !isFilled(k.name) || typeof k.value !== 'string' || !isFilled(k.domain)
-          || ('path' in k && !(typeof k.path === 'string' && k.path.startsWith('/'))));
-        if (bad) errors.push(`${at('consent.cookies')}: must be an array of {name, value, domain, path?} (path starting with /)`);
-      }
-    }
-  }
-  if ('build_sha_url' in entry && !isBaseUrlLike(entry.build_sha_url)) errors.push(`${at('build_sha_url')}: must be an http(s) URL without credentials`);
+  if ('guard' in entry) errors.push(...validateGuard(at, entry.guard, { means, production: envKind(entry) === 'production' }));
+  if ('consent' in entry) errors.push(...validateConsent(at, entry.consent));
+  if ('build_sha_url' in entry && !isHttpUrl(entry.build_sha_url)) errors.push(`${at('build_sha_url')}: must be an http(s) URL without credentials`);
   return errors;
 }
 
-function isBaseUrlLike(s) {
-  if (!isFilled(s) || /\s/.test(s)) return false;
-  try { const u = new URL(s); return (u.protocol === 'http:' || u.protocol === 'https:') && u.username === '' && u.password === ''; } catch { return false; }
+/** Problems of `guard.operations`, and whether any operation carries a valid `cost`. */
+function validateOperations(at, ops, means) {
+  if (!isObject(ops)) return { errors: [`${at('guard.operations')}: must be an object of <name>: {method, url, body?, cost?, backend_calls?}`], costed: false };
+  const errors = [];
+  let costed = false;
+  for (const [op, o] of Object.entries(ops)) {
+    if (docKey(op)) continue;
+    const p = `guard.operations.${op}`;
+    if (!NEED_KEY.test(op)) errors.push(`${at(p)}: name must match ${NEED_KEY.source}`);
+    if (means.includes(op)) errors.push(`${at(p)}: name is also a means key — a Needs key must resolve to one of them`);
+    if (!isObject(o)) { errors.push(`${at(p)}: must be an object`); continue; }
+    if (!isFilled(o.method)) errors.push(`${at(`${p}.method`)}: must be a non-empty string`);
+    if (!isRegex(o.url)) errors.push(`${at(`${p}.url`)}: must be a regex that compiles`);
+    if ('body' in o && !isRegex(o.body)) errors.push(`${at(`${p}.body`)}: must be a regex that compiles`);
+    if ('cost' in o) {
+      if (positive(o.cost)) costed = true;
+      else errors.push(`${at(`${p}.cost`)}: must be a positive number`);
+    }
+    if ('backend_calls' in o && !(Number.isInteger(o.backend_calls) && o.backend_calls >= 1)) errors.push(`${at(`${p}.backend_calls`)}: must be an integer ≥ 1`);
+  }
+  return { errors, costed };
+}
+
+function validateStop(at, s) {
+  if (!isObject(s)) return [`${at('guard.stop')}: must be an object`];
+  const errors = [];
+  for (const k of STOP_KEYS) if (k in s && !Array.isArray(s[k])) errors.push(`${at(`guard.stop.${k}`)}: must be an array`);
+  if (Array.isArray(s.statuses) && s.statuses.some((c) => !(Number.isInteger(c) && c >= 100 && c <= 599))) errors.push(`${at('guard.stop.statuses')}: must be HTTP status codes`);
+  for (const k of ['watch_4xx', 'challenge']) if (Array.isArray(s[k]) && s[k].some((r) => !isRegex(r))) errors.push(`${at(`guard.stop.${k}`)}: must be regexes that compile`);
+  if (Array.isArray(s.error_signals) && s.error_signals.some((r) => !isObject(r) || !isRegex(r.url) || !isRegex(r.body))) {
+    errors.push(`${at('guard.stop.error_signals')}: must be an array of {url, body} regexes`);
+  }
+  return errors;
+}
+
+function validateGuard(at, g, { means, production }) {
+  if (!isObject(g)) return [`${at('guard')}: must be an object`];
+  const errors = [];
+  if ('hosts' in g && (!Array.isArray(g.hosts) || g.hosts.some((h) => typeof h !== 'string' || !HOSTNAME.test(h)))) {
+    errors.push(`${at('guard.hosts')}: must be an array of hostnames or *.domain entries`);
+  }
+  if ('header' in g && !(isObject(g.header) && isFilled(g.header.name) && typeof (g.header.value ?? '') === 'string')) {
+    errors.push(`${at('guard.header')}: must be {name, value} strings`);
+  }
+  let costed = false;
+  if ('operations' in g) {
+    const ops = validateOperations(at, g.operations, means);
+    errors.push(...ops.errors);
+    costed = ops.costed;
+  }
+  if ('rpc' in g && (!Array.isArray(g.rpc) || g.rpc.some((r) => !isObject(r) || !isRegex(r.url) || !isRegex(r.mutating)))) {
+    errors.push(`${at('guard.rpc')}: must be an array of {url, mutating} regexes`);
+  }
+  if ('budget' in g && !positive(g.budget)) errors.push(`${at('guard.budget')}: must be a positive number`);
+  else if (!('budget' in g) && costed && production) errors.push(`${at('guard.budget')}: required on a production environment with a costed operation`);
+  if ('stop' in g) errors.push(...validateStop(at, g.stop));
+  return errors;
+}
+
+function validateConsent(at, c) {
+  if (!isObject(c)) return [`${at('consent')}: must be an object`];
+  const errors = [];
+  if ('strategy' in c && !CONSENT_STRATEGIES.includes(c.strategy)) errors.push(`${at('consent.strategy')}: must be ${CONSENT_STRATEGIES.join('|')}`);
+  if ('cookies' in c) {
+    const bad = !Array.isArray(c.cookies) || c.cookies.some((k) => !isObject(k) || !isFilled(k.name) || typeof k.value !== 'string' || !isFilled(k.domain)
+      || ('path' in k && !(typeof k.path === 'string' && k.path.startsWith('/'))));
+    if (bad) errors.push(`${at('consent.cookies')}: must be an array of {name, value, domain, path?} (path starting with /)`);
+  }
+  return errors;
 }
 
 /** Key-path type problems of a parsed config, as `<key path>: <problem>` strings. Never throws. */

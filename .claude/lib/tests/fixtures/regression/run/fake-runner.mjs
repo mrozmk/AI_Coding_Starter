@@ -2,7 +2,7 @@
 // runner.report under cwd, optionally writes guard events (argv[3]) into the run directory of the
 // manifest named by REGRESSION_RUN, appends one line to runner-calls.log, exits with argv[4] ?? 0.
 //
-//   node fake-runner.mjs <report|-> [attest-all|attest-none|stop-429|session-missing|blocked-case|blocked-outside|-] [exit]
+//   node fake-runner.mjs <report|-> [attest-all|attest-none|attest-skip-first|stop-429|session-missing|session-failed|blocked-case|blocked-outside|-] [exit]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,16 +25,19 @@ if (events !== '-' && process.env.REGRESSION_RUN) {
   const t = new Date().toISOString();
   const line = (e) => fs.appendFileSync(log, `${JSON.stringify({ t, nonce: manifest.nonce, ...e })}\n`);
   const testId = (c) => `${c.id}:${c.project}`;
-  const attestAll = ({ sessions = true } = {}) => {
-    for (const c of manifest.selection) line({ kind: 'installed', test: testId(c), id: c.id, project: c.project });
+  // sessions: 'session' (attested) | 'none' (missing) | 'session-failed' (the adapter failed)
+  const attestAll = ({ sessions = 'session', skipFirst = false } = {}) => {
+    for (const c of manifest.selection.slice(skipFirst ? 1 : 0)) line({ kind: 'installed', test: testId(c), id: c.id, project: c.project });
     const accounts = new Set(manifest.selection.flatMap((c) => (c.needs ?? []).filter((k) => k.startsWith('account:')).map((k) => k.slice('account:'.length))));
     for (const account of accounts) {
       line({ kind: 'session-start', account });
-      if (sessions) line({ kind: 'session', account });
+      if (sessions !== 'none') line({ kind: sessions, account });
     }
   };
   if (events === 'attest-all') attestAll();
-  else if (events === 'session-missing') attestAll({ sessions: false });
+  else if (events === 'attest-skip-first') attestAll({ skipFirst: true });
+  else if (events === 'session-missing') attestAll({ sessions: 'none' });
+  else if (events === 'session-failed') attestAll({ sessions: 'session-failed' });
   else if (events === 'stop-429') {
     attestAll();
     const stop = { t, nonce: manifest.nonce, reason: 'status 429', url: `${manifest.base_url}/api/price` };

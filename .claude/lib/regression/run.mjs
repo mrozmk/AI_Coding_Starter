@@ -19,9 +19,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey } from './config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog } from './catalog.mjs';
 import { buildPlan, confirmationText, MODES } from './policy.mjs';
-import { ownerLock, LockError, createLedger } from './guard.mjs';
+import { ownerLock, LockError, createLedger, groupAlive, scenarioId } from './guard.mjs';
 
 export const RUNS_DIR = '.agents/regression/runs';
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
@@ -71,7 +70,37 @@ export async function fetchBuildSha(root, cfg, envName, policy) {
   }
 }
 
-const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+/**
+ * The text with `//` and `/* *\/` comments removed, string literals kept whole: a `/*` inside a
+ * string such as a route glob `'**\/*.png'` opens no comment. A backslash outside a string escapes
+ * the next character (a regex literal's `\/\/` is no comment).
+ */
+function stripComments(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === '\\') { out += s.slice(i, i + 2); i += 1; continue; }
+    if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c && !(c !== '`' && s[j] === '\n')) j += s[j] === '\\' ? 2 : 1;
+      out += s.slice(i, j + 1);
+      i = j;
+      continue;
+    }
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i += 1; out += '\n'; continue; }
+    if (c === '/' && s[i + 1] === '*') {
+      const end = s.indexOf('*/', i + 2);
+      out += s.slice(i, end < 0 ? s.length : end + 2).replace(/[^\n]/g, '');
+      i = end < 0 ? s.length : end + 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+/** The text minus whole-line `//` comments only: a forbidden key is searched fail-closed (a mention elsewhere refuses). */
+const dropCommentLines = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
 /** Import statements of a module: `[{bindings: [names], from}]` (named imports, comments stripped). */
 function importsOf(text) {
@@ -132,7 +161,7 @@ export function checkIntegration(root, cfg, plan) {
     if (!ok) findings.push({ file: rel(mod), reason: 'does not import installGuard from .claude/lib/regression/guard.mjs' });
   }
   for (const [file, text] of scanned) {
-    const code = stripComments(text);
+    const code = dropCommentLines(text);
     for (const key of ['extraHTTPHeaders', 'httpCredentials']) if (code.includes(key)) findings.push({ file: rel(file), reason: `sets ${key}` });
   }
   return findings;
@@ -192,10 +221,6 @@ export function acquireLock(name, owner) {
   return { error: `lock ${name} held by pid ${r.holder.pid} (run ${r.holder.run_id ?? '?'})` };
 }
 
-function groupAlive(pgid) {
-  try { process.kill(-pgid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
-}
-
 async function waitGroupEnd(pgid, ms = 30000) {
   const end = Date.now() + ms;
   while (groupAlive(pgid) && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
@@ -233,7 +258,7 @@ export function classifyReport(report, plan, { idPattern, catalogIds, root, conf
       const specFile = spec.file ?? file;
       const fileRel = specFile ? repoRel(root, path.resolve(rootDir, specFile)) : null;
       const title = String(spec.title ?? '');
-      const id = title.includes(' — ') ? title.split(' — ')[0].trim() : null;
+      const id = scenarioId(title);
       for (const t of spec.tests ?? []) {
         const project = t.projectName ?? '';
         if ((t.results ?? []).some((r) => r.status === 'interrupted')) out.interrupted = true;
@@ -272,21 +297,24 @@ export function classifyReport(report, plan, { idPattern, catalogIds, root, conf
   return out;
 }
 
-/** Guard findings from the run's log: `{stop, blocked, attestation[], session[], outsideTest}`. */
-export function readGuard(runDir, nonce, executed) {
+/**
+ * Guard findings from the run's log: `{stop, blocked, attestation[], session[], outsideTest}`.
+ * `ran` = the cases whose fixtures ran (a case skipped at declaration never installs the guard).
+ */
+export function readGuard(runDir, nonce, ran) {
   const ledger = createLedger(runDir, { nonce });
   const events = ledger.events();
-  let stop = null;
-  try { stop = JSON.parse(fs.readFileSync(path.join(runDir, 'stop.json'), 'utf8')); } catch { stop = fs.existsSync(path.join(runDir, 'stop.json')) ? { reason: 'stop marker unreadable' } : null; }
+  let stop = ledger.stopInfo();
   if (stop && stop.nonce !== undefined && stop.nonce !== nonce) stop = { reason: 'stop marker from another run' };
   const installed = events.filter((e) => e.kind === 'installed');
   const testCase = new Map(installed.map((e) => [e.test, { id: e.id, project: e.project }]));
   const blocked = events.filter((e) => e.kind === 'blocked');
-  const attestation = executed.filter((c) => !installed.some((e) => e.id === c.id && e.project === c.project)).map((c) => `guard not attested for ${c.id}/${c.project}`);
+  const attestation = ran.filter((c) => !installed.some((e) => e.id === c.id && e.project === c.project)).map((c) => `guard not attested for ${c.id}/${c.project}`);
   const session = [];
   events.forEach((e, i) => {
     if (e.kind !== 'session-start') return;
-    if (!events.slice(i + 1).some((s) => s.kind === 'session' && s.account === e.account)) session.push(`session not guard-attested for ${e.account}`);
+    // `session-failed`: the adapter itself failed — the test fails (RED), it is no attestation gap.
+    if (!events.slice(i + 1).some((s) => (s.kind === 'session' || s.kind === 'session-failed') && s.account === e.account)) session.push(`session not guard-attested for ${e.account}`);
   });
   const budget = events.filter((e) => e.kind === 'budget').reduce((acc, e) => {
     acc.reserved = Math.max(acc.reserved, e.reserved ?? 0);
@@ -297,6 +325,18 @@ export function readGuard(runDir, nonce, executed) {
     stop, blocked, testCase, attestation: [...new Set(attestation)], session: [...new Set(session)], budget,
     attested: installed.length > 0, outsideTest: blocked.some((e) => e.test === null || e.test === undefined),
   };
+}
+
+/** The cases whose fixtures ran: everything the report holds except a missing or skipped case. */
+export const casesRan = (cls) => cls.cases.filter((c) => c.result !== 'missing' && c.result !== 'skipped').map(({ id, project }) => ({ id, project }));
+
+/** A request the guard aborted fails the test it happened in, whatever the report says. */
+export function failBlockedCases(cls, guard) {
+  for (const e of guard.blocked) {
+    const tc = guard.testCase.get(e.test);
+    if (!tc) continue;
+    for (const c of cls.cases) if (c.id === tc.id && c.project === tc.project && c.result === 'passed') c.result = 'failed';
+  }
 }
 
 /** Verdict by precedence BLOCKED/ENV > RED > INCOMPLETE > GREEN; GREEN only when every condition holds. */
@@ -375,6 +415,54 @@ function printPlanSummary(plan) {
   for (const n of plan.no_device) console.log(`not run — no device: ${n.id} (${n.device})`);
 }
 
+/**
+ * Production, before any lock or traffic: refuse a runner that is not guard-integrated, then the
+ * two-phase confirmation. `{confirmed: true}` to go on, `{exit: 3}` to stop (a fresh token printed).
+ */
+function confirmProduction(root, plan, findings, token) {
+  if (findings.length) {
+    for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
+    return { exit: 3 };
+  }
+  const why = token ? consumeToken(root, plan, token) : null;
+  if (token && !why) return { confirmed: true };
+  if (why) console.error(`confirmation invalid: ${why}`);
+  else printPlanSummary(plan);
+  console.log(confirmationText(plan));
+  console.log(`confirmation-required: ${issueToken(root, plan)}`);
+  return { exit: 3 };
+}
+
+/** The run record (regression.md §12): digests, devices, results and guard facts — never model output. */
+function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, runner, cls, guard, v }) {
+  const count = (r) => cls.cases.filter((c) => c.result === r).length;
+  return {
+    schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
+    started_at: startedAt, ended_at: new Date().toISOString(), head_sha: headSha(root),
+    build_sha: build.before.sha, build_sha_after: build.after.sha, build_sha_source: build.before.source,
+    runner_exit: runner.code, runner_signal: runner.signal ?? null, report_errors: cls.report_errors,
+    digests: plan.digests, devices: [...new Set(plan.cases.map((c) => c.project))], command: plan.cases.length ? command : null,
+    versions: { node: process.version, runner: cls.runner_version }, confirmed,
+    cases: cls.cases.map(({ id, project, result, duration_ms }) => ({ id, project, result, duration_ms })),
+    orphans: cls.orphans, outside_selection: cls.outside_selection,
+    not_run_policy: plan.excluded, no_device: plan.no_device,
+    guard: {
+      attested: guard.attested,
+      blocked: guard.blocked.map(({ reason, method, url, op, test }) => ({ reason, method, url, op, test: test ?? null })),
+      budget: { ceiling: plan.budget.ceiling, reserved: guard.budget.reserved, by_op: guard.budget.by_op },
+      stop: guard.stop ? { reason: guard.stop.reason, url: guard.stop.url ?? null } : null,
+    },
+    counts: {
+      selected: plan.cases.length, executed: cls.executed.length, passed: count('passed'), failed: count('failed'),
+      skipped: count('skipped'), flaky: count('flaky'), duplicated: count('duplicated'), interrupted: count('interrupted'),
+      missing: count('missing'), invalid: count('invalid'), orphans: cls.orphans.length, outside_selection: cls.outside_selection.length,
+      not_run_policy: plan.excluded.length, no_device: plan.no_device.length, ...plan.counted,
+    },
+    consent: plan.policy.consent.cookies.length ? plan.policy.consent.strategy : 'not applied',
+    verdict: v.verdict, reasons: v.reasons, warnings: v.warnings, exit: v.exit,
+  };
+}
+
 async function cmdRun(args) {
   const root = path.resolve(args.root);
   const loaded = loadConfig(root);
@@ -392,38 +480,19 @@ async function cmdRun(args) {
     console.log(`environments: ${target.names.join(', ') || '(none)'}`);
     return 2;
   }
-  const settings = catalogSettings(cfg);
-  const blocks = parseCatalog(root, catalogFiles(root, settings));
-  const catalogErrors = validateCatalog(blocks, settings);
-  if (catalogErrors.length) {
-    for (const e of catalogErrors) console.error(`${e.file}:${e.line}: ${e.message}`);
+  const plan = buildPlan(root, cfg, target.name, args.mode);
+  if (plan.catalog_errors) {
+    for (const e of plan.catalog_errors) console.error(`${e.file}:${e.line}: ${e.message}`);
     console.error('run: the catalog is invalid — refusing to run');
     return 2;
   }
-  const plan = buildPlan(root, cfg, target.name, args.mode);
   if (plan.error) { console.error(`run: ${plan.error}`); return 2; }
 
-  // Production: pre-flight, then the two-phase confirmation — both before any lock or traffic.
   const findings = checkIntegration(root, cfg, plan);
   let confirmed = false;
   if (plan.kind === 'production') {
-    if (findings.length) {
-      for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
-      return 3;
-    }
-    if (!args.confirm) {
-      printPlanSummary(plan);
-      console.log(confirmationText(plan));
-      console.log(`confirmation-required: ${issueToken(root, plan)}`);
-      return 3;
-    }
-    const why = consumeToken(root, plan, args.confirm);
-    if (why) {
-      console.error(`confirmation invalid: ${why}`);
-      console.log(confirmationText(plan));
-      console.log(`confirmation-required: ${issueToken(root, plan)}`);
-      return 3;
-    }
+    const c = confirmProduction(root, plan, findings, args.confirm);
+    if (c.exit !== undefined) return c.exit;
     confirmed = true;
   } else {
     for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
@@ -466,42 +535,12 @@ async function cmdRun(args) {
     }
     const after = plan.cases.length ? await fetchBuildSha(root, cfg, plan.env, plan.policy) : before;
 
-    const catalogIds = new Set(blocks.map((b) => b.id));
-    const cls = classifyReport(report, plan, { idPattern: settings.id_pattern, catalogIds, root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
-    const guard = readGuard(dir, nonce, cls.executed);
-    // A request the guard aborted fails the test it happened in, whatever the report says.
-    for (const e of guard.blocked) {
-      const tc = guard.testCase.get(e.test);
-      if (!tc) continue;
-      for (const c of cls.cases) if (c.id === tc.id && c.project === tc.project && c.result === 'passed') c.result = 'failed';
-    }
+    const settings = catalogSettings(cfg);
+    const cls = classifyReport(report, plan, { idPattern: settings.id_pattern, catalogIds: new Set(plan.catalog_ids), root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
+    const guard = readGuard(dir, nonce, casesRan(cls));
+    failBlockedCases(cls, guard);
     const v = decideVerdict({ kind: plan.kind, cls, guard, runnerExit: runner.code, signal: runner.signal, plan, build: { before, after } });
-    const count = (r) => cls.cases.filter((c) => c.result === r).length;
-    const record = {
-      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
-      started_at: startedAt, ended_at: new Date().toISOString(), head_sha: headSha(root),
-      build_sha: before.sha, build_sha_after: after.sha, build_sha_source: before.source,
-      runner_exit: runner.code, runner_signal: runner.signal ?? null, report_errors: cls.report_errors,
-      digests: plan.digests, devices: [...new Set(plan.cases.map((c) => c.project))], command: plan.cases.length ? command : null,
-      versions: { node: process.version, runner: cls.runner_version }, confirmed,
-      cases: cls.cases.map(({ id, project, result, duration_ms }) => ({ id, project, result, duration_ms })),
-      orphans: cls.orphans, outside_selection: cls.outside_selection,
-      not_run_policy: plan.excluded, no_device: plan.no_device,
-      guard: {
-        attested: guard.attested,
-        blocked: guard.blocked.map(({ reason, method, url, op, test }) => ({ reason, method, url, op, test: test ?? null })),
-        budget: { ceiling: plan.budget.ceiling, reserved: guard.budget.reserved, by_op: guard.budget.by_op },
-        stop: guard.stop ? { reason: guard.stop.reason, url: guard.stop.url ?? null } : null,
-      },
-      counts: {
-        selected: plan.cases.length, executed: cls.executed.length, passed: count('passed'), failed: count('failed'),
-        skipped: count('skipped'), flaky: count('flaky'), duplicated: count('duplicated'), interrupted: count('interrupted'),
-        missing: count('missing'), invalid: count('invalid'), orphans: cls.orphans.length, outside_selection: cls.outside_selection.length,
-        not_run_policy: plan.excluded.length, no_device: plan.no_device.length, ...plan.counted,
-      },
-      consent: plan.policy.consent.cookies.length ? plan.policy.consent.strategy : 'not applied',
-      verdict: v.verdict, reasons: v.reasons, warnings: v.warnings, exit: v.exit,
-    };
+    const record = buildRecord({ root, plan, runId, startedAt, command, confirmed, build: { before, after }, runner, cls, guard, v });
     const recordFile = path.join(dir, 'record.json');
     fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
     for (const w of v.warnings) console.log(`warning: ${w}`);

@@ -1,7 +1,7 @@
 // The request guard of a regression run: one module the runner config and the fixture import
 // (so a guard fix reaches every project through sync; the copied templates only wire it).
 // Pure decisions (`decide`, `classifyResponse`), a file ledger in the run directory (guard.jsonl
-// events, stop.json, budget.json under an owner lock), `installGuard` over duck-typed Playwright
+// events, stop.json, budget.json and pace.json under owner locks), `installGuard` over duck-typed Playwright
 // objects (context routing with a per-hop redirect walk, WebSocket blocking on production, the
 // guarded APIRequestContext), `guardedFetch` for a session adapter's plain HTTP, `runnerOptions`
 // for the config, `stopRun`. No `@playwright/test` import: Playwright objects arrive as arguments.
@@ -18,7 +18,8 @@ const MAX_HOPS = 10;
 const GUARDED = Symbol.for('regression.guard.installed');
 const SLEEPER = new Int32Array(new SharedArrayBuffer(4));
 const CONTROL_WAIT_MS = 30000;
-const BUDGET_WAIT_MS = 30000;
+const LEDGER_LOCK_WAIT_MS = 30000;
+const TITLE_SEP = ' — ';
 
 export class LockError extends Error {}
 
@@ -40,6 +41,9 @@ export function loadRunManifest(file = process.env.REGRESSION_RUN) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** The scenario id of a test title `<ID> — <title>` (the text before the separator), or null. */
+export const scenarioId = (title) => (typeof title === 'string' && title.includes(TITLE_SEP) ? title.split(TITLE_SEP)[0].trim() : null);
+
 /** Config-side options: workers, a per-project grep of the selected ids, service workers blocked, slowMo. */
 export function runnerOptions(manifest) {
   const selection = Array.isArray(manifest.selection) ? manifest.selection : [];
@@ -48,7 +52,8 @@ export function runnerOptions(manifest) {
     grepFor(projectName) {
       const ids = [...new Set(selection.filter((c) => c.project === projectName).map((c) => c.id))];
       // A project with no selected case matches nothing: a desktop-only scenario never runs on mobile.
-      return ids.length ? new RegExp(`(^|\\s)(${ids.map(escapeRe).join('|')}) — `) : /$^/;
+      // `(?!)` fails on every input — `/$^/` would still match an empty string.
+      return ids.length ? new RegExp(`(^|\\s)(${ids.map(escapeRe).join('|')})${TITLE_SEP}`) : /(?!)/;
     },
     use: { serviceWorkers: 'block', launchOptions: { slowMo: manifest.pacing?.action_delay_ms ?? 0 } },
   };
@@ -64,10 +69,8 @@ const anchored = (s) => new RegExp(`^(?:${s})$`, 's');
 export function compilePolicy(manifest) {
   const g = manifest.policy ?? {};
   const stop = g.stop ?? {};
-  const kind = manifest.kind ?? 'production';
   return {
-    kind,
-    production: kind === 'production',
+    production: (manifest.kind ?? 'production') === 'production',
     hosts: (g.hosts ?? []).map((h) => h.toLowerCase()),
     header: g.header ?? null,
     operations: Object.entries(g.operations ?? {}).map(([name, o]) => ({
@@ -158,7 +161,7 @@ function pidAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
 }
 
-function groupAlive(pgid) {
+export function groupAlive(pgid) {
   if (!Number.isInteger(pgid) || pgid <= 0) return false;
   try { process.kill(-pgid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
 }
@@ -277,7 +280,6 @@ let currentTest = null;
 /** Set by the automatic fixture: every event until `clearCurrentTest()` carries this test. */
 export function setCurrentTest(t) { currentTest = t ? { testId: t.testId, id: t.id ?? null, project: t.project ?? null } : null; }
 export function clearCurrentTest() { currentTest = null; }
-export const getCurrentTest = () => currentTest;
 
 /** origin + path: query and fragment never reach the log. */
 export function reduceUrl(url) {
@@ -289,7 +291,25 @@ export function createLedger(runDir, { nonce = null, workerTag = `${process.pid}
   const log = path.join(runDir, 'guard.jsonl');
   const stopFile = path.join(runDir, 'stop.json');
   const budgetFile = path.join(runDir, 'budget.json');
-  const budgetLock = path.join(runDir, 'budget.lock');
+  const paceFile = path.join(runDir, 'pace.json');
+  // Run `fn` holding the run-wide owner lock `<runDir>/<name>.lock` (shared by every worker);
+  // null when the lock cannot be taken — the run is then stopped, never left unguarded.
+  const underLock = (name, fn) => {
+    const lock = ownerLock(path.join(runDir, `${name}.lock`), { pid: process.pid, worker: workerTag });
+    const deadline = Date.now() + LEDGER_LOCK_WAIT_MS;
+    for (;;) {
+      let got;
+      try { got = lock.acquire(); } catch (err) {
+        ledger.stop(err instanceof LockError ? err.message : `${name} lock failed: ${err.message}`);
+        return null;
+      }
+      if (got.ok) break;
+      if (got.unreadable) { ledger.stop(`${name} ledger unreadable`); return null; }
+      if (Date.now() > deadline) { ledger.stop(`${name} lock timeout`); return null; }
+      sleepSync(5);
+    }
+    try { return fn(); } finally { lock.release(); }
+  };
   const ledger = {
     runDir, nonce, workerTag,
     record(event) {
@@ -299,26 +319,18 @@ export function createLedger(runDir, { nonce = null, workerTag = `${process.pid}
       return e;
     },
     stopped() { return fs.existsSync(stopFile); },
+    /** The first stop marker, `{reason: 'stop marker unreadable'}` when it does not parse, or null. */
+    stopInfo() {
+      if (!fs.existsSync(stopFile)) return null;
+      return readJson(stopFile) ?? { reason: 'stop marker unreadable' };
+    },
     stop(reason, url = null) {
       const first = { t: new Date().toISOString(), nonce, reason, url: url ? reduceUrl(url) : null, worker: workerTag };
       try { fs.writeFileSync(stopFile, `${JSON.stringify(first)}\n`, { flag: 'wx' }); } catch (err) { if (err.code !== 'EEXIST') throw err; }
       ledger.record({ kind: 'stop', reason, url });
     },
     reserve(op, cost, ceiling) {
-      const lock = ownerLock(budgetLock, { pid: process.pid, worker: workerTag });
-      const deadline = Date.now() + BUDGET_WAIT_MS;
-      for (;;) {
-        let got;
-        try { got = lock.acquire(); } catch (err) {
-          ledger.stop(err instanceof LockError ? err.message : `budget lock failed: ${err.message}`);
-          return { ok: false, reason: 'stopped' };
-        }
-        if (got.ok) break;
-        if (got.unreadable) { ledger.stop('budget ledger unreadable'); return { ok: false, reason: 'stopped' }; }
-        if (Date.now() > deadline) { ledger.stop('budget lock timeout'); return { ok: false, reason: 'stopped' }; }
-        sleepSync(5);
-      }
-      try {
+      const r = underLock('budget', () => {
         let state = { reserved: 0, by_op: {} };
         if (fs.existsSync(budgetFile)) {
           state = readJson(budgetFile);
@@ -333,9 +345,17 @@ export function createLedger(runDir, { nonce = null, workerTag = `${process.pid}
         writeAtomic(budgetFile, state);
         ledger.record({ kind: 'budget', op, cost, reserved: state.reserved, test: currentTest?.testId ?? null });
         return { ok: true, reserved: state.reserved };
-      } finally {
-        lock.release();
-      }
+      });
+      return r ?? { ok: false, reason: 'stopped' };
+    },
+    /** The send time (epoch ms) of the next request under the run's `requests_per_minute`, or null when stopped. */
+    paceSlot(intervalMs) {
+      return underLock('pace', () => {
+        const now = Date.now();
+        const at = Math.max(now, readJson(paceFile)?.next ?? 0);
+        writeAtomic(paceFile, { next: at + intervalMs });
+        return at;
+      });
     },
     attest(fields) { return ledger.record({ kind: 'installed', ...fields }); },
     events() {
@@ -368,16 +388,16 @@ export function attestSession(manifest, account) {
 // ---------------------------------------------------------------------------------------------
 // The hop walk (shared by context routing, the guarded APIRequestContext and guardedFetch)
 
-/** A per-guard throttle: `requests_per_minute` enforced by delaying, never by dropping. */
-function makeThrottle(rpm) {
-  let next = 0;
+/**
+ * The run's throttle: `requests_per_minute` enforced by delaying, never by dropping. The next slot
+ * lives in the run directory, so every worker, context and adapter call shares one ceiling.
+ */
+function makeThrottle(ledger, rpm) {
   return async () => {
     if (!(rpm > 0)) return;
-    const interval = 60000 / rpm;
-    const now = Date.now();
-    const at = Math.max(now, next);
-    next = at + interval;
-    await sleep(at - now);
+    const at = ledger.paceSlot(60000 / rpm);
+    // null = the pace lock failed and the run is stopped: the caller re-checks the stop next.
+    if (at !== null) await sleep(at - Date.now());
   };
 }
 
@@ -450,13 +470,13 @@ async function walk(g, first, send) {
 }
 
 function guardState(manifest) {
-  return { manifest, policy: compilePolicy(manifest), ledger: ledgerFor(manifest), throttle: makeThrottle(manifest.pacing?.requests_per_minute ?? 0) };
+  const policy = compilePolicy(manifest);
+  const ledger = ledgerFor(manifest);
+  return { policy, ledger, throttle: makeThrottle(ledger, policy.rpm) };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Playwright wiring (duck-typed)
-
-const scenarioId = (title) => (typeof title === 'string' && title.includes(' — ') ? title.split(' — ')[0].trim() : null);
 
 function attestCase(g, context, testInfo) {
   const t = testInfo ? { testId: testInfo.testId, id: scenarioId(testInfo.title), project: testInfo.project?.name ?? null } : currentTest;
@@ -510,29 +530,27 @@ function webSocketHandler(g) {
  * close WebSockets on production (no `routeWebSocket` there → the run stops), replace
  * `context.request` with the guarded client. Idempotent; attests the current test once per context.
  */
-export function installGuard(context, manifest, { testInfo } = {}) {
-  return (async () => {
-    if (context[GUARDED]) {
-      attestCase(context[GUARDED].g, context, testInfo);
-      return context;
-    }
-    const g = guardState(manifest);
-    if (g.ledger.stopped()) throw new Error('regression guard: the run is stopped');
-    if (g.policy.production && typeof context.routeWebSocket !== 'function') {
-      g.ledger.stop('websocket routing unavailable');
-      throw new Error('regression guard: websocket routing unavailable — production is refused rather than run unguarded');
-    }
-    const raw = context.request;
-    Object.defineProperty(context, GUARDED, { value: { g }, enumerable: false, configurable: true });
-    if (typeof context.routeWebSocket === 'function') await context.routeWebSocket(/.*/, webSocketHandler(g));
-    await context.route('**/*', (route) => routeHandler(g, raw, route));
-    if (raw) {
-      const guarded = guardRequestContext(raw, manifest, { state: g });
-      Object.defineProperty(context, 'request', { value: guarded, configurable: true, writable: true });
-    }
-    attestCase(g, context, testInfo);
+export async function installGuard(context, manifest, { testInfo } = {}) {
+  if (context[GUARDED]) {
+    attestCase(context[GUARDED].g, context, testInfo);
     return context;
-  })();
+  }
+  const g = guardState(manifest);
+  if (g.ledger.stopped()) throw new Error('regression guard: the run is stopped');
+  if (g.policy.production && typeof context.routeWebSocket !== 'function') {
+    g.ledger.stop('websocket routing unavailable');
+    throw new Error('regression guard: websocket routing unavailable — production is refused rather than run unguarded');
+  }
+  const raw = context.request;
+  Object.defineProperty(context, GUARDED, { value: { g }, enumerable: false, configurable: true });
+  if (typeof context.routeWebSocket === 'function') await context.routeWebSocket(/.*/, webSocketHandler(g));
+  await context.route('**/*', (route) => routeHandler(g, raw, route));
+  if (raw) {
+    const guarded = guardRequestContext(raw, manifest, { state: g });
+    Object.defineProperty(context, 'request', { value: guarded, configurable: true, writable: true });
+  }
+  attestCase(g, context, testInfo);
+  return context;
 }
 
 /** The only way a session adapter (or the fixture's wrapper) creates a context. */
@@ -542,12 +560,18 @@ export async function newGuardedContext(browser, manifest, options = {}) {
   return context;
 }
 
-function requestBody(opts) {
+/** The body the guard judges and sends; a request it cannot judge byte for byte is refused, never altered. */
+function requestBody(opts, request) {
+  if (opts.multipart !== undefined) throw new Error('regression guard: multipart unsupported — send data or form');
   if (opts.data !== undefined) return { body: opts.data, extra: {} };
   if (opts.form !== undefined) {
-    const body = new URLSearchParams(Object.entries(opts.form).map(([k, v]) => [k, String(v)])).toString();
+    const entries = typeof opts.form.entries === 'function' ? [...opts.form.entries()] : Object.entries(opts.form);
+    if (entries.some(([, v]) => v !== null && typeof v === 'object')) throw new Error('regression guard: a form with files is unsupported — send data');
+    const body = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
     return { body, extra: { 'content-type': 'application/x-www-form-urlencoded' } };
   }
+  // fetch(request): a captured Playwright Request replays with its own body, as Playwright's does.
+  if (request) return { body: request.postDataBuffer?.() ?? undefined, extra: {} };
   return { body: undefined, extra: {} };
 }
 
@@ -558,16 +582,17 @@ function requestBody(opts) {
 export function guardRequestContext(api, manifest, { state } = {}) {
   const g = state ?? guardState(manifest);
   const call = async (method, urlOrRequest, opts = {}) => {
-    const rawUrl = typeof urlOrRequest === 'string' ? urlOrRequest : urlOrRequest?.url?.();
-    let url = new URL(rawUrl, manifest.base_url).href;
+    const request = typeof urlOrRequest === 'string' ? null : urlOrRequest;
+    let url = new URL(request ? request.url() : urlOrRequest, manifest.base_url).href;
     if (opts.params) {
       const u = new URL(url);
       for (const [k, v] of Object.entries(opts.params)) u.searchParams.set(k, String(v));
       url = u.href;
     }
-    const { body, extra } = requestBody(opts);
+    const { body, extra } = requestBody(opts, request);
     const m = (opts.method ?? method).toUpperCase();
-    const result = await walk(g, { method: m, url, body, headers: { ...extra, ...(opts.headers ?? {}) } }, (hop, headers) => api.fetch(hop.url, {
+    const base = request?.headers?.() ?? {};
+    const result = await walk(g, { method: m, url, body, headers: { ...base, ...extra, ...(opts.headers ?? {}) } }, (hop, headers) => api.fetch(hop.url, {
       method: hop.method, data: hop.body ?? undefined, headers, maxRedirects: 0, maxRetries: 0, failOnStatusCode: false,
       ...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),
     }));
@@ -577,7 +602,7 @@ export function guardRequestContext(api, manifest, { state } = {}) {
     return result.response;
   };
   const wrapper = {
-    fetch: (u, o = {}) => call(o.method ?? 'GET', u, o),
+    fetch: (u, o = {}) => call(o.method ?? (typeof u === 'string' ? 'GET' : u.method()), u, o),
     get: (u, o) => call('GET', u, o),
     post: (u, o) => call('POST', u, o),
     put: (u, o) => call('PUT', u, o),

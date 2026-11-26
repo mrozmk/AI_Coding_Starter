@@ -37,8 +37,9 @@ allowlist, budget and stops (a sign-in counts in the budget):
   calls `attestSession(manifest, account)` (`manifest = loadRunManifest()`), which writes the
   `session` attestation for the account.
 
-The fixture logs a `session-start` before it calls `session` and, on production, requires the
-attestation once `session` returns; `run.mjs` requires one after every `session-start`. Without it
+The fixture logs a `session-start` before it calls `session` (a `session-failed` when the adapter
+exits non-zero — that test fails, `RED`) and, on production, requires the attestation once `session`
+returns; `run.mjs` requires one after every `session-start` not followed by `session-failed`. Without it
 the run stops `BLOCKED/ENV` (`session not guard-attested for <account>`) — regression.md §11. On a
 test environment a missing attestation is a recorded warning.
 

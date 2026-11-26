@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey,
 } from './config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec } from './catalog.mjs';
+import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf } from './catalog.mjs';
 
 export const MODES = ['smoke', 'full'];
 const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
@@ -39,8 +39,6 @@ export function canonicalJson(value) {
 }
 
 export const digestJson = (value) => sha256(canonicalJson(value));
-
-const statusOf = (b) => /^(READY|BLOCKED|DROPPED)\b/.exec(b.fields.Status?.value ?? '')?.[1] ?? null;
 
 /** `floor(budget × max over costed ops of (backend_calls / cost))` — 0 without a budget or a bound. */
 export function worstCaseBackendCalls(budget, operations) {
@@ -92,7 +90,8 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
   const counted = { ready_without_spec: 0, blocked: 0, dropped: 0 };
   const smoke = new Set(settings.smoke);
   for (const b of blocks) {
-    const status = statusOf(b);
+    // A validated catalog: every block's Status parses.
+    const [, status] = statusOf(b);
     if (status === 'BLOCKED') { counted.blocked += 1; continue; }
     if (status === 'DROPPED') { counted.dropped += 1; continue; }
     const spec = parseSpec(b.fields.Spec?.value ?? '—', b.id);
@@ -119,6 +118,7 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
     env: envName, kind: policy.kind, base_url: base.url, mode,
     cases, scenarios: [...new Set(cases.map((c) => c.id))].length,
     excluded, no_device: noDevice, counted, budget, digests, policy,
+    catalog_ids: blocks.map((b) => b.id),
   };
 }
 

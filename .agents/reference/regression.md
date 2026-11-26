@@ -218,7 +218,7 @@ the production-safe default:
 | `writes` | `refuse` \| `declared` \| `allowed` | `refuse` |
 | `workers` | runner workers (positive integer) | `1` |
 | `means` | the safe means the environment provides (`Needs` keys: `account:<key>`, `payment:sandbox`, …) | `[]` |
-| `pacing` | `{action_delay_ms, requests_per_minute}` — `slowMo` and a request ceiling enforced by delaying | `{0, 0}` (none) |
+| `pacing` | `{action_delay_ms, requests_per_minute}` — `slowMo` and a request ceiling for the whole run (every worker shares it, `pace.json` in the run directory) enforced by delaying | `{0, 0}` (none) |
 | `guard.hosts` | allowlist: exact hostnames or `*.domain` (subdomains only) | the environment's own host |
 | `guard.header` | `{name, value}` added to every request the guard sends | none |
 | `guard.operations.<name>` | a named request: `method`, `url` regex, optional `body` regex (matched against the **whole** payload), optional `cost` (> 0) and `backend_calls` (integer ≥ 1) | `{}` |
@@ -260,7 +260,9 @@ fixtures only wire it, so a guard fix reaches every project through sync. The fi
 **every browser context before its first navigation** — the test's `context`, any context a test
 creates through `browser.newContext`, and Playwright's `request` fixture / `context.request` (which
 context routing does not see). Service workers are blocked (they would bypass routing); the config
-takes workers, the per-project selection `grep` and `slowMo` from the run manifest.
+takes workers, the per-project selection `grep` and `slowMo` from the run manifest. A guarded
+`request` call with `multipart` (or a `form` carrying files) is refused — the guard judges only the
+bytes it sends; `fetch(request)` replays a captured request with its method, headers and body.
 
 **Per hop.** The original request is hop 1, each redirect target the next, up to 10 hops (more →
 abort, `redirect chain too long`). For each hop, **before it is sent**:
@@ -298,7 +300,9 @@ socket to a host off the allowlist is closed, one to an allowed host connects.
 project) carrying the run's nonce; on production every executed case needs its own, else the run is
 `BLOCKED/ENV` (`guard not attested for <id>/<project>`). Every account a test signs in needs a
 `session` attestation from the adapter (regression-test-data.md), else `BLOCKED/ENV` (`session not
-guard-attested for <account>`). On a test environment both are recorded warnings.
+guard-attested for <account>`). On a test environment both are recorded warnings. A case skipped at
+declaration (`test.skip()`) never runs its fixtures and needs no `installed` event; an adapter that
+fails is logged `session-failed` by the fixture and fails its test (`RED`), not the attestation.
 
 **Pre-flight (production).** Before the lock, the confirmation or any traffic, `run.mjs` refuses
 (exit 3, `runner not guard-integrated — <file>: <reason>`) unless `runner.config` imports

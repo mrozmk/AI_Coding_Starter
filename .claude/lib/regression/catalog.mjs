@@ -43,7 +43,7 @@ const posix = (p) => p.split(path.sep).join('/');
 // A single-value field wrapped onto continuation lines reads as one line (the header copies it on one).
 const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
 /** `[match, status, ref]` of a block's Status, `[]` when it does not parse. */
-const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
+export const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
 const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
 
 /** Catalog files: `*.md` directly in `settings.path`, README.md excluded, sorted, repo-relative. */

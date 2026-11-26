@@ -540,3 +540,34 @@ test('guarded context blocks service workers', async () => {
   assert.equal(captured.locale, 'en-GB');
   assert.equal(ctx.routes.length, 1, 'the guard is installed');
 });
+
+test('requests per minute is one ceiling for every guard of the run', async () => {
+  const m = manifest({ rpm: 600 }); // one slot per 100 ms
+  const api = { fetch: (url, opts) => nodeFetch(url, { method: opts.method, body: opts.data, headers: opts.headers }) };
+  const first = guardRequestContext(api, m);
+  const second = guardRequestContext(api, m); // another worker's or fixture's guard on the same run
+  const t0 = Date.now();
+  await first.get(`${A}/ok`);
+  await second.get(`${A}/ok`);
+  await second.get(`${A}/ok`);
+  assert.ok(Date.now() - t0 >= 190, `three requests take three slots across guards (${Date.now() - t0} ms)`);
+  assert.ok(fs.existsSync(path.join(m.run_dir, 'pace.json')), 'the next slot lives in the run directory');
+});
+
+test('refuses multipart and replays a captured request whole', async () => {
+  const m = manifest({ kind: 'test' });
+  const calls = [];
+  const api = { fetch: (url, opts) => { calls.push({ url, ...opts }); return nodeFetch(url, { method: opts.method, body: opts.data, headers: opts.headers }); } };
+  const wrapped = guardRequestContext(api, m);
+  await assert.rejects(wrapped.post(`${A}/sink`, { multipart: { file: { name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('x') } } }), /multipart unsupported/);
+  const form = new FormData();
+  form.append('file', new Blob(['x']), 'a.txt');
+  await assert.rejects(wrapped.post(`${A}/sink`, { form }), /form with files is unsupported/);
+  assert.equal(calls.length, 0, 'nothing was sent');
+  const captured = fakeRequest({ method: 'POST', url: `${A}/sink`, postData: 'q=1', headers: { 'x-trace': 't1' } });
+  await wrapped.fetch(captured);
+  const hit = hitsOf('/sink').at(-1);
+  assert.equal(hit.method, 'POST', 'the captured method');
+  assert.equal(hit.body, 'q=1', 'the captured body');
+  assert.equal(hit.headers['x-trace'], 't1', 'the captured headers');
+});

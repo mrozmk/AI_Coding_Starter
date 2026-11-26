@@ -13,7 +13,8 @@ import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import {
-  loadRunManifest, installGuard, guardRequestContext, createLedger, setCurrentTest, clearCurrentTest, stopRun,
+  loadRunManifest, installGuard, newGuardedContext, guardRequestContext, createLedger, setCurrentTest, clearCurrentTest,
+  stopRun, scenarioId,
 } from '<guard-module-relative>';
 
 const SESSION_COMMAND: string[] = <session-command>;
@@ -28,7 +29,7 @@ export const test = base.extend<{ account: string | null; regressionGuard: void 
   // selection, attributes every guard event to the test, and fails the test after it when the guard
   // aborted one of its requests (a test that swallowed the aborted request cannot pass).
   regressionGuard: [async ({}, use, testInfo) => {
-    const id = testInfo.title.split(' — ')[0].trim();
+    const id = scenarioId(testInfo.title);
     const project = testInfo.project.name;
     const spec = repoRelative(testInfo.file);
     if (!manifest.selection.some((c: { id: string; project: string; spec: string }) => c.id === id && c.project === project && c.spec === spec)) {
@@ -50,11 +51,7 @@ export const test = base.extend<{ account: string | null; regressionGuard: void 
   // A context a test creates itself is guarded too (and never runs service workers).
   browser: [async ({ browser }, use) => {
     const newContext = browser.newContext.bind(browser);
-    browser.newContext = async (options = {}) => {
-      const context = await newContext({ ...options, serviceWorkers: 'block' });
-      await installGuard(context, manifest);
-      return context;
-    };
+    browser.newContext = (options = {}) => newGuardedContext({ newContext }, manifest, options);
     await use(browser);
   }, { scope: 'worker' }],
 
@@ -67,7 +64,14 @@ export const test = base.extend<{ account: string | null; regressionGuard: void 
     if (!env) throw new Error('REGRESSION_ENV is not set');
     const [program, ...args] = SESSION_COMMAND;
     ledger.record({ kind: 'session-start', account });
-    const file = execFileSync(program, [...args, env, account], { encoding: 'utf8', env: process.env }).trim();
+    let file: string;
+    try {
+      file = execFileSync(program, [...args, env, account], { encoding: 'utf8', env: process.env }).trim();
+    } catch (err) {
+      // A sign-in that fails on the deployed build fails this test (RED), not the run's attestation.
+      ledger.record({ kind: 'session-failed', account });
+      throw err;
+    }
     if (manifest.kind === 'production' && !ledger.events().some((e: { kind: string; account?: string }) => e.kind === 'session' && e.account === account)) {
       stopRun(`session not guard-attested for ${account}`, manifest);
       throw new Error(`session not guard-attested for ${account}`);

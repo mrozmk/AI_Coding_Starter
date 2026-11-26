@@ -523,6 +523,20 @@ test('pre-flight rejects an old fixture or a spec importing the base test', asyn
   assert.match(r4.stderr, /sets extraHTTPHeaders/);
 });
 
+test('pre-flight sees a forbidden key between route globs', async () => {
+  const root = copyRoot();
+  fs.appendFileSync(path.join(root, 'e2e/regression/pdp.spec.ts'),
+    "test.beforeEach(async ({ page }) => { await page.route('**/*.png', (r) => r.abort()); });\ntest.use({ extraHTTPHeaders: { authorization: 'x' } });\ntest.afterEach(async ({ page }) => { await page.unroute('**/*.css'); });\n");
+  const r = await cli(['run', '--env', 'prod', '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stderr, /pdp\.spec\.ts: sets extraHTTPHeaders/);
+  const glob = copyRoot();
+  const config = path.join(glob, 'e2e/playwright.config.ts');
+  fs.writeFileSync(config, `const assets = '**/*.png';\n${fs.readFileSync(config, 'utf8')}\nconst styles = '**/*.css';\n`);
+  const g = await cli(['run', '--env', 'prod', '--root', glob]);
+  assert.match(g.stdout, /^confirmation-required: /m, `a glob before the import does not hide it: ${g.out}`);
+});
+
 test('production run without case attestation is blocked', async () => {
   const root = copyRoot();
   knownBuild(root, 'prod');
@@ -531,6 +545,26 @@ test('production run without case attestation is blocked', async () => {
   assert.equal(r.status, 5, r.out);
   assert.match(r.stdout, /^reason: guard not attested for CART-001\/desktop-chrome$/m);
   assert.match(r.stdout, /^verdict: BLOCKED\/ENV$/m);
+});
+
+test('a skipped case needs no attestation on production', async () => {
+  const root = copyRoot();
+  knownBuild(root, 'prod');
+  useRunner(root, 'skipped-prod attest-skip-first 0');
+  const r = await prodRun(root);
+  assert.equal(r.status, 4, r.out);
+  assert.match(r.stdout, /^reason: skipped: CART-001\/desktop-chrome$/m);
+  assert.doesNotMatch(r.stdout, /guard not attested/);
+  assert.match(r.stdout, /^verdict: INCOMPLETE$/m);
+});
+
+test('a failed sign-in is no session attestation gap', async () => {
+  const root = copyRoot();
+  knownBuild(root, 'prod');
+  useRunner(root, 'green-prod session-failed 0');
+  const r = await prodRun(root);
+  assert.doesNotMatch(r.stdout, /session not guard-attested/, r.out);
+  assert.doesNotMatch(r.stdout, /^verdict: BLOCKED\/ENV$/m);
 });
 
 test('production run without session attestation is blocked', async () => {
