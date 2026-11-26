@@ -126,9 +126,18 @@ establish **what is already there** for the area the input touches, on four surf
    the read prefix of the Evidence rule).
 
 **Output — the coverage and consistency table**, one row per requirement item or candidate, each
-with its evidence. The verdicts, verbatim: `covered by <Task/key>` · `extends <Task/key>` ·
-`implemented, no Task` · `partly implemented` · `new` ·
-`conflicts with <D-n | AD-n | R-n | observed behaviour>`.
+with its evidence. The verdicts, verbatim — a row may carry two (`covered by E1-2` plus
+`partly implemented`):
+
+- `covered by <Task/key>` — an active criterion of that Task or issue already asks for it.
+- `extends <Task/key>` — the same feature as that Task, but beyond its active criteria or against
+  one of its out-of-scope lines. With a backlog it becomes that Task's `edit` when the Task is
+  unprotected and a `delta-linked` Task when it is protected — never a free-standing `add`.
+- `implemented, no Task` — the code does it and no Task or requirement asks for it.
+- `partly implemented` — the code does part of what an active criterion asks (it stores a value the
+  criterion also shows, say); the row names the criterion and the missing part.
+- `new` — no Task, issue or code covers it, and it extends no existing Task.
+- `conflicts with <D-n | AD-n | R-n | observed behaviour>` — it contradicts the named source.
 
 Consistency rules:
 

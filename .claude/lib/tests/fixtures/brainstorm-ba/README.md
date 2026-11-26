@@ -41,7 +41,9 @@ planned`) — expected for a fixture this small, and the same before and after t
 A session with the copy as its working directory (interactive, or `claude -p`): `/prime-ba`, then
 `/brainstorm-ba inputs/input.md`. Answer the conflict question for point (1) with "keep lists
 private" (the BA's choice). The run ends in the **waiting exit** for point (4): capture the spec it
-wrote — `**Status:** Waiting — client`, the paste-ready question and its owner.
+wrote — `**Status:** Waiting — client`, the paste-ready question and its owner. When the run offers
+point (4) as a `held` Task and goes on to the approval gate instead, choose **Wait** there (owner:
+the client) — the same exit.
 
 ## Stage 2
 
