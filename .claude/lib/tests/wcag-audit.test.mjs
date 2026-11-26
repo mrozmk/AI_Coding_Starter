@@ -784,6 +784,16 @@ test('an image with a 2xx response that fails to decode is a broken image', asyn
   assert.equal(res.broken[0].data.status, 200);
 });
 
+test('a redirect chain that ends in a network error reports no intermediate redirect status', async () => {
+  const imgs = [{ sel: 'img.loop', src: 'https://x.test/loop.png', alt: 'loop', loaded: false, visible: true, decodeFailed: false }];
+  const page = { evaluate: async () => ({ imgs, groups: [], outline: [] }) };
+  const responses = new Map([['https://x.test/loop.png', 302]]);
+  const failed = new Map([['https://x.test/loop.png', 'net::ERR_TOO_MANY_REDIRECTS']]);
+  const res = await collectSemantic(page, { responses, failed, proxyBlocked: new Set(), cdp: null });
+  assert.deepEqual(res.broken.map((b) => b.selector), ['img.loop']);
+  assert.equal(res.broken[0].data.status, null);
+});
+
 test('the disprove pack carries each candidate with its own evidence', () => {
   const repo = mkRepo();
   const run = llmRun();

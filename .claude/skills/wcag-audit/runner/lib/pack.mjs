@@ -126,7 +126,7 @@ export function writePack(work, phase, cwd = process.cwd()) {
   // A refusal before the judge phase means the model phases are skipped: the report's scope row says
   // so. After the judge phase the "model phase not completed" label already describes the run.
   const guardRefusal = (hint) => {
-    if (!run.model.phases?.judge) {
+    if (!run.model.phases.judge) {
       run.model.guard_inactive = true;
       writeRun(work, run);
     }

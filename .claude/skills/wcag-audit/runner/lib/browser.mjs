@@ -16,7 +16,7 @@ export const FREEZE_CSS = '*,*::before,*::after{animation-play-state:paused!impo
 
 // Printed through the init-time console.debug, so a frame that detaches right after the call is still
 // recorded and teardown needs no page JavaScript.
-export const WEBRTC_SIGNAL = 'wcag-audit:webrtc-blocked';
+const WEBRTC_SIGNAL ='wcag-audit:webrtc-blocked';
 
 const WEBRTC_INIT = `(() => {
   const signal = console.debug.bind(console);

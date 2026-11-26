@@ -33,5 +33,6 @@
   "broken-redirect.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "broken-image", "sc": "1.1.1", "basis": "●" }], "absent": [], "ledger": [], "notes": "image redirected 301 to a 404 carries the final status" },
   "broken-bytes.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "broken-image", "sc": "1.1.1", "basis": "●" }], "absent": [], "ledger": [], "notes": "image answered 200 with bytes that cannot be decoded" },
   "reflow-aria-hidden.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "reflow", "sc": "1.4.10", "basis": "●" }], "absent": [], "ledger": [], "notes": "visible aria-hidden text clipped at 320 px is a reflow loss" },
-  "reflow-inert.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "reflow", "sc": "1.4.10", "basis": "●" }], "absent": [], "ledger": [], "notes": "visible inert button clipped at 320 px is a reflow loss" }
+  "reflow-inert.html": { "viewport": "desktop", "scan": true, "findings": [{ "check_or_rule": "reflow", "sc": "1.4.10", "basis": "●" }], "absent": [], "ledger": [], "notes": "visible inert button clipped at 320 px is a reflow loss" },
+  "broken-placeholder.html": { "viewport": "desktop", "scan": true, "findings": [], "absent": [{ "check_or_rule": "broken-image", "sc": "1.1.1" }], "ledger": [], "notes": "lazy-load placeholder src=\"\" was never requested: el.src resolves to the page URL, not a broken image" }
 }
