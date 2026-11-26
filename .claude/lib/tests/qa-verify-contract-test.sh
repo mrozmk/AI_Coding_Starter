@@ -605,6 +605,8 @@ grep -qF browser_close "$WORK/drv-mcp.md"; check $? "qa-verify: Driver mcp has n
 grep -qF browser_close "$WORK/drv-subagent.md"; check $? "qa-verify: Driver subagent has no browser_close"
 grep -qF 'no agent was spawned' "$WORK/drv-subagent.md"; check $? "qa-verify: Driver subagent does not close after a failed preflight"
 grep -qF browser_close "$WORK/light-run.md"; check $? "qa-verify: the light run has no browser_close"
+grep -F '**Two browser servers.**' "$ROOT/$CMD" | grep -qF "device server's \`browser_close\`"
+check $? "qa-verify: the device lane has no browser_close outside Driver subagent"
 
 # The script skeleton: extracted from the command, checked as text, then run against a stub Playwright.
 awk '/^<!-- qa-script:end -->$/{exit} f; /^<!-- qa-script:begin -->$/{f=1}' "$ROOT/$CMD" | sed '/^```/d' > "$WORK/skel.mjs"
