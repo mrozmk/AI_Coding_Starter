@@ -55,14 +55,18 @@ Refusals, in this order:
 
 **Resume.** The argument is a requirements spec (`**Kind:** requirements`) whose `**Status:**` starts
 with `Waiting —` → read it, take the reply from the invocation or the chat, and resume at Step 1 for
-the rows its open question affects only; the rest of the spec stands. A reply that opens a new
+the rows its open question affects, plus every row whose `**Verified against:**` revision moved while
+it waited (a Task that shipped or became protected meanwhile is judged again); the rest of the spec
+stands. A reply that opens a new
 question keeps it `Waiting`, the new paste-ready text replacing the old. A `Draft` one is a run that
 stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has
 moved, and continue at Step 4 with the spec as it stands — never a second spec for the same input.
 
-**Backlog format** — read the Task table header of `.agents/backlog.md` once: `| Size |` and
-`| Depends on |` → `new-format`; `Wave` / `Slice` and no `Scope` → pre-Scope → stop: "run
-`node .claude/lib/backlog-migrate.mjs --write` first"; a `## Work packages` heading or a
+**Backlog format** — read the Task table header of `.agents/backlog.md` once, testing in this order:
+`Wave` / `Slice` and no `Scope` → pre-Scope (such a header may carry `| Size |` and `| Depends on |`
+too) → stop: "run `node .claude/lib/backlog-migrate.mjs --write` first"; else `| Size |` and
+`| Depends on |` → `new-format` (a pre-detail refusal of the checker in Step 1 stops the run with the
+checker's message); a `## Work packages` heading or a
 `| Dependencies |` column, or neither shape → `legacy` (its rows are context only, without checker
 criteria — named under *Not verified*); no file → `absent`.
 
@@ -302,6 +306,9 @@ Print the one row that matches `backlog × tracker`, name the next command, and 
 | no | jira | `/jira create` per Task (or `/jira bulk`) — **not** `/jira draft`, which reads backlog rows and needs the namespace | `/jira update` / `/jira comment` per key |
 | no | github | `/create-task <draft>` per Task | listed for the BA (no edit command) |
 | no | none | the spec stays the local record | — |
+
+`<draft>` is one `ready` Task's title and full body from the spec's `## Tasks`, passed as free text —
+never the whole spec.
 
 A `legacy` backlog takes the **no**-backlog row, plus "regenerate with `/setup:create-backlog` to
 route through `/update-backlog`". `/create-task` is never offered for a backlog Task — it refuses one.

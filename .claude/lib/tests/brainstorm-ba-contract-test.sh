@@ -33,8 +33,13 @@ has "$CMD" '.agents/team/session.json' && has "$CMD" '.agents/team/team.json' &&
 check $? "team clone refused (session.json, team.json, D-A16)"
 has "$CMD" 'Never pick a backlog Task'
 check $? "empty call asks, never picks"
-has "$CMD" 'with `Waiting —`' && has "$CMD" 'never a second spec for the same input'
-check $? "resume covers a Waiting and a Draft requirements spec"
+has "$CMD" 'with `Waiting —`' && has "$CMD" 'never a second spec for the same input' \
+  && has "$CMD" 'revision moved while'
+check $? "resume covers a Waiting and a Draft requirements spec and re-judges stale rows"
+has "$CMD" 'testing in this order:'
+check $? "pre-Scope is tested before new-format"
+has "$CMD" 'never the whole spec'
+check $? "create-task gets one ready Task, never the whole spec"
 has "$CMD" 'list --state all' && has "$CMD" 'start_at'
 check $? "tracker read in every state (github list --state all, jira paged with start_at)"
 has "$CMD" 'withdrawn: false' && has "$CMD" '--next-ids' && has "$CMD" '--impact'
