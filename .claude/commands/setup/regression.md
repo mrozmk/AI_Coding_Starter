@@ -55,7 +55,7 @@ jq 'keys' .claude/regression.json
 
 1. Ask (one `AskUserQuestion`): the e2e directory (default `e2e`), the device names (runner projects
    for `desktop` and `mobile`), and the environments — for each a name, its host (an `http(s)://` URL
-   without a trailing slash, or `qa-env` to take `base_url` from `.claude/qa-env.json`) and whether it
+   without credentials or a trailing slash, or `qa-env` to take `base_url` from `.claude/qa-env.json`) and whether it
    is a test environment (`kind: "test"`; otherwise it is production).
 2. Copy each template of `.claude/templates/regression/` into the e2e directory **only when the target
    is absent** — never overwrite: `playwright.config.ts.template` → `<e2e>/playwright.config.ts`,

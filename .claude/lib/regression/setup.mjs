@@ -5,7 +5,7 @@
 // prints an environment's resolved base URL. Node builtins only. Contract: .agents/reference/regression.md.
 //
 //   node .claude/lib/regression/setup.mjs catalog  [--root <dir>] --areas CODE=Name,… [--path <dir>] [--smoke P0,…]
-//   node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file>   ({runner?, environments?})
+//   node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file>   ({runner?, environments?}; a relative path resolves against --root)
 //   node .claude/lib/regression/setup.mjs check    [--root <dir>]
 //   node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
 //   exit 0 = ok / nothing missing · 1 = something missing / refused write · 2 = usage / invalid config
@@ -14,24 +14,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAtomic } from '../backlog-check.mjs';
-import { CONFIG_PATH, DEFAULTS, loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl } from './config.mjs';
+import {
+  CONFIG_PATH, DEFAULTS, TEST_DATA_COMMANDS, isObject, docKey, loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl,
+} from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog } from './catalog.mjs';
 
 const BASELINE_SECTIONS = ['runner', 'environments'];
 const INTERPRETERS = new Set(['node', 'bash', 'sh', 'python3', 'npx']);
 const MCP_PIN = /^@playwright\/mcp@\d+\.\d+\.\d+$/;
-const docKey = (k) => k.startsWith('_');
 const serialize = (cfg) => `${JSON.stringify(cfg, null, 2)}\n`;
 
 class UsageError extends Error {}
 const USAGE = `usage: node .claude/lib/regression/setup.mjs catalog --areas CODE=Name,… [--path <dir>] [--smoke P0,…] [--root <dir>]
-       node .claude/lib/regression/setup.mjs baseline --fragment <json file> [--root <dir>]
+       node .claude/lib/regression/setup.mjs baseline --fragment <json file, relative to --root> [--root <dir>]
        node .claude/lib/regression/setup.mjs check [--root <dir>]
        node .claude/lib/regression/setup.mjs env <name> [--root <dir>]`;
 
 function parseArgs(argv) {
   const [cmd, ...rest] = argv;
-  if (!['catalog', 'baseline', 'check', 'env'].includes(cmd)) throw new UsageError(cmd ? `unknown subcommand ${cmd}` : 'missing subcommand');
+  if (!Object.hasOwn(COMMANDS, cmd ?? '')) throw new UsageError(cmd ? `unknown subcommand ${cmd}` : 'missing subcommand');
   const args = { cmd, root: process.cwd(), positional: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -84,7 +85,7 @@ function cmdBaseline(root, args) {
     console.error(`setup: --fragment ${args.fragment} unreadable (${err.message})`);
     return 2;
   }
-  if (fragment === null || typeof fragment !== 'object' || Array.isArray(fragment)) { console.error('setup: --fragment must hold a JSON object'); return 2; }
+  if (!isObject(fragment)) { console.error('setup: --fragment must hold a JSON object'); return 2; }
   const existing = loaded.config;
   const added = [];
   const missing = [];
@@ -108,6 +109,10 @@ function cmdBaseline(root, args) {
 }
 
 const insideRoot = (root, rel) => !path.isAbsolute(rel) && !rel.split('/').includes('..') && fs.existsSync(path.resolve(root, rel));
+const isFileIn = (root, rel) => insideRoot(root, rel) && fs.statSync(path.resolve(root, rel)).isFile();
+const isExecutable = (root, rel) => {
+  try { fs.accessSync(path.resolve(root, rel), fs.constants.X_OK); return true; } catch { return false; }
+};
 const onPath = (name) => (process.env.PATH ?? '').split(':').filter(Boolean).some((d) => {
   try { return fs.statSync(path.join(d, name)).isFile(); } catch { return false; }
 });
@@ -116,12 +121,16 @@ const onPath = (name) => (process.env.PATH ?? '').split(':').filter(Boolean).som
 function programGap(root, key, command) {
   const tokens = command.trim().split(/\s+/);
   const [first] = tokens;
-  if (first.includes('/')) return insideRoot(root, first) ? null : `test_data.${key}: ${first} not found (repo-relative path expected)`;
+  if (first.includes('/')) {
+    // Run directly (execFileSync in the fixtures template): it must be an executable file.
+    if (!isFileIn(root, first)) return `test_data.${key}: ${first} not found (repo-relative path expected)`;
+    return isExecutable(root, first) ? null : `test_data.${key}: ${first} is not executable — chmod +x it or run it through an interpreter`;
+  }
   if (INTERPRETERS.has(first)) {
     const script = first === 'npx' ? tokens.slice(1).find((t) => t.includes('/')) : tokens[1];
     if (!script) return `test_data.${key}: unsupported command form — use <path> or <interpreter> <script>`;
     if (!onPath(first)) return `test_data.${key}: interpreter ${first} not on PATH`;
-    return insideRoot(root, script) ? null : `test_data.${key}: ${script} not found (repo-relative path expected)`;
+    return isFileIn(root, script) ? null : `test_data.${key}: ${script} not found (repo-relative path expected)`;
   }
   return `test_data.${key}: unsupported command form — use <path> or <interpreter> <script>`;
 }
@@ -157,7 +166,7 @@ export function checkFoundation(root) {
   const runner = cfg.runner;
   if (!runner) gaps.push('runner section missing — run the baseline stage');
   else {
-    if (!insideRoot(root, runner.config)) gaps.push(`runner.config: ${runner.config} not found`);
+    if (!isFileIn(root, runner.config)) gaps.push(`runner.config: ${runner.config} not found`);
     if (!insideRoot(root, runner.spec_dir) || !fs.statSync(path.resolve(root, runner.spec_dir)).isDirectory()) gaps.push(`runner.spec_dir: ${runner.spec_dir} not found`);
   }
   const envNames = Object.keys(cfg.environments ?? {}).filter((k) => !docKey(k));
@@ -167,7 +176,7 @@ export function checkFoundation(root) {
     if (r.error) gaps.push(`environments.${name}: ${r.error}`);
   }
   if (runner) {
-    for (const key of ['check', 'provision', 'reset', 'session']) {
+    for (const key of TEST_DATA_COMMANDS) {
       const gap = programGap(root, key, runner.test_data[key]);
       if (gap) gaps.push(gap);
     }
@@ -176,28 +185,14 @@ export function checkFoundation(root) {
   return gaps;
 }
 
-export function main(argv = process.argv.slice(2)) {
-  let args;
-  try { args = parseArgs(argv); } catch (err) {
-    if (!(err instanceof UsageError)) throw err;
-    console.error(`setup: ${err.message}\n${USAGE}`);
-    return 2;
-  }
-  const root = path.resolve(args.root);
-  try {
-    if (args.cmd === 'catalog') return cmdCatalog(root, args);
-    if (args.cmd === 'baseline') return cmdBaseline(root, args);
-  } catch (err) {
-    if (!(err instanceof UsageError)) throw err;
-    console.error(`setup: ${err.message}\n${USAGE}`);
-    return 2;
-  }
-  if (args.cmd === 'check') {
-    const gaps = checkFoundation(root);
-    if (!gaps.length) { console.log('foundation complete'); return 0; }
-    for (const g of gaps) console.log(g);
-    return 1;
-  }
+function cmdCheck(root) {
+  const gaps = checkFoundation(root);
+  if (!gaps.length) { console.log('foundation complete'); return 0; }
+  for (const g of gaps) console.log(g);
+  return 1;
+}
+
+function cmdEnv(root, args) {
   const loaded = loadConfig(root);
   if (!loaded.adopted) { console.log(`${CONFIG_PATH} missing — run /setup:regression`); return 1; }
   if (loaded.errors.length) { for (const e of loaded.errors) console.error(`setup: ${CONFIG_PATH}: ${e}`); return 2; }
@@ -205,6 +200,19 @@ export function main(argv = process.argv.slice(2)) {
   if (r.error) { console.log(r.error); return 1; }
   console.log(r.url);
   return 0;
+}
+
+const COMMANDS = { catalog: cmdCatalog, baseline: cmdBaseline, check: cmdCheck, env: cmdEnv };
+
+export function main(argv = process.argv.slice(2)) {
+  try {
+    const args = parseArgs(argv);
+    return COMMANDS[args.cmd](path.resolve(args.root), args);
+  } catch (err) {
+    if (!(err instanceof UsageError)) throw err;
+    console.error(`setup: ${err.message}\n${USAGE}`);
+    return 2;
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

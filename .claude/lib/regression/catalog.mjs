@@ -20,7 +20,7 @@ const REQUIRED = ['Priority', 'Viewport', 'Status', 'Effect', 'Goal', 'Steps', '
 const OPTIONAL = ['Data'];
 const ENUMS = { Priority: PRIORITIES, Viewport: ['desktop', 'mobile', 'both'], Effect: ['read', 'write'] };
 export const STATUSES = ['READY', 'BLOCKED', 'DROPPED'];
-const STATUS = /^(READY|BLOCKED|DROPPED)(?:\s+\((.*)\))?$/;
+const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
 const BLOCKED_REF = /^(E\d+-\d+|[A-Z][A-Z0-9]+-\d+|#\d+)$/;
 const CRITERION = /^E\d+-\d+\.AC\d+ \[[0-9a-f]{6}\]$/;
 const CRITERION_BARE = /^E\d+-\d+\.AC\d+$/;
@@ -38,6 +38,11 @@ const BACKLOG = '.agents/backlog.md';
 
 const isEmpty = (v) => v === undefined || /^\s*(—|-)?\s*$/.test(v);
 const posix = (p) => p.split(path.sep).join('/');
+// A single-value field wrapped onto continuation lines reads as one line (the header copies it on one).
+const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
+/** `[match, status, ref]` of a block's Status, `[]` when it does not parse. */
+const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
+const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
 
 /** Catalog files: `*.md` directly in `settings.path`, README.md excluded, sorted, repo-relative. */
 export function catalogFiles(root, settings) {
@@ -60,8 +65,10 @@ export function parseCatalog(root, files) {
       if (/^#{1,3}\s/.test(line)) {
         block = null; last = null;
         if (!/^###\s/.test(line)) return;
-        const m = /^###\s+(\S+)(?:\s+—\s+(.*))?$/.exec(line.trimEnd());
-        block = { id: m?.[1] ?? '', title: (m?.[2] ?? '').trim(), file, line: n, fields: {}, problems: [] };
+        // The first token is the id whatever follows it; the title needs the ` — ` separator.
+        const m = /^###\s+(\S+)(?:\s+(.*))?$/.exec(line.trimEnd());
+        const title = /^—\s+(.+)$/.exec(m?.[2] ?? '');
+        block = { id: m?.[1] ?? '', title: title ? title[1].trim() : '', file, line: n, fields: {}, problems: [] };
         blocks.push(block);
         return;
       }
@@ -92,7 +99,7 @@ export function parseCatalog(root, files) {
 
 /** Tokens of a `Source` value (` · `-separated): `{kind, raw, id, fp}`; kind `bad` when no grammar matches. */
 export function sourceTokens(value) {
-  return value.split(' · ').map((t) => t.trim()).filter((t) => t !== '').map((raw) => {
+  return oneLine(value).split(' · ').map((t) => t.trim()).filter((t) => t !== '').map((raw) => {
     if (CRITERION.test(raw)) { const [id, fp] = raw.split(' '); return { kind: 'criterion', raw, id, fp: fp.slice(1, -1) }; }
     if (CRITERION_BARE.test(raw)) return { kind: 'bad', raw, message: `criterion id ${raw} needs its fingerprint [<6 hex>]` };
     if (FLOW.test(raw)) return { kind: 'flow', raw, id: raw };
@@ -106,7 +113,7 @@ export function sourceTokens(value) {
 /** `{path, title}` of a `Spec` value, `null` for `—`, `{error}` when malformed. */
 export function parseSpec(value, id) {
   if (isEmpty(value)) return null;
-  const m = SPEC.exec(value.trim());
+  const m = SPEC.exec(oneLine(value).trim());
   if (!m) return { error: 'malformed Spec — expected `—` or `<repo-relative path> › <title>`' };
   const [, p, title] = m;
   if (path.isAbsolute(p) || p.includes('\\') || p.split('/').includes('..')) return { error: `malformed Spec — ${p} must be repo-relative, inside the repo` };
@@ -132,14 +139,14 @@ export function validateCatalog(blocks, settings) {
       if (f && !allowed.includes(f.value)) err(b, f.line, `unknown ${label} value ${f.value || '(empty)'} — expected ${allowed.join('|')}`);
     }
     const st = b.fields.Status;
-    const status = st ? STATUS.exec(st.value) : null;
+    const [, status, ref] = statusOf(b);
     if (st) {
       if (!status) err(b, st.line, `unknown Status value ${st.value || '(empty)'} — expected READY | BLOCKED (<ref>) | DROPPED (<reason>)`);
-      else if (status[1] === 'READY' && status[2] !== undefined) err(b, st.line, 'READY takes no parenthesis');
-      else if (status[1] === 'BLOCKED' && !BLOCKED_REF.test((status[2] ?? '').trim())) err(b, st.line, 'BLOCKED without a reference — expected BLOCKED (<Task id | tracker key | #n>)');
-      else if (status[1] === 'DROPPED' && !(status[2] ?? '').trim()) err(b, st.line, 'DROPPED without a reason — expected DROPPED (<reason or D-n>)');
+      else if (status === 'READY' && ref !== undefined) err(b, st.line, 'READY takes no parenthesis');
+      else if (status === 'BLOCKED' && !BLOCKED_REF.test((ref ?? '').trim())) err(b, st.line, 'BLOCKED without a reference — expected BLOCKED (<Task id | tracker key | #n>)');
+      else if (status === 'DROPPED' && !(ref ?? '').trim()) err(b, st.line, 'DROPPED without a reason — expected DROPPED (<reason or D-n>)');
     }
-    if (status?.[1] === 'READY') {
+    if (status === 'READY') {
       for (const label of ['Steps', 'Expected']) {
         const f = b.fields[label];
         if (f && isEmpty(f.value)) err(b, f.line, `READY scenario with empty ${label}`);
@@ -161,13 +168,12 @@ export function validateCatalog(blocks, settings) {
   for (const b of blocks) if (b.id) groups.set(b.id, [...(groups.get(b.id) ?? []), b]);
   for (const [id, group] of groups) {
     if (group.length < 2) continue;
-    const [first, ...rest] = group;
-    const firstDropped = /^DROPPED\b/.test(first.fields.Status?.value ?? '');
-    for (const b of rest) {
-      const dropped = /^DROPPED\b/.test(b.fields.Status?.value ?? '');
-      err(b, b.line, firstDropped && !dropped
-        ? `id ${id} reuses the id of DROPPED scenario at ${first.file}:${first.line}`
-        : `duplicate id ${id} (also at ${first.file}:${first.line})`);
+    // Anchor on the DROPPED block wherever it sits: a live block above it still reuses its id.
+    const dropped = group.find(isDropped);
+    const anchor = dropped ?? group[0];
+    for (const b of group) {
+      if (dropped && !isDropped(b)) err(b, b.line, `id ${id} reuses the id of DROPPED scenario at ${dropped.file}:${dropped.line}`);
+      else if (b !== anchor) err(b, b.line, `duplicate id ${id} (also at ${anchor.file}:${anchor.line})`);
     }
   }
   return errors.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
@@ -255,8 +261,6 @@ export function automationState(root, scenario, ctx = {}) {
   }
   return { state: 'verified', reason: notes.join('; ') };
 }
-
-const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
 
 /** One scenario's JSON row (the block's fields plus its computed automation state). */
 export function scenarioRow(root, b, ctx) {
@@ -359,21 +363,20 @@ export function main(argv = process.argv.slice(2)) {
   const files = catalogFiles(root, settings);
   const blocks = parseCatalog(root, files);
   const errors = validateCatalog(blocks, settings);
-  if (errors.length) {
-    if (args.json) {
-      console.log(JSON.stringify({ adopted: true, catalog: { path: settings.path, files }, errors, scenarios: [], counts: null }, null, 2));
-    } else {
-      for (const e of errors) console.log(`${e.file}:${e.line}: ${e.message}`);
-    }
-    return 1;
-  }
+  const ok = !errors.length;
   const ctx = {};
-  const rows = blocks.map((b) => scenarioRow(root, b, ctx));
-  const counts = statusReport(root, rows, ctx);
-  if (args.json) console.log(JSON.stringify({ adopted: true, catalog: { path: settings.path, files }, errors: [], scenarios: rows, counts }, null, 2));
-  else if (args.status) console.log(renderStatus(counts, files.length, rows.length));
-  else console.log(`catalog ok — ${rows.length} scenarios in ${files.length} files`);
-  return 0;
+  const rows = ok ? blocks.map((b) => scenarioRow(root, b, ctx)) : [];
+  const counts = ok ? statusReport(root, rows, ctx) : null;
+  if (args.json) {
+    console.log(JSON.stringify({ adopted: true, catalog: { path: settings.path, files }, errors, scenarios: rows, counts }, null, 2));
+  } else if (!ok) {
+    for (const e of errors) console.log(`${e.file}:${e.line}: ${e.message}`);
+  } else if (args.status) {
+    console.log(renderStatus(counts, files.length, rows.length));
+  } else {
+    console.log(`catalog ok — ${rows.length} scenarios in ${files.length} files`);
+  }
+  return ok ? 0 : 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

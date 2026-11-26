@@ -124,6 +124,21 @@ test('rejects reused id of a DROPPED scenario', () => {
   assert.deepEqual(errors, [`${CAT}/cart.md:11: id CART-001 reuses the id of DROPPED scenario at ${CAT}/cart.md:3`]);
 });
 
+test('rejects a reused DROPPED id placed above the DROPPED block', () => {
+  const errors = errorsOf({ 'cart.md': catalogFile(scenario('CART-001'), scenario('CART-001', { status: 'DROPPED (D-3)' })) });
+  assert.deepEqual(errors, [`${CAT}/cart.md:3: id CART-001 reuses the id of DROPPED scenario at ${CAT}/cart.md:11`]);
+});
+
+test('accepts a Source wrapped onto a continuation line', () => {
+  const block = scenario('CART-001', { source: 'FL-1 · FL-2 ·' }).replace('· **Spec:** —', '\n  live\n- **Spec:** —');
+  assert.deepEqual(errorsOf({ 'cart.md': catalogFile(block) }), []);
+});
+
+test('a heading without the em-dash separator keeps its id', () => {
+  const errors = errorsOf({ 'cart.md': catalogFile(scenario('CART-001').replace('### CART-001 — ', '### CART-001 - ')) });
+  assert.deepEqual(errors, [`${CAT}/cart.md:3: missing title — expected \`### <ID> — <title>\``]);
+});
+
 test('rejects two DROPPED blocks sharing an id', () => {
   const errors = errorsOf({ 'cart.md': catalogFile(scenario('CART-001', { status: 'DROPPED (D-3)' }), scenario('CART-001', { status: 'DROPPED (no longer sold)' })) });
   assert.deepEqual(errors, [`${CAT}/cart.md:11: duplicate id CART-001 (also at ${CAT}/cart.md:3)`]);
@@ -416,7 +431,7 @@ test('setup baseline adds only absent sections', () => {
 
 /** A root whose foundation is complete; `over` replaces files. */
 function completeRoot(over = {}) {
-  return mkRoot({
+  const root = mkRoot({
     '.claude/regression.json': { ...CONFIG, runner: RUNNER, environments: ENVS },
     'e2e/playwright.config.ts': '// config\n',
     'e2e/regression/.gitkeep': '',
@@ -424,7 +439,30 @@ function completeRoot(over = {}) {
     '.mcp.json': { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@0.0.86', '--isolated'] } } },
     ...over,
   });
+  const adapter = path.join(root, 'e2e/test-data/adapter.sh');
+  if (fs.existsSync(adapter)) fs.chmodSync(adapter, 0o755);
+  return root;
 }
+
+test('check flags a non-executable adapter and a directory as config', () => {
+  const root = completeRoot({ 'e2e/playwright.config.ts': undefined, 'e2e/playwright.config.ts/.gitkeep': '' });
+  fs.chmodSync(path.join(root, 'e2e/test-data/adapter.sh'), 0o644);
+  const r = run('setup.mjs', ['check', '--root', root]);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^runner\.config: e2e\/playwright\.config\.ts not found$/m);
+  assert.match(r.stdout, /^test_data\.check: e2e\/test-data\/adapter\.sh is not executable/m);
+});
+
+test('rejects a base URL with credentials from either source', () => {
+  assert.equal(isBaseUrl('https://user:secret@test.example.com'), false);
+  assert.equal(isBaseUrl('https://user@test.example.com'), false);
+  assert.ok(validateConfig({ ...CONFIG, environments: { a: { host: 'https://user:secret@test.example.com' } } }).some((e) => /^environments\.a\.host:/.test(e) && !/secret/.test(e)));
+  const cfg = { ...CONFIG, environments: { test: { host: 'qa-env' } } };
+  const root = mkRoot({ '.claude/regression.json': cfg, '.claude/qa-env.json': { base_url: 'https://user:secret@qa.example.com' } });
+  const res = resolveEnvBaseUrl(root, cfg, 'test');
+  assert.match(res.error ?? '', /base_url is not an http\(s\) URL/);
+  assert.doesNotMatch(res.error, /secret/);
+});
 
 test('check exits non-zero while anything is missing', () => {
   const r = run('setup.mjs', ['check', '--root', path.join(FIX, 'valid')]);

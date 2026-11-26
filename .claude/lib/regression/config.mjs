@@ -15,18 +15,19 @@ export const ENV_KINDS = ['test', 'production'];
 const AREA_CODE = /^[A-Z][A-Z0-9]{1,9}$/;
 const RUNNER_STRINGS = ['config', 'spec_dir', 'report'];
 const RUNNER_COMMANDS = ['smoke', 'full'];
-const TEST_DATA_COMMANDS = ['check', 'provision', 'reset', 'session'];
+export const TEST_DATA_COMMANDS = ['check', 'provision', 'reset', 'session'];
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
-const docKey = (k) => k.startsWith('_');
+export const docKey = (k) => k.startsWith('_');
 
-/** A base URL both sources must satisfy: http(s), a host, no whitespace, no trailing `/`. */
+/** A base URL both sources must satisfy: http(s), a host, no credentials, no whitespace, no trailing `/`. */
 export function isBaseUrl(s) {
   if (typeof s !== 'string' || s === '' || /\s/.test(s) || s.endsWith('/')) return false;
   let u;
   try { u = new URL(s); } catch { return false; }
-  return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== '';
+  // The config is committed and `env` prints the URL: credentials in it would leak.
+  return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== '' && u.username === '' && u.password === '';
 }
 
 /** An environment's kind; absent means production, so nothing destructive runs by omission. */
@@ -71,7 +72,7 @@ export function validateConfig(cfg) {
         if (docKey(name)) continue;
         if (!isObject(entry)) { errors.push(`environments.${name}: must be an object`); continue; }
         if (entry.host !== 'qa-env' && !isBaseUrl(entry.host)) {
-          errors.push(`environments.${name}.host: must be "qa-env" or an http(s) URL without a trailing /`);
+          errors.push(`environments.${name}.host: must be "qa-env" or an http(s) URL without credentials or a trailing /`);
         }
         if ('kind' in entry && !ENV_KINDS.includes(entry.kind)) errors.push(`environments.${name}.kind: must be ${ENV_KINDS.join('|')}`);
       }
@@ -121,7 +122,7 @@ export function resolveEnvBaseUrl(root, cfg, name) {
   const entry = isObject(cfg?.environments) ? cfg.environments[name] : undefined;
   if (!isObject(entry) || docKey(name)) return { error: `unknown environment ${name}` };
   if (entry.host !== 'qa-env') {
-    return isBaseUrl(entry.host) ? { url: entry.host } : { error: `environments.${name}.host is not an http(s) URL without a trailing /` };
+    return isBaseUrl(entry.host) ? { url: entry.host } : { error: `environments.${name}.host is not an http(s) URL without credentials or a trailing /` };
   }
   const file = path.resolve(root, QA_ENV_PATH);
   if (!fs.existsSync(file)) return { error: `${QA_ENV_PATH} absent (environment ${name} uses host "qa-env")` };
@@ -129,6 +130,6 @@ export function resolveEnvBaseUrl(root, cfg, name) {
   try { qa = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { return { error: `${QA_ENV_PATH} unparsable (${err.message})` }; }
   const url = qa?.base_url;
   if (!isFilled(url)) return { error: `${QA_ENV_PATH} base_url is empty (environment ${name} uses host "qa-env")` };
-  if (!isBaseUrl(url)) return { error: `${QA_ENV_PATH} base_url is not an http(s) URL without a trailing /` };
+  if (!isBaseUrl(url)) return { error: `${QA_ENV_PATH} base_url is not an http(s) URL without credentials or a trailing /` };
   return { url };
 }

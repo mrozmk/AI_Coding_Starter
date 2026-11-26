@@ -3,7 +3,7 @@
 The four commands a project's test-data adapter implements, named in `.claude/regression.json` →
 `runner.test_data.{check,provision,reset,session}`. The starter never provisions anything itself:
 this is the contract the project's own code (in its e2e directory) fulfils. Each command is a
-repo-root-relative program, run from the repo root (`<path> …` or `<interpreter> <script> …` —
+repo-root-relative program, run from the repo root (`<path> …`, an executable file, or `<interpreter> <script> …` —
 the forms `setup.mjs check` recognises). Entry point of the kit: [regression.md](regression.md).
 
 ## 1. Commands

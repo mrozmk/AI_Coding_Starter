@@ -67,7 +67,7 @@ Sections: `catalog` (`path`, default `.agents/regression/scenarios`; `areas` `{C
 `id_pattern`, default `^[A-Z][A-Z0-9]{1,9}-[0-9]{3}$`; `smoke`, default `["P0"]`), `runner`
 (`config`, `spec_dir`, `devices`, `commands.{smoke,full}`, `report`,
 `test_data.{check,provision,reset,session}` — every path repo-root-relative, every command run from
-the repo root), `environments.<name>` (`host`: an `http(s)://` URL without a trailing slash, or
+the repo root), `environments.<name>` (`host`: an `http(s)://` URL without credentials or a trailing slash, or
 `"qa-env"` = `base_url` of `.claude/qa-env.json`; `kind`: `test | production`, absent =
 `production`; further keys are accepted unvalidated for the later policy task).
 
@@ -153,7 +153,7 @@ re-cited.
 node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--status | --json]
   exit 0 valid (or not adopted) · 1 validation errors · 2 usage / unreadable or invalid config
 node .claude/lib/regression/setup.mjs catalog  [--root <dir>] --areas CODE=Name,… [--path <dir>] [--smoke P0,…]
-node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file>
+node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file, relative to --root>
 node .claude/lib/regression/setup.mjs check    [--root <dir>]
 node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
   exit 0 ok / nothing missing · 1 something missing / refused write · 2 usage / invalid config
@@ -168,8 +168,8 @@ node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
   `baseline` adds each absent section of `runner` / `environments` and never alters an existing
   key; `check` is static (never runs an adapter command, never reaches the network) and lists, one
   line per gap: config, catalog, the runner section and its files, environments and their hosts,
-  the `test_data` program files (`<path> …` or `<interpreter> <script> …` with `node`, `bash`, `sh`,
-  `python3`, `npx`), the `.mcp.json` pin.
+  the `test_data` program files (`<path> …` — an executable file — or `<interpreter> <script> …` with
+  `node`, `bash`, `sh`, `python3`, `npx`), the `.mcp.json` pin.
 - `/setup:regression` drives both stages and copies the templates of
   `.claude/templates/regression/` into the project's e2e directory, never over an existing file;
   `/setup:regression --check` runs only `setup.mjs check`.

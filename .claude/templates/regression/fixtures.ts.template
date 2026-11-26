@@ -23,6 +23,6 @@ export const test = base.extend<{ account: string | null }>({
   },
 });
 
-// request guard: installed here, before the first navigation (regression.md → Environments)
+// request guard: installed here, before the first navigation (regression.md §3, "Safe on production by default")
 
 export { expect };

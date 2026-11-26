@@ -35,7 +35,7 @@
     }
   },
 
-  "_environments_doc": "Deployed environments a run may target (baseline stage). `host`: an http(s) URL without a trailing slash, or \"qa-env\" = take `base_url` from .claude/qa-env.json. `kind`: test | production; ABSENT = production, so the adapter's provision and reset refuse it.",
+  "_environments_doc": "Deployed environments a run may target (baseline stage). `host`: an http(s) URL without credentials or a trailing slash, or \"qa-env\" = take `base_url` from .claude/qa-env.json. `kind`: test | production; ABSENT = production, so the adapter's provision and reset refuse it.",
   "environments": {
     "test": {
       "host": "qa-env",
