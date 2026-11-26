@@ -6,9 +6,9 @@
 //   node .claude/lib/prime-ba.mjs extract <register|changelog|discovery|architecture|decisions|backlog|codemap>
 //        [--summary] [--root <dir>] [--page <n>]          (--summary: backlog only)
 //
-// Read-only: writes nothing, fetches nothing; git calls are lock-free and run no hooks or fsmonitor of
-// the inspected checkout. Exit 0 on any repository state (problems print as ERROR rows); exit 2 only on
-// a usage error.
+// Read-only: writes nothing, fetches nothing; git calls are lock-free and run no hooks, fsmonitor or
+// filter driver of the inspected checkout. Exit 0 on any repository state (problems print as ERROR
+// rows); exit 2 only on a usage error.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -474,8 +474,8 @@ export function noteFamilies(root) {
   const families = new Map(originals.map((p) => [p, { orig: p, members: [p], corrections: [] }]));
   const errors = [];
   for (const [p, { m, named }] of corrections) {
-    let target = originals.find((o) => path.basename(o) === path.basename(normPath(named)));
-    if (!target) target = originals.find((o) => path.basename(o) === `${m[1]}.md`);
+    // Membership is the `**Corrects:**` line alone: a missing original is an orphan, never the file-name stem.
+    const target = originals.find((o) => path.basename(o) === path.basename(normPath(named)));
     if (!target) { errors.push(`ERROR\torphan correction\t${p}`); continue; }
     families.get(target).corrections.push({ path: p, k: m[2] ? Number(m[2]) : 1 });
   }
@@ -536,16 +536,24 @@ function rawSources(root, metas) {
 // Code roots
 // ---------------------------------------------------------------------------------------------
 
-/** stdout of a lock-free git read that runs no hooks or fsmonitor of the checkout; null on failure. */
-function gitRead(p, ...args) {
+/** stdout of a lock-free git read that runs no hooks or fsmonitor of the checkout; null on failure.
+ *  It may still compare working-tree content (and so run a filter driver) — see refState. */
+function gitReadWith(globals, p, ...args) {
   try {
-    return execFileSync('git', ['--no-optional-locks', '--no-replace-objects', '-c', 'core.fsmonitor=false',
+    return execFileSync('git', ['--no-optional-locks', '--no-replace-objects', ...globals, '-c', 'core.fsmonitor=false',
       '-c', 'core.hooksPath=/dev/null', '-C', p, ...args], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_OPTIONAL_LOCKS: '0' },
     });
   } catch { return null; }
 }
+const gitRead = (p, ...args) => gitReadWith([], p, ...args);
+
+// Empty tree per object format: as `--attr-source` it leaves no attribute, so no filter driver applies.
+const EMPTY_TREE = {
+  sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+  sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
+};
 
 export function holdsSource(root) {
   if (gitRead(root, 'rev-parse', '--is-inside-work-tree')?.trim() !== 'true') return false;
@@ -584,33 +592,50 @@ export function codeRoots(root) {
   return { roots: unique, errors, profileMissing };
 }
 
+/**
+ * Branch, upstream and ahead/behind from refs only (`for-each-ref` `%(upstream:track)`); dirty from
+ * the index (`diff --cached`), the working tree (`diff-files` under an empty `--attr-source`) and
+ * untracked files. Never `git status` or a plain `diff-files`: a racily-clean entry makes them compare
+ * content through the filter driver the checkout configures (git < 2.40 lacks `--attr-source` →
+ * `dirty=unknown`).
+ */
+function refState(abs) {
+  const headRef = (gitRead(abs, 'symbolic-ref', '-q', 'HEAD') ?? '').trim();
+  const st = { branch: headRef ? headRef.replace(/^refs\/heads\//, '') : '(detached)', upstream: null, gone: false, ahead: null, behind: null };
+  if (headRef) {
+    const [up = '', track = ''] = (gitRead(abs, 'for-each-ref', '--format=%(upstream:short)%09%(upstream:track)', headRef) ?? '')
+      .split('\n')[0].split('\t');
+    st.upstream = up.trim() || null;
+    st.gone = /\bgone\b/.test(track);
+    if (st.upstream && !st.gone) {
+      st.ahead = Number(/ahead (\d+)/.exec(track)?.[1] ?? 0);
+      st.behind = Number(/behind (\d+)/.exec(track)?.[1] ?? 0);
+    }
+  }
+  const staged = gitRead(abs, 'diff', '--cached', '--no-ext-diff', '--name-only');
+  const empty = EMPTY_TREE[(gitRead(abs, 'rev-parse', '--show-object-format') ?? '').trim()];
+  const unstaged = empty ? gitReadWith([`--attr-source=${empty}`], abs, 'diff-files', '--name-only') : null;
+  const untracked = gitRead(abs, 'ls-files', '--others', '--exclude-standard', '--directory', '--no-empty-directory');
+  st.dirty = [staged, unstaged, untracked].some((o) => o !== null && o.trim() !== '') ? 'dirty'
+    : [staged, unstaged, untracked].includes(null) ? 'dirty=unknown' : 'clean';
+  return st;
+}
+
 export function codeRootState(abs, now = Date.now()) {
   if (!fs.existsSync(abs)) return 'path missing';
   if (gitRead(abs, 'rev-parse', '--is-inside-work-tree')?.trim() !== 'true') return 'not a git checkout';
-  const status = gitRead(abs, 'status', '--porcelain=v2', '--branch') ?? '';
-  let branch = '?';
-  let upstream = null;
-  let ahead = 0;
-  let behind = 0;
-  let dirty = false;
-  for (const l of status.split('\n')) {
-    if (l.startsWith('# branch.head ')) branch = l.slice(14).trim();
-    else if (l.startsWith('# branch.upstream ')) upstream = l.slice(18).trim();
-    else if (l.startsWith('# branch.ab ')) {
-      const m = /\+(\d+) -(\d+)/.exec(l);
-      if (m) { ahead = Number(m[1]); behind = Number(m[2]); }
-    } else if (l && !l.startsWith('#')) dirty = true;
-  }
+  const { branch, upstream, gone, ahead, behind, dirty } = refState(abs);
   const [h, date] = (gitRead(abs, 'log', '-1', '--format=%h%x09%cs') ?? '').trim().split('\t');
   const fhPath = (gitRead(abs, 'rev-parse', '--path-format=absolute', '--git-path', 'FETCH_HEAD') ?? '').trim();
   let fetched = null;
   try { if (fhPath) fetched = fs.statSync(fhPath).mtimeMs; } catch { fetched = null; }
   let verdict = 'fresh';
   if (behind > 0) verdict = 'stale';
-  else if (!upstream || fetched === null || now - fetched > FETCH_FRESH_HOURS * 3600 * 1000) verdict = 'unknown';
+  else if (behind === null || fetched === null || now - fetched > FETCH_FRESH_HOURS * 3600 * 1000) verdict = 'unknown';
   const fetchText = fetched === null ? 'never' : new Date(fetched).toISOString().slice(0, 16).replace('T', ' ');
-  return `branch=${branch} head=${h || 'none'}${date ? ` (${date})` : ''} upstream=${upstream ?? 'none'} ahead=${ahead} behind=${behind} `
-    + `${dirty ? 'dirty' : 'clean'} last-fetch=${fetchText} ${verdict}${verdict === 'fresh' ? '' : ' — run /pull there before verifying against code'}`;
+  return `branch=${branch} head=${h || 'none'}${date ? ` (${date})` : ''} upstream=${upstream ?? 'none'}${gone ? ' (gone)' : ''} `
+    + `ahead=${ahead ?? '?'} behind=${behind ?? '?'} `
+    + `${dirty} last-fetch=${fetchText} ${verdict}${verdict === 'fresh' ? '' : ' — run /pull there before verifying against code'}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -650,7 +675,7 @@ function jiraRows(root) {
       const t = readText(root, f)?.text ?? '';
       const m = /^ops:(.*)$/m.exec(t);
       if (!m) return false;
-      const inline = m[1].trim();
+      const inline = m[1].replace(/\s#.*$/, '').trim(); // the draft template writes `ops: {}   # …`
       if (inline && inline !== '{}') return true;
       const after = t.slice(m.index + m[0].length).split('\n').slice(1);
       const block = [];

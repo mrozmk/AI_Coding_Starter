@@ -651,3 +651,61 @@ test('INDEX row says the PRD head is loaded when the brief is empty', () => {
   const idx = rows(plan(d), 'INDEX')[0];
   assert.ok(idx[3].endsWith('(first 100 lines loaded as the brief fallback)'), idx.join('\t'));
 });
+
+test("code root reads never run the checkout's clean filter on a racy entry", () => {
+  const base = tmpRepo();
+  const { clone: A } = remoteAndClone(base);
+  const marker = path.join(base, 'filter-ran');
+  const filter = write(base, 'filter.sh', `#!/bin/sh\ntouch '${marker}'\ncat\n`);
+  fs.chmodSync(filter, 0o755);
+  git(A, 'config', 'filter.x.clean', filter);
+  write(A, '.gitattributes', '* filter=x\n');
+  write(A, 'f.txt', 'a\n');
+  git(A, 'add', '.');
+  git(A, 'commit', '-q', '-m', 'attrs');
+  // Same-second rewrite after an index write leaves a racily-clean entry.
+  write(A, 'f.txt', 'b\n');
+  git(A, 'add', 'f.txt');
+  write(A, 'f.txt', 'c\n');
+  fs.rmSync(marker, { force: true });
+  const ws = tmpRepo();
+  profile(ws, [{ name: 'a', path: A }]);
+  const row = rows(plan(ws), 'CODE_ROOT').find((r) => r[1] === 'a');
+  assert.ok(row);
+  assert.ok(!fs.existsSync(marker), 'the checkout-configured clean filter ran');
+  assert.match(row[3], / dirty /);
+});
+
+test('code root with a gone upstream reports unknown divergence, never fresh', () => {
+  const base = tmpRepo();
+  const { clone: A } = remoteAndClone(base);
+  git(A, 'config', 'branch.main.merge', 'refs/heads/no-such-branch');
+  git(A, 'fetch', '-q');
+  const ws = tmpRepo();
+  profile(ws, [{ name: 'a', path: A }]);
+  const row = rows(plan(ws), 'CODE_ROOT').find((r) => r[1] === 'a');
+  assert.ok(row);
+  assert.match(row[3], /\(gone\) ahead=\? behind=\? /);
+  assert.match(row[3], / unknown — run \/pull there/);
+});
+
+test('a correction naming a missing original is an orphan even when its stem matches a note', () => {
+  const d = tmpRepo();
+  frame(d);
+  const N = '.agents/meeting-notes';
+  write(d, `${N}/2026-10-01-a.md`, '# Meeting a\n**Coverage:** full\n**Source:** .agents/sources/a.txt\n');
+  write(d, `${N}/2026-10-01-a-correction.md`, `# Correction — a\n**Corrects:** ${N}/2026-10-09-typo.md\n\n## Metadata\n- Coverage: partial ⟵ was: "full"\n`);
+  write(d, '.agents/sources/a.txt', 'transcript\n');
+  const out = plan(d);
+  assert.ok(rows(out, 'ERROR').some((r) => r[1] === 'orphan correction' && r[2] === `${N}/2026-10-01-a-correction.md`), out);
+  assert.ok(!rows(out, 'LOAD').some((r) => r[2] === `${N}/2026-10-01-a-correction.md`), out);
+  assert.ok(!rows(out, 'RAW').some((r) => r[2] === './.agents/sources/a.txt'), out);
+});
+
+test('a Jira draft with the template ops comment has no pending ops', () => {
+  const d = tmpRepo();
+  write(d, '.agents/jira/inprogress/E1/E1-1.md', '---\njira_key: ""\nops: {}                          # per-operation intents — written by send only\n---\n# Draft\n');
+  const row = rows(plan(d), 'JIRA_DRAFTS').find((r) => r[1] === 'E1');
+  assert.ok(row);
+  assert.equal(row[3], 'no pending ops');
+});
