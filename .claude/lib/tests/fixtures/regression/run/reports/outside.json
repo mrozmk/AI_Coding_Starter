@@ -1,0 +1,119 @@
+{
+  "config": {
+    "version": "1.64.0",
+    "rootDir": "e2e/regression"
+  },
+  "suites": [
+    {
+      "title": "cart.spec.ts",
+      "file": "cart.spec.ts",
+      "specs": [
+        {
+          "title": "CART-001 — Open the cart",
+          "file": "cart.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "CART-002 — Add to cart as a shopper",
+          "file": "cart.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "CART-002 — Add to cart as a shopper",
+          "file": "cart.spec.ts",
+          "tests": [
+            {
+              "projectName": "mobile-safari",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "CART-006 — Old cart badge",
+          "file": "cart.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "suites": []
+    },
+    {
+      "title": "pdp.spec.ts",
+      "file": "pdp.spec.ts",
+      "specs": [
+        {
+          "title": "PDP-003 — Open the gallery",
+          "file": "pdp.spec.ts",
+          "tests": [
+            {
+              "projectName": "mobile-safari",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "expected": 5,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  }
+}
