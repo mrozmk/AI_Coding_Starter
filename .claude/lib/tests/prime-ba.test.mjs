@@ -614,3 +614,40 @@ test('paged output survives a pipe intact', async () => {
   assert.equal(Buffer.byteLength(r.stdout), want);
   assert.ok(r.stdout.endsWith('extract register --page 2\n'));
 });
+
+test('create-backlog Last check placeholder reads as never checked', () => {
+  const d = tmpRepo();
+  write(d, '.agents/backlog.md', '# Backlog\n\n**Last check:** — (written by `/check-backlog`, always on its own line)\n');
+  const out = run(['extract', 'backlog', '--root', d]).stdout;
+  assert.ok(out.includes('Last check: never checked — /check-backlog'), out);
+  assert.ok(!/— stale$/m.test(out), out);
+});
+
+test('a meeting slug ending in -correction without Corrects line is an original', () => {
+  const d = tmpRepo();
+  frame(d);
+  const N = '.agents/meeting-notes';
+  write(d, `${N}/2026-01-05-invoice-correction.md`, '# Invoice correction\n**Coverage:** full\n**Source:** .agents/sources/inv.txt\n');
+  write(d, '.agents/sources/inv.txt', 'transcript\n');
+  const out = plan(d);
+  assert.ok(!rows(out, 'ERROR').some((r) => r[1] === 'orphan correction'), out);
+  assert.ok(rows(out, 'LOAD').some((r) => r[2] === `${N}/2026-01-05-invoice-correction.md`), out);
+  assert.ok(!rows(out, 'RAW').some((r) => r[2] === './.agents/sources/inv.txt'), out);
+});
+
+test('changelog extract stops a D-n block at the template entry-format comment', () => {
+  const d = tmpRepo();
+  write(d, 'docs/PRD.md', `${prdText({ decisions: 2 })}<!-- Entry format (newest first)\nmore\n\n### D-<n> — YYYY-MM-DD — <title>\n-->\n`);
+  const out = run(['extract', 'changelog', '--root', d]).stdout;
+  assert.ok(out.includes('### D-1 —'), out);
+  assert.ok(!out.includes('<!--'), out);
+});
+
+test('INDEX row says the PRD head is loaded when the brief is empty', () => {
+  const d = tmpRepo();
+  fill(d, '.agents/memory/index.md', 300, '# Index\n');
+  write(d, '.agents/memory/project-brief.md', '---\nstatus: empty\n---\n');
+  write(d, 'docs/PRD.md', prdText({ ids: 3 }));
+  const idx = rows(plan(d), 'INDEX')[0];
+  assert.ok(idx[3].endsWith('(first 100 lines loaded as the brief fallback)'), idx.join('\t'));
+});

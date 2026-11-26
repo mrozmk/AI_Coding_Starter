@@ -84,7 +84,9 @@ page, before acting on any row.
 - `CLAUDE.md` is injected — never read. `README.md` is not read (it duplicates the brief).
 - The backlog freshness check needs no extra call: `extract backlog` runs
   `node .claude/lib/backlog-check.mjs` and `/prime-ba` recomputes the fingerprint
-  (`backlog-check.mjs --fingerprint`'s value) to mark the `**Last check:**` fresh or stale. Never fix
+  (`backlog-check.mjs --fingerprint`'s value) to mark the `**Last check:**` fresh or stale. Report
+  the recorded `mode:` and `scope:` with it: a partial scope never reads as a whole-backlog `ship`, a
+  `structure` check never as a detail check. Never fix
   the backlog from here — structural edits go through `/update-backlog` (`/setup:create-backlog` →
   Maintenance contract). A missing checker, a legacy work-package backlog, a pre-Scope backlog
   (`node .claude/lib/backlog-migrate.mjs --write`) or a pre-detail backlog is reported with the

@@ -6,8 +6,9 @@
 //   node .claude/lib/prime-ba.mjs extract <register|changelog|discovery|architecture|decisions|backlog|codemap>
 //        [--summary] [--root <dir>] [--page <n>]          (--summary: backlog only)
 //
-// Read-only: writes nothing, fetches nothing; git calls are lock-free and run no checkout-configured
-// code. Exit 0 on any repository state (problems print as ERROR rows); exit 2 only on a usage error.
+// Read-only: writes nothing, fetches nothing; git calls are lock-free and run no hooks or fsmonitor of
+// the inspected checkout. Exit 0 on any repository state (problems print as ERROR rows); exit 2 only on
+// a usage error.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,14 +39,12 @@ export const SOURCE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
   '.kt', '.kts', '.cs', '.fs', '.swift', '.m', '.dart', '.php', '.c', '.cc', '.cpp', '.h', '.hpp', '.scala', '.vue',
   '.svelte', '.sql', '.sh', '.ps1', '.lua', '.ex', '.exs', '.erl', '.clj', '.r', '.jl']);
 const WORKFLOW_DIRS = ['.agents/', '.claude/', '.codex/', '.github/', 'docs/', 'tools/agent_mail/'];
-export const PARTS = ['register', 'changelog', 'discovery', 'architecture', 'decisions', 'backlog', 'codemap'];
 const SCRIPT_CMD = 'node .claude/lib/prime-ba.mjs';
 const TOTAL_PAD = 32;
 
-// Re-declared from backlog-check.mjs (not exported there): DECISION_HEADING, REGISTER_ID, PRD_CURRENT, SCOPE_REV.
+// Re-declared from backlog-check.mjs (not exported there): DECISION_HEADING, REGISTER_ID, SCOPE_REV.
 const DECISION_HEADING = /^###\s+(D-(\d+))\s+[—-]/;
 const REGISTER_ID = /^(G|R|NFR)-\d+$/;
-const PRD_CURRENT = /\*\*Current:\*\*\s*(v\d+\.\d+)/;
 const SCOPE_REV = /\*\*Scope rev:\*\*\s*(v\d+\.\d+)/;
 const BOLD_ID_LINE = /^\s*[-*]\s+\*\*([A-Za-z]+-\d+)\*\*\s*[—-]\s*/;
 const CORRECTION_NAME = /^(.*)-correction(?:-(\d+))?\.md$/;
@@ -70,7 +69,7 @@ const bytes = (s) => Buffer.byteLength(s, 'utf8');
 const kb = (n) => (n / 1024).toFixed(1);
 const posix = (p) => p.split(path.sep).join('/');
 
-/** `{ text, size }` of a regular file (symlinks followed, directories skipped), else null. */
+/** `{ text, size, buf }` of a regular file (symlinks followed, directories skipped), else null. */
 export function readText(root, rel) {
   const abs = path.resolve(root, rel);
   try {
@@ -101,6 +100,7 @@ const frontStatus = (text) => {
   const head = text.split('\n').slice(0, 10).join('\n');
   return /^status:\s*(\S+)/m.exec(head)?.[1] ?? 'no-frontmatter';
 };
+const isFilled = (text) => ['populated', 'seeded'].includes(frontStatus(text));
 
 const mask = (lines) => (BC ? BC.fenceMask(lines) : lines.map(() => false));
 
@@ -240,7 +240,10 @@ export function extractRegister(root) {
   return `${out.join('\n')}\n`;
 }
 
-/** `D-n` blocks of the PRD: `[{ id, n, lines }]` in file order (unfenced headings only). */
+/**
+ * `D-n` blocks of the PRD: `[{ id, n, lines }]` in file order (unfenced headings only). A block also
+ * ends at an unfenced `<!--` line — the PRD template keeps its entry-format comment after the entries.
+ */
 function decisionBlocks(text) {
   const lines = text.split('\n');
   const fenced = mask(lines);
@@ -249,7 +252,7 @@ function decisionBlocks(text) {
   lines.forEach((line, i) => {
     const d = fenced[i] ? null : DECISION_HEADING.exec(line);
     if (d) { cur = { id: d[1], n: Number(d[2]), lines: [line] }; blocks.push(cur); return; }
-    if (!fenced[i] && /^#{2,3}\s/.test(line)) { cur = null; return; }
+    if (!fenced[i] && (/^#{2,3}\s/.test(line) || line.trimStart().startsWith('<!--'))) { cur = null; return; }
     if (cur) cur.lines.push(line);
   });
   return blocks;
@@ -363,13 +366,11 @@ export function extractBacklog(root, { summary = false } = {}) {
   const parsed = BC.parseBacklog(md, { epicFiles });
   out.push(`Detail: ${parsed.detail ?? 'none'}`);
   const last = md.split('\n').find((l) => l.startsWith('**Last check:**'));
-  if (!last) out.push('Last check: never checked — /check-backlog');
-  else {
-    const recorded = /sha256:\s*([0-9a-f]{12})/.exec(last)?.[1];
-    out.push(`Last check: ${last} — ${recorded && recorded === BC.backlogFingerprint(md, epicFiles) ? 'fresh' : 'stale'}`);
-  }
-  const prd = readText(root, 'docs/PRD.md');
-  const current = prd ? (PRD_CURRENT.exec(prd.text)?.[1] ?? null) : null;
+  // No recorded hash (absent line, or /setup:create-backlog's `— (written by /check-backlog …)` placeholder).
+  const recorded = last ? /sha256:\s*([0-9a-f]{12})/.exec(last)?.[1] : undefined;
+  if (!recorded) out.push('Last check: never checked — /check-backlog');
+  else out.push(`Last check: ${last} — ${recorded === BC.backlogFingerprint(md, epicFiles) ? 'fresh' : 'stale'}`);
+  const current = BC.loadInventory(root).scopeRev;
   const rev = SCOPE_REV.exec(md)?.[1] ?? null;
   out.push(`Register: Current ${current ?? '—'} · Scope rev ${rev ?? '—'}${current && rev && current !== rev ? ' — behind — run /update-backlog' : ''}`);
   if (summary) {
@@ -460,15 +461,20 @@ export function pendingSources(root) {
 
 export function noteFamilies(root) {
   const notes = listMd(root, '.agents/meeting-notes');
-  const originals = notes.filter((p) => !CORRECTION_NAME.test(path.basename(p)));
-  const families = new Map(originals.map((p) => [p, { orig: p, members: [p], corrections: [] }]));
-  const errors = [];
+  // A correction is a `-correction*` file that names its original on a `**Corrects:**` line
+  // (meeting-notes.md); a meeting whose slug merely ends in `-correction` stays an original.
+  const corrections = new Map();
   for (const p of notes) {
     const m = CORRECTION_NAME.exec(path.basename(p));
     if (!m) continue;
-    const text = readText(root, p)?.text ?? '';
-    const named = /\*\*Corrects:\*\*\s*(\S+)/.exec(text)?.[1];
-    let target = named ? originals.find((o) => path.basename(o) === path.basename(normPath(named))) : null;
+    const named = /\*\*Corrects:\*\*\s*(\S+)/.exec(readText(root, p)?.text ?? '')?.[1];
+    if (named) corrections.set(p, { m, named });
+  }
+  const originals = notes.filter((p) => !corrections.has(p));
+  const families = new Map(originals.map((p) => [p, { orig: p, members: [p], corrections: [] }]));
+  const errors = [];
+  for (const [p, { m, named }] of corrections) {
+    let target = originals.find((o) => path.basename(o) === path.basename(normPath(named)));
     if (!target) target = originals.find((o) => path.basename(o) === `${m[1]}.md`);
     if (!target) { errors.push(`ERROR\torphan correction\t${p}`); continue; }
     families.get(target).corrections.push({ path: p, k: m[2] ? Number(m[2]) : 1 });
@@ -530,7 +536,7 @@ function rawSources(root, metas) {
 // Code roots
 // ---------------------------------------------------------------------------------------------
 
-/** stdout of a git read that cannot run checkout-configured code or write optional state; null on failure. */
+/** stdout of a lock-free git read that runs no hooks or fsmonitor of the checkout; null on failure. */
 function gitRead(p, ...args) {
   try {
     return execFileSync('git', ['--no-optional-locks', '--no-replace-objects', '-c', 'core.fsmonitor=false',
@@ -669,10 +675,14 @@ function jiraRows(root) {
 // ---------------------------------------------------------------------------------------------
 
 const MANDATORY_ORDER = ['frame', 'register', 'changelog', 'discovery', 'architecture', 'decisions', 'backlog'];
+/** Every extract part, in usage order: `(root, { summary, roots }) => text`. */
 const EXTRACTORS = {
   register: extractRegister, changelog: extractChangelog, discovery: extractDiscovery,
   architecture: extractArchitecture, decisions: extractDecisions,
+  backlog: (root, o) => extractBacklog(root, { summary: o.summary }),
+  codemap: (root, o) => extractCodemap(root, o.roots),
 };
+export const PARTS = Object.keys(EXTRACTORS);
 
 function extractCmd(part, summary, rootArg) {
   const argv = ['extract', part];
@@ -682,17 +692,15 @@ function extractCmd(part, summary, rootArg) {
 }
 
 function renderExtract(root, part, { summary = false, roots = [] } = {}) {
-  if (part === 'backlog') return extractBacklog(root, { summary });
-  if (part === 'codemap') return extractCodemap(root, roots);
-  return EXTRACTORS[part](root);
+  return EXTRACTORS[part](root, { summary, roots });
 }
 
-function measureExtract(root, part, layer, opts, rootArg) {
+function measureExtract(root, part, opts, rootArg) {
   const cmd = extractCmd(part, opts.summary, rootArg);
   let text;
   try { text = renderExtract(root, part, opts); } catch (e) { text = `ERROR\t${part}\t${e.message}\n`; }
   const pages = paginate(text, PAGE_SIZE, cmd);
-  return { kind: 'EXTRACT', part, layer, bytes: pagesBytes(pages), pages: pages.length, cmd };
+  return { kind: 'EXTRACT', part, layer: part, bytes: pagesBytes(pages), pages: pages.length, cmd };
 }
 
 /** Apply one optional item against the shared state; returns the skip reason or null when admitted. */
@@ -723,7 +731,8 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   else missing.push('MISSING\tuser-profile\tper-developer, optional');
   const brief = readText(root, '.agents/memory/project-brief.md');
   const prd = readText(root, 'docs/PRD.md');
-  if (brief && ['populated', 'seeded'].includes(frontStatus(brief.text))) {
+  let prdHeadLoaded = false;
+  if (brief && isFilled(brief.text)) {
     frame.push({ kind: 'LOAD', path: '.agents/memory/project-brief.md', bytes: brief.size, layer: 'frame' });
   } else {
     missing.push(`MISSING\tbrief\t${brief ? 'project-brief.md is empty' : 'project-brief.md absent'} — /maintain:refresh-brief`);
@@ -731,11 +740,13 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
       const head = prd.text.split('\n').slice(0, PRD_HEAD_LINES);
       const headBytes = bytes(head.join('\n')) + (prd.text.split('\n').length > PRD_HEAD_LINES ? 1 : 0);
       frame.push({ kind: 'LOAD', path: 'docs/PRD.md', bytes: headBytes, limit: PRD_HEAD_LINES, layer: 'frame' });
-      warns.push('WARN\t⚠️ project-brief.md is empty — reading the first 100 lines of docs/PRD.md; run /maintain:refresh-brief for faster primes');
+      prdHeadLoaded = true;
+      warns.push(`WARN\t⚠️ project-brief.md is empty — reading the first ${PRD_HEAD_LINES} lines of docs/PRD.md; run /maintain:refresh-brief for faster primes`);
     }
   }
+  const capName = full ? 'FULL_PER_FILE_CAP' : 'PER_FILE_CAP';
   for (const f of frame) {
-    if (!f.limit && f.bytes > cap) warns.push(`WARN\t⚠️ mandatory layer frame: ${f.path} is ${kb(f.bytes)} KB — over PER_FILE_CAP`);
+    if (!f.limit && f.bytes > cap) warns.push(`WARN\t⚠️ mandatory layer frame: ${f.path} is ${kb(f.bytes)} KB — over ${capName}`);
   }
   if (!prd) missing.push('MISSING\tprd\tdocs/PRD.md absent — /discover');
   const disc = readText(root, 'docs/discovery.md');
@@ -756,39 +767,37 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   }
 
   const staticMandatory = [...frame];
-  if (prd) {
-    staticMandatory.push(guard('register', () => measureExtract(root, 'register', 'register', {}, rootArg), null));
-    staticMandatory.push(guard('changelog', () => measureExtract(root, 'changelog', 'changelog', {}, rootArg), null));
+  for (const [present, part] of [[prd, 'register'], [prd, 'changelog'], [disc, 'discovery'], [arch, 'architecture']]) {
+    if (present) staticMandatory.push(guard(part, () => measureExtract(root, part, {}, rootArg), null));
   }
-  if (disc) staticMandatory.push(guard('discovery', () => measureExtract(root, 'discovery', 'discovery', {}, rootArg), null));
-  if (arch) staticMandatory.push(guard('architecture', () => measureExtract(root, 'architecture', 'architecture', {}, rootArg), null));
   const decisionSkip = [];
   if (decisions) {
     if (full && decisions.size <= FULL_PER_FILE_CAP) {
       staticMandatory.push({ kind: 'LOAD', path: '.agents/memory/decisions.md', bytes: decisions.size, layer: 'decisions' });
     } else {
-      staticMandatory.push(guard('decisions', () => measureExtract(root, 'decisions', 'decisions', {}, rootArg), null));
+      staticMandatory.push(guard('decisions', () => measureExtract(root, 'decisions', {}, rootArg), null));
       if (full) decisionSkip.push({ reason: 'CAP', path: '.agents/memory/decisions.md', bytes: decisions.size, files: 1, layer: 'decisions' });
     }
   }
   const mandatoryWith = (summary) => {
     const items = staticMandatory.filter(Boolean);
-    if (backlog) items.push(guard('backlog', () => measureExtract(root, 'backlog', 'backlog', { summary }, rootArg), null));
+    if (backlog) items.push(guard('backlog', () => measureExtract(root, 'backlog', { summary }, rootArg), null));
     return items.filter(Boolean);
   };
 
   // --- optional items, in priority order ---
   const optional = [];
-  if (backlog) optional.push({ kind: 'LOAD', path: '.agents/backlog.md', bytes: backlog.size, cost: 1, layer: 'backlog-file', group: 'main', isBacklog: true });
+  const backlogItem = backlog ? { kind: 'LOAD', path: '.agents/backlog.md', bytes: backlog.size, cost: 1, layer: 'backlog-file', group: 'main' } : null;
+  if (backlogItem) optional.push(backlogItem);
   for (const r of cr.roots) {
     const rel = r.path === '.' ? '.agents/memory/architecture.md' : posix(path.join(r.path, '.agents', 'memory', 'architecture.md'));
     const a = readText(root, rel);
-    if (a && ['populated', 'seeded'].includes(frontStatus(a.text))) {
+    if (a && isFilled(a.text)) {
       optional.push({ kind: 'LOAD', path: rel, bytes: a.size, cost: 1, layer: 'codemap', group: 'main' });
     }
   }
   if (cr.roots.some((r) => fs.existsSync(path.join(r.abs, 'docs', 'map', 'system.yaml')))) {
-    const m = guard('codemap', () => measureExtract(root, 'codemap', 'codemap', { roots: cr.roots }, rootArg), null);
+    const m = guard('codemap', () => measureExtract(root, 'codemap', { roots: cr.roots }, rootArg), null);
     if (m) optional.push({ ...m, cost: 0, group: 'main' });
   }
   const pend = guard('pending sources', () => pendingSources(root), { items: [], noPrd: false });
@@ -846,7 +855,6 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   let backlogLoaded = Boolean(backlog) && backlog.size <= cap;
   let mandatory = mandatoryWith(!backlogLoaded);
   let sel = select(mandatory, excluded);
-  const backlogItem = optional.find((i) => i.isBacklog);
   if (backlogItem && backlogLoaded && !sel.chosen.includes(backlogItem)) {
     // The backlog did not make it: its extract now carries the Epic map, measured again.
     excluded.set(backlogItem, sel.skipped.find((s) => s.item === backlogItem)?.reason ?? 'BUDGET');
@@ -898,7 +906,8 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
       ...(argsIgnored ? ['ARGS_IGNORED\t/prime-ba takes no topic — the command that works on the topic loads it'] : []),
       ...mand.flatMap(rowOf),
       ...chosen.flatMap(rowOf),
-      ...(prd ? [`INDEX\t${prd.size}\tdocs/PRD.md\tregister index + newest ${CHANGELOG_NEWEST} D-n — narrative not loaded`] : []),
+      ...(prd ? [`INDEX\t${prd.size}\tdocs/PRD.md\tregister index + newest ${CHANGELOG_NEWEST} D-n — narrative not loaded`
+        + `${prdHeadLoaded ? ` (first ${PRD_HEAD_LINES} lines loaded as the brief fallback)` : ''}`] : []),
       ...skips.slice(0, MAXSKIP).map((s) => `SKIP_${s.reason}\t${s.bytes}\t${s.label}\tlayer=${s.layer}`),
       ...(skips.length > MAXSKIP ? [`SKIP_MORE\t${skips.length - MAXSKIP} more skip rows (counters below are complete)`] : []),
       ...missing,
@@ -941,7 +950,7 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
       text = render(mand, chosen, skipped, total, pages, extraWarns);
       paged = paginate(text, PAGE_SIZE, cmdline);
       const nextTotal = content + pagesBytes(paged) + TOTAL_PAD;
-      if (paged.length === pages && nextTotal <= total + TOTAL_PAD && total >= content + pagesBytes(paged)) break;
+      if (paged.length === pages && nextTotal <= total + TOTAL_PAD) break;
       pages = paged.length;
       total = nextTotal;
     }
@@ -957,15 +966,13 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
     if (result.total <= budget || !chosen.length) break;
     const dropped = chosen.pop();
     skipped.push({ item: dropped, reason: 'BUDGET' });
-    if (dropped.isBacklog) mandatory = mandatoryWith(true);
+    if (dropped === backlogItem) mandatory = mandatoryWith(true);
   }
   if (result.total > budget && !chosen.length) {
     const mw = mandatoryWarns(mandatory);
+    const overWarn = () => `WARN\t⚠️ mandatory content and the plan listing alone are ${kb(result.total)} KB — over budget ${budget / 1024} KB`;
     // Fixed-point the final warning in too (its bytes count toward the plan).
-    let warn = `WARN\t⚠️ mandatory content and the plan listing alone are ${kb(result.total)} KB — over budget ${budget / 1024} KB`;
-    result = finish(mandatory, chosen, skipped, [...mw, warn]);
-    warn = `WARN\t⚠️ mandatory content and the plan listing alone are ${kb(result.total)} KB — over budget ${budget / 1024} KB`;
-    result = finish(mandatory, chosen, skipped, [...mw, warn]);
+    for (let k = 0; k < 2; k += 1) result = finish(mandatory, chosen, skipped, [...mw, overWarn()]);
   }
   return { ...result, cmdline, mandatory, chosen, skipped, budget };
 }
