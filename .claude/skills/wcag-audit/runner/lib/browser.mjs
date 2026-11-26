@@ -1,6 +1,6 @@
 // browser.mjs — one sandboxed headless Chrome per run behind the pinned proxy, a fresh context per
-// load, method enforcement and the per-page network lockdown in route, WebSockets and WebRTC blocked,
-// and a guaranteed close (finally, SIGINT/SIGTERM, time limits).
+// load, method enforcement and the per-page network lockdown in route, WebSockets and WebRTC blocked
+// and ledgered live, and a guaranteed close (finally, SIGINT/SIGTERM, time limits).
 import { load as loadDeps, browserChoice } from './deps.mjs';
 import { canaryServer } from './proxy.mjs';
 import { redactUrl } from './redact.mjs';
@@ -14,8 +14,13 @@ export const VIEWPORTS = {
 
 export const FREEZE_CSS = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}';
 
+// Printed through the init-time console.debug, so a frame that detaches right after the call is still
+// recorded and teardown needs no page JavaScript.
+const WEBRTC_SIGNAL ='wcag-audit:webrtc-blocked';
+
 const WEBRTC_INIT = `(() => {
-  const blocked = function () { window.__wcagWebrtc = (window.__wcagWebrtc || 0) + 1; throw new DOMException('blocked by wcag-audit', 'NotAllowedError'); };
+  const signal = console.debug.bind(console);
+  const blocked = function () { signal(${JSON.stringify(WEBRTC_SIGNAL)}); throw new DOMException('blocked by wcag-audit', 'NotAllowedError'); };
   try { Object.defineProperty(window, 'RTCPeerConnection', { value: blocked, configurable: false, writable: false }); } catch (e) {}
   try { Object.defineProperty(window, 'webkitRTCPeerConnection', { value: blocked, configurable: false, writable: false }); } catch (e) {}
 })();`;
@@ -99,13 +104,19 @@ export async function launch({ proxyPort, ledger, env = process.env }) {
   return { browser, info, close: async () => { unregister(); await browser.close(); } };
 }
 
+function chainUrls(req) {
+  const urls = [];
+  for (let r = req; r; r = r.redirectedFrom()) urls.push(r.url());
+  return urls;
+}
+
 // A fresh context with one page. The page has a load phase (requests allowed: GET/HEAD through the
 // proxy) and then a locked phase: every request is aborted and ledgered with the current label.
 export async function freshPage(browser, viewportName, { ledger, context: ctxInfo = {}, userAgent } = {}) {
   const vp = VIEWPORTS[viewportName];
   const context = await browser.newContext({ ...vp, reducedMotion: 'reduce', serviceWorkers: 'block', ...(userAgent ? { userAgent } : {}) });
   const unregister = registerClose(() => context.close());
-  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, responses: new Map(), failed: new Map(), proxyBlocked: new Set() };
+  const state = { locked: false, label: 'interaction-lockdown', aborted: 0, navAttempt: false, webrtc: false, responses: new Map(), failed: new Map(), proxyBlocked: new Set() };
   await context.routeWebSocket(/.*/, (ws) => {
     ledger.push({ kind: 'websocket-blocked', url: redactUrl(ws.url()), ...ctxInfo });
     ws.close({ code: 1008, reason: 'blocked by wcag-audit' });
@@ -131,11 +142,25 @@ export async function freshPage(browser, viewportName, { ledger, context: ctxInf
   });
   page = await context.newPage();
   page.on('response', (r) => {
-    state.responses.set(r.url(), r.status());
+    const status = r.status();
     // The proxy's own refusal (destination policy) marks its 403; it says nothing about the origin.
-    if (r.headers()['x-wcag-audit'] === 'blocked') state.proxyBlocked.add(r.url());
+    const blocked = r.headers()['x-wcag-audit'] === 'blocked';
+    // A terminal answer is filed under every URL of its redirect chain: img.currentSrc keeps the first.
+    const urls = status >= 300 && status < 400 ? [r.url()] : chainUrls(r.request());
+    for (const u of urls) {
+      state.responses.set(u, status);
+      if (blocked) state.proxyBlocked.add(u);
+    }
   });
-  page.on('requestfailed', (r) => { state.failed.set(r.url(), r.failure()?.errorText || 'failed'); });
+  page.on('requestfailed', (r) => {
+    const error = r.failure()?.errorText || 'failed';
+    for (const u of chainUrls(r)) state.failed.set(u, error);
+  });
+  page.on('console', (m) => {
+    if (state.webrtc || m.text() !== WEBRTC_SIGNAL) return;
+    state.webrtc = true;
+    ledger.push({ kind: 'webrtc-blocked', ...ctxInfo });
+  });
   const close = async () => { unregister(); await context.close().catch(() => {}); };
   return {
     context,

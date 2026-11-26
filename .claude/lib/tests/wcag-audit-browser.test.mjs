@@ -20,7 +20,7 @@ const GUARD = path.join(ROOT, '.claude', 'skills', 'wcag-audit', 'runner', 'read
 const EXPECTED = JSON.parse(fs.readFileSync(path.join(FIX, 'expected.json'), 'utf8'));
 const LONG = { timeout: 600_000 };
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png' };
 
 export async function startServers() {
   const hits = new Map();
@@ -37,6 +37,7 @@ export async function startServers() {
     hits.set(url.pathname, (hits.get(url.pathname) || 0) + 1);
     if (req.headers.cookie) cookies.push(req.headers.cookie);
     if (url.pathname === '/redirect-to-canary') { res.writeHead(302, { location: `http://127.0.0.1:${canaryPort}/redirect` }); return res.end(); }
+    if (url.pathname === '/redirect-to-missing') { res.writeHead(301, { location: '/missing.png' }); return res.end(); }
     if (url.pathname === '/redirect-to-other-origin') { res.writeHead(302, { location: `http://localhost:${port}/framed.html` }); return res.end(); }
     if (url.pathname === '/slow.html') {
       return setTimeout(() => { res.writeHead(200, { 'content-type': TYPES['.html'] }); res.end(fs.readFileSync(path.join(FIX, 'clean.html'))); }, 3000);
@@ -435,6 +436,44 @@ if (process.argv.includes('--serve')) {
     const res = await big();
     assert.equal(res.run.llm, false);
     assert.ok(!fs.readdirSync(res.work).some((f) => /^pack-.*\.json$/.test(f)));
+  });
+
+  // ---- #324 fix pass ------------------------------------------------------------------------
+
+  test('an image redirected to a 404 is a broken image with the final status', LONG, async () => {
+    const res = await big();
+    const f = findingsOf(res.run, 'broken-redirect.html').find((x) => x.contributors.some((c) => c.id === 'broken-image'));
+    assert.ok(f, 'broken-image finding');
+    assert.equal(f.data.status, 404);
+  });
+
+  test('an image that cannot be decoded is a broken image and the card says so', LONG, async () => {
+    const srv = await srvPromise;
+    const res = await scan(srv, ['broken-bytes.html']);
+    assert.equal(res.code, 0, res.stdout + res.stderr);
+    const f = findingsOf(res.run, 'broken-bytes.html').find((x) => x.contributors.some((c) => c.id === 'broken-image'));
+    assert.ok(f, 'broken-image finding');
+    assert.equal(f.data.decode, 'failed');
+    const { html } = await renderOf(res);
+    assert.ok(html.includes('the image file could not be decoded'));
+  });
+
+  test('visible aria-hidden and inert content is measured at 320 px', LONG, async () => {
+    const res = await big();
+    const reflowViolation = { check_or_rule: 'reflow', sc: '1.4.10', basis: '●' };
+    assert.ok(hasFinding(findingsOf(res.run, 'reflow-aria-hidden.html'), reflowViolation), 'aria-hidden');
+    assert.ok(hasFinding(findingsOf(res.run, 'reflow-inert.html'), reflowViolation), 'inert');
+    assert.ok(!hasFinding(findingsOf(res.run, 'reflow-ok.html'), reflowViolation), 'reflow-ok');
+  });
+
+  test('a page calling RTCPeerConnection is ledgered as webrtc-blocked', LONG, async () => {
+    const srv = await srvPromise;
+    const res = await scan(srv, ['webrtc.html', 'webrtc-frame.html']);
+    assert.equal(res.code, 0, res.stdout + res.stderr);
+    for (const file of ['webrtc.html', 'webrtc-frame.html']) {
+      const key = pageKeyOf(res.run, file);
+      assert.ok(res.run.ledger.some((l) => l.kind === 'webrtc-blocked' && l.page === key), `${file}: ${JSON.stringify(res.run.ledger)}`);
+    }
   });
 
   test('stop fixture server', async () => { (await srvPromise).close(); });

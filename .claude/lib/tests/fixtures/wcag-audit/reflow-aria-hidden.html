@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reflow aria-hidden</title>
+<link rel="stylesheet" href="site.css">
+<style>
+  html, body { overflow-x: hidden; }
+  .row { width: 900px; position: relative; height: 40px; }
+  .row p { position: absolute; left: 200px; top: 0; width: 400px; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Reflow aria-hidden</h1>
+  <p>A fixed-width row, hidden from assistive technology, whose visible text is clipped.</p>
+  <div class="row" aria-hidden="true"><p>Free delivery on every order placed before noon today.</p></div>
+</main>
+</body>
+</html>

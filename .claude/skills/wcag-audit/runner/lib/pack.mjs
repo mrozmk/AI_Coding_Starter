@@ -123,8 +123,17 @@ export function writePack(work, phase, cwd = process.cwd()) {
   const dir = lockDir(cwd);
   const holder = readJson(path.join(dir, 'lock.json'));
   const manifest = readJson(path.join(dir, 'manifest.json'));
-  if (!holder || holder.work !== work || !manifest) throw new Refusal('guard-not-proven', 'no probe for this run — run pack --phase probe and the probe spawn first');
-  if (!guardProven(work, holder.nonce, manifest.probe_denied)) throw new Refusal('guard-not-proven', 'read-guard.log holds no probe denial for the current nonce — the judge Read hook is not active');
+  // A refusal before the judge phase means the model phases are skipped: the report's scope row says
+  // so. After the judge phase the "model phase not completed" label already describes the run.
+  const guardRefusal = (hint) => {
+    if (!run.model.phases.judge) {
+      run.model.guard_inactive = true;
+      writeRun(work, run);
+    }
+    return new Refusal('guard-not-proven', hint);
+  };
+  if (!holder || holder.work !== work || !manifest) throw guardRefusal('no probe for this run — run pack --phase probe and the probe spawn first');
+  if (!guardProven(work, holder.nonce, manifest.probe_denied)) throw guardRefusal('read-guard.log holds no probe denial for the current nonce — the judge Read hook is not active');
   const nonce = holder.nonce;
   let items;
   let fpRows = null;
@@ -152,6 +161,7 @@ export function writePack(work, phase, cwd = process.cwd()) {
   writeAtomic(file, `${JSON.stringify(pack, null, 2)}\n`);
   writeManifest(dir, { nonce, work, allowed: [fs.realpathSync(file), ...crops], probe_denied: manifest.probe_denied });
   run.model.phases[`${phase}_pack`] = 'written';
+  if (phase === 'judge') delete run.model.guard_inactive;
   writeRun(work, run);
   return { pack: fs.realpathSync(file), items: items.length, nonce };
 }

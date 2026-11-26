@@ -18,16 +18,16 @@ export default {
       const pageScroll = de.scrollWidth > de.clientWidth + 1 && !hidden(cs(de).overflowX) && !hidden(cs(document.body).overflowX);
       const scroller = (el) => { for (let c = el.parentElement; c; c = c.parentElement) { const o = cs(c).overflowX; if ((o === 'auto' || o === 'scroll') && c.scrollWidth > c.clientWidth + 1) return c; } return null; };
       const twoD = (c) => c.matches('table, pre, [role=table], [role=grid], [role=treegrid]') || !!c.querySelector('table, pre, [role=table], [role=grid], [role=treegrid], canvas, svg');
-      // Closed off-canvas content (inert/aria-hidden, or parked past the right edge in a fixed layer) is
-      // only meant to appear when opened: not a reflow loss.
+      // A closed off-canvas panel (wholly past the right edge, in a fixed layer or inert/aria-hidden) is
+      // only meant to appear when opened: not a reflow loss. Partly visible AT-hidden content is measured.
       const fixedLayer = (el) => { for (let c = el; c; c = c.parentElement) if (cs(c).position === 'fixed') return true; return false; };
-      const items = W.all().filter((el) => el.matches('a[href], button, input:not([type=hidden]), select, textarea, [role=button], p, h1, h2, h3, h4, h5, h6, li, label') && W.visible(el) && !el.closest('[inert], [aria-hidden=true]'));
+      const items = W.all().filter((el) => el.matches('a[href], button, input:not([type=hidden]), select, textarea, [role=button], p, h1, h2, h3, h4, h5, h6, li, label') && W.visible(el));
       const lost = [];
       let exception = false;
       for (const el of items) {
         const rect = el.getBoundingClientRect();
         if (rect.right <= de.clientWidth + 1) continue;
-        if (rect.left >= de.clientWidth && fixedLayer(el)) continue;
+        if (rect.left >= de.clientWidth && (fixedLayer(el) || el.closest('[inert], [aria-hidden=true]'))) continue;
         const sc = scroller(el);
         if (sc) { if (twoD(sc) || el.closest('table, pre')) exception = true; continue; }
         if (el.closest('table, pre, [role=grid]')) { exception = true; continue; }

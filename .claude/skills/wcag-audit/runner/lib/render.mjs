@@ -103,7 +103,8 @@ export function render(run, { lang = 'en', siteLang = null, work = null, legal =
     const cards = fs2.map((f) => {
       const contributors = f.contributors.map((c) => `${c.source}:${c.id}`).join(', ');
       const fix = remediation(f.remediation_key, remLang, f.data?.help ? `${f.data.help} (${f.data.helpUrl || ''})` : null);
-      const diag = f.data?.status ? `<p>${esc(s.labels.detail)}: HTTP ${esc(f.data.status)} <code>${esc(f.data.url || '')}</code></p>` : '';
+      const detail = f.data?.decode === 'failed' ? esc(s.labels.decode_failed) : f.data?.status ? `HTTP ${esc(f.data.status)}` : '';
+      const diag = detail ? `<p>${esc(s.labels.detail)}: ${detail} <code>${esc(f.data.url || '')}</code></p>` : '';
       const crops = (f.evidence_ids || []).map((id) => cropTag(work, run, id)).join('');
       return `<div class="card"><p><strong>${esc(f.basis)} ${esc(f.sc.join(', '))}</strong> · ${esc(f.impact)} · ${esc(contributors)}</p><p>${esc(s.labels.where)}: <code>${esc(f.url)}</code> · ${esc(f.viewport || '')} · ${esc(f.state || '')} · <code>${esc(f.selector)}</code></p>${diag}${fix ? `<p>${esc(s.labels.fix)}: ${esc(fix)}</p>` : ''}${crops}</div>`;
     }).join('');
