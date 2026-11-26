@@ -67,7 +67,7 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
         "properties": {
           "severity":    { "type": "string", "enum": ["critical", "major", "medium", "minor"] },
           "kind":        { "type": "string", "enum": ["patchable", "fundamental"], "description": "patchable = the fix does not change what gets built; fundamental = it questions the approach, or it changes or expands what gets built. See the 'Classifying kind' rule in the prompt." },
-          "where":       { "type": "string", "description": "spec section (e.g. 'Architecture', 'Files', 'Edge Cases') or repo file:line" },
+          "where":       { "type": "string", "description": "spec section heading or repo file:line" },
           "problem":     { "type": "string" },
           "consequence": { "type": "string" },
           "fix":         { "type": "string" },
@@ -145,7 +145,7 @@ Dropped (with reason — proof the filter ran):
 ```
 ## 🔶 Rethink signals from cross-model review
 
-codex reopened a decision you own — it questions the design, or it would enlarge what gets built:
+codex reopened a decision you own — it questions the approach, or it would enlarge what gets built:
 
 [#F1] <severity> <title>
   WHERE: <where>   EVIDENCE: <evidence>

@@ -57,9 +57,8 @@ Refusals, in this order:
 with `Waiting —` → read it, take the reply from the invocation or the chat, and resume at Step 1 for
 the rows its open question affects, plus every row whose `**Verified against:**` revision moved while
 it waited (a Task that shipped or became protected meanwhile is judged again); the rest of the spec
-stands. A reply that opens a new
-question keeps it `Waiting`, the new paste-ready text replacing the old. A `Draft` one is a run that
-stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has
+stands. A reply that opens a new question keeps it `Waiting`, the new paste-ready text replacing the
+old. A `Draft` one is a run that stopped before Step 8 → read it, re-run Step 1 for the rows whose `**Verified against:**` revision has
 moved, and continue at Step 4 with the spec as it stands — never a second spec for the same input.
 
 **Backlog format** — read the Task table header of `.agents/backlog.md` once, testing in this order:
@@ -188,7 +187,7 @@ go on. The step is never skipped silently.
 **Waiting exit.** An answer only someone else can give → write the spec (Step 5 template) with
 `**Status:** Waiting — <role>`, the question as paste-ready text for that person under
 `## Open questions`, run the stage end marker, and stop. `/brainstorm-ba <spec>` with the reply
-resumes at Step 1 for the affected rows only. Drafting other stakeholder messages is not this
+resumes it (Step 0 → Resume). Drafting other stakeholder messages is not this
 command's job.
 
 ### Step 3 — Shape the Tasks

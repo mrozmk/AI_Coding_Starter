@@ -73,18 +73,13 @@ has .claude/commands/prime-ba.md 'WAITING' && has .claude/commands/prime-ba.md '
   && has .claude/lib/prime-ba.mjs 'WAITING\t'
 check $? "prime-ba lists a waiting requirements spec"
 
-# The shared review reference — or, on the cut-first fallback, a command without the step.
-if [ -f "$ROOT/$REF" ]; then
-  has "$REF" 'BOUND_SECTIONS' && has "$REF" 'WAKEUP_PROMPT' && has "$REF" 'CONTINUE_TO' \
-    && has "$REF" '`/brainstorm` Step 8' && has "$REF" '`/brainstorm-ba` Step 7'
-  check $? "spec-cross-review names its parameters and both callers"
-  has .claude/commands/brainstorm.md 'spec-cross-review.md' && has "$CMD" 'spec-cross-review.md' \
-    && has .claude/commands/brainstorm.md '#### Step 8.3' && has .claude/commands/brainstorm.md '#### Step 8.8'
-  check $? "both commands link the reference; brainstorm keeps 8.3 and 8.8"
-else
-  has "$CMD" 'v1 has no cross-model review step' && has .claude/commands/brainstorm.md '#### Step 8.5'
-  check $? "cut-first fallback: no review step, brainstorm Step 8 untouched"
-fi
+# The shared review reference
+has "$REF" 'BOUND_SECTIONS' && has "$REF" 'WAKEUP_PROMPT' && has "$REF" 'CONTINUE_TO' \
+  && has "$REF" '`/brainstorm` Step 8' && has "$REF" '`/brainstorm-ba` Step 7'
+check $? "spec-cross-review names its parameters and both callers"
+has .claude/commands/brainstorm.md 'spec-cross-review.md' && has "$CMD" 'spec-cross-review.md' \
+  && has .claude/commands/brainstorm.md '#### Step 8.3' && has .claude/commands/brainstorm.md '#### Step 8.8'
+check $? "both commands link the reference; brainstorm keeps 8.3 and 8.8"
 
 # ---- the worked-proof fixture ---------------------------------------------------------------
 ok=0

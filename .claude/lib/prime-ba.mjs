@@ -856,7 +856,8 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   const specList = guard('specs', () => specRows(root), { rows: [], specs: [] });
   if (full) {
     const pendSpecs = pend.items.filter((i) => i.kind === 'spec' && i.pending).sort((a, b) => a.size - b.size);
-    const taken = new Set(pendSpecs.map((s) => s.path));
+    // A waiting requirements spec is not a source yet: never loaded, in full mode either.
+    const taken = new Set([...pendSpecs, ...pend.items.filter((i) => i.waiting)].map((s) => s.path));
     for (const s of pendSpecs) optional.push({ kind: 'LOAD', path: s.path, bytes: s.size, cost: 1, layer: 'specs', group: 'main' });
     for (const p of specList.specs) {
       if (taken.has(p)) continue;
@@ -904,7 +905,7 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   // --- reconcile against the rendered plan ---
   const listings = guard('listings', () => [
     ...specList.rows,
-    ...(pend.noPrd ? ['PENDING_NOTE\tno PRD change log — every source is pending'] : []),
+    ...(pend.noPrd ? ['PENDING_NOTE\tno PRD change log — every source but a waiting requirements spec is pending'] : []),
     ...pend.items.filter((i) => i.pending).map((i) => `PENDING\t${i.kind}\t${i.size}\t${i.path}${i.changed ? `\tchanged since ${i.changed}` : ''}`),
     ...pend.items.filter((i) => i.waiting).map((i) => `WAITING\t${i.kind}\t${i.waiting}\t${i.path}`),
     ...noteRows(root, fam.families),

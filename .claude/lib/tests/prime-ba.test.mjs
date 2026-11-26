@@ -203,6 +203,7 @@ test('requirements spec in Draft or Waiting is WAITING, not PENDING', () => {
     assert.deepEqual(waiting.find((r) => r[3] === A), ['WAITING', 'spec', 'Draft', A]);
     assert.deepEqual(waiting.find((r) => r[3] === B), ['WAITING', 'spec', 'Waiting — client', B]);
     assert.ok(!rows(out, 'PENDING').some((r) => r[3] === A || r[3] === B));
+    assert.ok(!loadPaths(out).includes(A) && !loadPaths(out).includes(B), out);
   }
 });
 

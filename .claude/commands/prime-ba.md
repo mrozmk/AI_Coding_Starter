@@ -158,7 +158,7 @@ the PRD or the brief (already in context), no closing summary. Narrate only an a
 
 ### Pending sources
 - Count, then names + sizes from the `PENDING` rows, with `changed since D-k` where given
-- Waiting requirements specs (`WAITING` rows): name + status — not pending; resume with `/brainstorm-ba <spec>` once the reply is in
+- Waiting requirements specs (`WAITING` rows): name + status — not pending; a `Waiting — <role>` one resumes with `/brainstorm-ba <spec>` once the reply is in, a `Draft` one is an interrupted run that resumes now
 - Raw sources no note fully covers (`RAW` rows: names + sizes) — listed, never read
 - Notes: count, the three newest titles, each note's corrections (`FAMILY` rows); any `ERROR` correction conflict or orphan
 
@@ -183,7 +183,7 @@ At most 3, the earliest that apply in this route order:
 - `/architect` — PRD exists but no `docs/architecture.md` (no subdomains, no `AD-n`, no stack decision)
 - `/setup:create-backlog` — PRD + architecture exist but no `.agents/backlog.md`
 - `/jira sync` — local backlog exists, its `Jira` cells are empty and `tracker=jira`
-- `/brainstorm-ba <spec>` — a requirements spec is waiting (`WAITING` row) and the answer it waits for has arrived
+- `/brainstorm-ba <spec>` — a `WAITING` row whose status is `Draft` (an interrupted run), or `Waiting — <role>` and the answer it waits for has arrived
 - `/brainstorm <Task>` — a sized H/XH Task with no spec yet
 - `/jira create epic` — spec exists but no Jira epic (only when no local backlog — with one, `/jira sync` owns Epic creation)
 - Refresh PRD — raw sources present but PRD seems outdated
