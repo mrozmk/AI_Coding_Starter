@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -)",
+      "Bash(python3 -c *)",
+      "Bash(gh issue list:*)",
+      "WebFetch(domain:docs.example)",
+      "Bash(ls:*)"
+    ]
+  }
+}
