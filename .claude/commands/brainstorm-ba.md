@@ -95,7 +95,8 @@ establish **what is already there** for the area the input touches, on four surf
    criteria and protection come from the checker, never re-derived:
    - `node .claude/lib/backlog-check.mjs --next-ids <Task ids>` → per Task `current` and `source`.
      **The active criteria are the `current` entries with `withdrawn: false`**; a withdrawn entry is
-     history and grounds no verdict. `source` names where they live — an approved spec in `Ref`
+     history and grounds no verdict; so is every criterion of a withdrawn Task (`--impact` →
+     `withdrawn: true`) — never a `covered by` or `extends` target. `source` names where they live — an approved spec in `Ref`
      outranks the Epic file, and comparing code with an Epic-file criterion a later spec replaced
      yields a false "bug" or "covered".
    - `node .claude/lib/backlog-check.mjs --impact <ids>` → protection reasons, dependents, outside
@@ -110,9 +111,10 @@ establish **what is already there** for the area the input touches, on four surf
      with `start_at` until a page returns fewer than 50 (`.agents/reference/jira-mcp-atlassian.md`),
      then per directly affected issue the comment read of `.agents/reference/tracker-comments.md` §2
      (`jira_get_issue(…, include="comments", comment_limit=50)` — always pass `include`); none →
-     nothing. A page error, a comment count at the limit or a `gh` exit 4 is an **incomplete read**:
-     named under *Not verified*, and every verdict that depends on it goes through the
-     CERTAINTY-GATE — never "not found". Local drafts under `.agents/jira/` too.
+     nothing. A page error, a comment count at the limit, a Jira comment read §3 of that reference
+     rates `possibly-truncated` or `unknown` (an empty MCP list without paging metadata) or a `gh`
+     exit 4 is an **incomplete read**: named under *Not verified*, and every verdict that depends on
+     it goes through the CERTAINTY-GATE — never "not found". Local drafts under `.agents/jira/` too.
 4. **Code** — what the system does today in that area: the behaviour, where it lives (modules,
    components), what is configurable versus hardcoded, which shared pieces a change would touch,
    which tests pin the behaviour, and the recent history of the area (`git log` on the paths, with
