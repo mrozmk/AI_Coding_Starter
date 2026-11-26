@@ -46,9 +46,12 @@ _AUTHZ = re.compile(r"""((?:Proxy-)?Authorization["']?\s*:\s*["']?)[^\r\n"';|&]+
 _COOKIE = re.compile(r"""(Cookie["']?\s*:\s*["']?)[^\r\n"'|&]+""", re.I)
 # Scoped to curl: a bare `-u` is also `git push -u origin`; a cluster of curl's argument-less
 # flags (-su) or an attached value (-uX:Y) is still the user flag, an attached argument of
-# another flag (-Tup.txt) is not. A quoted argument before it may hold `&`, `;` or `|`.
-_CURLU = re.compile(r"""(\bcurl\b(?:"[^"\n]*"|'[^'\n]*'|[^\n|;&"'])*?\s(?:-[sSkLvfiIjnNOqRgG0-9#]*u\s*|--user(?:\s+|=)))(%s|\S+)"""
-                    % _Q)
+# another flag (-Tup.txt) is not. A quoted argument before it may hold `&`, `;` or `|`. The proxy
+# user flag (-U, --proxy-user) carries the same secret.
+_CURL_ARGS = r"""(?:"[^"\n]*"|'[^'\n]*'|[^\n|;&"'])*?\s(?:-[sSkLvfiIjnNOqRgG0-9#]*[uU]\s*|--(?:proxy-)?user(?:\s+|=))"""
+_CURLU = re.compile(r"(\bcurl\b%s)(%s|\S+)" % (_CURL_ARGS, _Q))
+# The next user flag of the same invocation, matched where the previous one's value ends.
+_CURLU_NEXT = re.compile(r"(%s)(%s|\S+)" % (_CURL_ARGS, _Q))
 _USERINFO = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@")
 # Never an scp-like remote (git@host:path): the egress guard reads its host. The lookbehind starts
 # the local part only at a run's start (linear on a long run, not quadratic).
@@ -57,9 +60,21 @@ _EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[
 _SECRET_KEY = re.compile(r"[A-Za-z0-9_-]*(?:%s)|(?:proxy-)?authorization|cookie" % _KEY, re.I)
 FIELDS = ("command", "url", "file_path", "path", "notebook_path", "skill", "pattern")
 
+def _curl_users(s):
+    """Every user flag of each curl invocation masked; a _CURLU match ends at the first one."""
+    out, pos = [], 0
+    m = _CURLU.search(s)
+    while m:
+        while m:
+            out.append(s[pos:m.start(2)] + "***")
+            pos = m.end()
+            m = _CURLU_NEXT.match(s, pos)
+        m = _CURLU.search(s, pos)
+    return "".join(out) + s[pos:]
+
 def _mask(s):
     s = _LABELLED.sub(lambda m: m.group(1) + m.group(2) + m.group(1) + m.group(3) + "***", _PEM.sub("***", s))
-    s = _USERINFO.sub(r"\1***@", _CURLU.sub(r"\1***", _COOKIE.sub(r"\1***", _AUTHZ.sub(r"\1***", s))))
+    s = _USERINFO.sub(r"\1***@", _curl_users(_COOKIE.sub(r"\1***", _AUTHZ.sub(r"\1***", s))))
     return _HIGH.sub("***", _BEARER.sub(r"\1***", _FLAGS.sub(r"\1\2***", _EMAIL.sub("***@***", s))))
 
 def mask_value(v):
@@ -141,20 +156,16 @@ def _team(project, session_id):
         return tj.get("team", "?"), tj.get("ticket", "?"), "TeamLead"
     return (sj.get("team", "?"), sj.get("ticket", "?"), sj.get("role", "?")) if sj else None
 
-_UNSET = object()
-
-def default_where(main, project, cwd, session_id, team=_UNSET):
-    """Team files come from project's repository; cwd only names the solo path. team: an
-    already resolved _team() result."""
-    t = _team(project, session_id) if team is _UNSET else team
+def default_where(main, cwd, t):
+    """t: _team() of the session (team files come from its project's repository); cwd only names
+    the solo path."""
     if t:
         return "team %s / %s / %s" % t
     rel = os.path.relpath(os.path.realpath(cwd), os.path.realpath(main))
     return "solo " + ("?" if rel.startswith("..") else rel)
 
-def _role(project, session_id, team=_UNSET):
+def _role(t):
     """The role of input: like default_where, else $TEAM_SESSION_ROLE, else solo."""
-    t = _team(project, session_id) if team is _UNSET else team
     if t:
         return _ident(t[2]) or "?"
     return _ident(os.environ.get("TEAM_SESSION_ROLE")) or "solo"
@@ -484,9 +495,9 @@ def hook(glob):
         return 0
     what = "%s: %s" % pend[:2] if pend else (msg or "permission prompt")
     team = _team(project, sid)
-    entry = make_entry("permission", what, reason, where=default_where(main, project, cwd, sid, team))
+    entry = make_entry("permission", what, reason, where=default_where(main, cwd, team))
     if pend:
-        entry["input"] = make_input(pend[0], pend[2], cwd, _role(project, sid, team), sid)
+        entry["input"] = make_input(pend[0], pend[2], cwd, _role(team), sid)
     if reason == "direct" and _guard_recent(main, entry):
         return 0
     if glob and not _ensure_ignored(main, ".agents/touches/%s.jsonl" % entry["at"][:7]):
@@ -508,7 +519,7 @@ def _input_file(path, cwd):
     if isinstance(d.get("payload"), dict):
         p, role = d["payload"], d.get("role")
     else:
-        p, role = d, _role(cwd, d.get("session_id"))
+        p, role = d, _role(_team(cwd, d.get("session_id")))
     if not isinstance(p.get("tool_name"), str) or not p["tool_name"]:
         return None, "no tool_name"
     return make_input(p["tool_name"], p.get("tool_input"), p.get("cwd"), role, d.get("session_id")), None
@@ -523,7 +534,7 @@ def add(a):
     if not main:
         return _err(NO_MAIN, 1)
     entry = make_entry(a.kind, a.what, a.reason, a.answer, None if a.wait_s is None else int(a.wait_s),
-                       a.where or default_where(main, cwd, cwd, None))
+                       a.where or default_where(main, cwd, _team(cwd, None)))
     # A decision the Supervisor relayed (team-lead.sh decision relay): who relayed it, after wait_s.
     if a.relayed_by is not None:
         entry["relayed_by"] = _clean(a.relayed_by, 60)
@@ -552,7 +563,7 @@ def block(argv):
     project = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     main = resolve_main(opts.get("--main"), project)
     if main:
-        where = default_where(main, project, os.getcwd(), None)
+        where = default_where(main, os.getcwd(), _team(project, None))
         append(main, make_entry("block", "%s: %s" % (src, what), "hook", where=where))
     return 0
 

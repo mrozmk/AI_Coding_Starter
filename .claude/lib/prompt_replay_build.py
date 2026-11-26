@@ -22,6 +22,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import touches  # noqa: E402
+import prompt_replay  # noqa: E402
 
 STAGE_ROLES = ("planner", "coder", "qa", "wrapup", "cli")
 # The replayed tools and the tool_input field the guard reads for each.
@@ -63,10 +64,6 @@ CTX = dict({r: "stage" for r in STAGE_ROLES}, TeamLead="teamlead", lead="teamlea
 
 def ctx_of(role):
     return CTX.get(str(role or ""), "unknown")
-
-
-def boundary(prefix):
-    return re.compile(re.escape(prefix.rstrip("/")) + r"(?=/|$|[\s'\";:)|&])")
 
 
 class Acq:
@@ -229,7 +226,7 @@ def foreign(src, text, paths):
     for p, _ in src.prefixes:
         if any(p == k or under(k, p) for k in known):
             continue
-        if boundary(p).search(text):
+        if prompt_replay.boundary(p).search(text):
             return True
     return False
 
@@ -391,7 +388,7 @@ class Builder:
                 tj = json.load(fh)
         except (OSError, ValueError):
             pass
-        team = run.split("-", 1)[0]
+        team = run.rsplit("-", 2)[0]  # <team>-YYYYMMDD-HHMMSS; a team name may hold "-"
         ticket = str(tj.get("ticket") or (archive.split("-", 1)[0] if archive else "?"))
         dirs = [rdir] + [os.path.join(rdir, n) for n in sorted(os.listdir(rdir)) if re.match(r"^r\d+$", n)]
         for d in dirs:
@@ -659,7 +656,6 @@ class Builder:
 
     def evaluator(self):
         if self.ev is None:
-            import prompt_replay
             self.ev = prompt_replay.Evaluator(os.path.dirname(os.path.dirname(HERE)), self.policy,
                                               tempfile.mkdtemp(prefix="replay-build-"))
         return self.ev

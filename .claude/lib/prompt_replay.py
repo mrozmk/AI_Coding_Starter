@@ -31,6 +31,11 @@ FILE_DEP = re.compile(r"\bsqlcmd\b|\S\.(?:sql|sh)\b", re.I)
 CHANGES_CAP = 200
 
 
+def boundary(prefix):
+    """A checkout path where a path component ends — shared with the builder's foreign()."""
+    return re.compile(re.escape(prefix.rstrip("/")) + r"(?=/|$|[\s'\";:)|&])")
+
+
 def _git(cwd, *args):
     subprocess.run(["git", "-c", "user.name=replay", "-c", "user.email=replay@localhost", "-c",
                     "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "init.defaultBranch=main"]
@@ -156,7 +161,7 @@ class Evaluator:
         if cls not in base:
             return None
         cwd = os.path.normpath(os.path.join(base[cls], job.get("cwd_rel") or "."))
-        pats = [(re.compile(re.escape(p.rstrip("/")) + r"(?=/|$|[\s'\";:)|&])"), base[c])
+        pats = [(boundary(p), base[c])
                 for p, c in sorted(job.get("paths") or [], key=lambda pc: -len(pc[0])) if p and c in base]
 
         def sub(v):

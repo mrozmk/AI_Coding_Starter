@@ -396,6 +396,14 @@ add_cmd "$T/m16f" "git push -u origin feat/x"
   && tail -n 1 "$F16F" | jq -e '.input.fields.command == "git push -u origin feat/x"' >/dev/null
 ok "16k attached, clustered and post-query curl -u, a Cookie with pairs and a JSON-quoted header masked; curl -T kept" $?
 
+mkrepo "$T/m16u"; F16U="$(mfile "$T/m16u")"
+UU=-U; PU=proxy-user
+add_cmd "$T/m16u" "curl $UU admin:CANARYPROXYU https://x" # guard-push:allow
+add_cmd "$T/m16u" "curl --$PU=admin:CANARYPROXYL https://x" # guard-push:allow
+add_cmd "$T/m16u" "curl $U o:CANARYORIG --$PU p:CANARYBOTH https://x; curl $UU q:CANARYNEXT https://y" # guard-push:allow
+[ "$(count "$F16U")" = 3 ] && ! grep -qE 'CANARYPROXYU|CANARYPROXYL|CANARYORIG|CANARYBOTH|CANARYNEXT' "$F16U"
+ok "16u curl -U and --proxy-user masked, every user flag of an invocation" $?
+
 LONG="echo $(printf '%0200000d' 0)"; S0=$SECONDS
 add_cmd "$T/m16f" "$LONG"
 [ "$(count "$F16F")" = 13 ] && [ $((SECONDS - S0)) -le 10 ]

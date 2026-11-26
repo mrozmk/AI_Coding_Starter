@@ -204,6 +204,15 @@ $PR build --sources "$FX18/sources.json" --out "$T/c18" >/dev/null 2>&1
   && [ "$(jq -cS '[.id, .intervention]' "$T/c18a/touched.jsonl" | sort)" = "$(jq -cS '[.id, .intervention]' "$T/c18/touched.jsonl" | sort)" ]
 ok "b18 records after the cutoff stay out; every earlier record keeps its id and intervention" $?
 
+# A team name may hold "-": the run id <team>-YYYYMMDD-HHMMSS names it, as the touch row's where does.
+FX19="$T/fx19"; mkfx "$FX19"; mv "$FX19/alfa/.agents/team/runs/alfa-20261101-000000" "$FX19/alfa/.agents/team/runs/red-1-20261101-000000"
+sed 's|"team alfa / 8 / coder"|"team red-1 / 8 / coder"|' "$FX19/main/.agents/touches/2026-11.jsonl" > "$T/t19" \
+  && mv "$T/t19" "$FX19/main/.agents/touches/2026-11.jsonl"
+$PR build --sources "$FX19/sources.json" --out "$T/c19" >/dev/null 2>&1
+I19=$(jq -r 'select(.ref | endswith("red-1-20261101-000000/d-1")) | .intervention' "$T/c19/touched.jsonl")
+[ -n "$I19" ] && [ "$(jq -r 'select(.source == "touch" and .evidence.what == "coder: Bash rm scratch.txt") | .intervention' "$T/c19/touched.jsonl")" = "$I19" ]
+ok "b19 a hyphenated team's decision and its touch row are one intervention" $?
+
 $PR verify --corpus "$C" >/dev/null 2>&1; r1=$?
 mkdir "$T/cv"; cp "$C"/* "$T/cv/"; sed '1s/"source"/"sourcf"/' "$C/touched.jsonl" > "$T/cv/touched.jsonl"
 e2=$($PR verify --corpus "$T/cv" 2>&1); r2=$?
