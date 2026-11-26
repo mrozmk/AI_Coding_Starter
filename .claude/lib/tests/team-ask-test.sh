@@ -22,8 +22,10 @@ export HOME="$T/home" GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$HOME" "$T/bin" || die "dirs"
 printf '[user]\n  name = t\n  email = t@example.invalid\n[init]\n  defaultBranch = main\n[url "%s"]\n  insteadOf = https://github.com/acme/widgets\n' \
   "$T/origin.git" > "$GIT_CONFIG_GLOBAL"
-n=0; fail=0
-ok() { n=$((n + 1)); if ! eval "$1"; then echo "FAIL [$2]"; fail=1; fi; }
+n=0; fail=0; n322=0
+# A #322 case also prints its PASS line, so the gate can read the #322 cases ran (AC-5/8/9).
+ok() { n=$((n + 1)); if ! eval "$1"; then echo "FAIL [$2]"; fail=1
+  elif [[ "$2" == "#322"* ]]; then n322=$((n322 + 1)); echo "PASS [$2]"; fi; }
 
 # ---- fixture: main checkout, origin, clone ------------------------------------------------------
 MAIN="$T/main"; CLONE="$T/clone"; RINGS="$T/rings.log"; : > "$RINGS"
@@ -1921,6 +1923,16 @@ pl edit-asks "$T/starter-beta-1/.claude/hooks/x.sh"; H "$T/w7.out"
 ok '[ "$(j "$T/w1.out" .hookSpecificOutput.permissionDecision)" = deny ] && [ "$(j "$T/w2.out" .hookSpecificOutput.permissionDecision)" = deny ] && grep -q "never edited by a stage" "$T/w1.out"' "#322 stage write guard: settings and a role profile are denied"
 ok '[ ! -s "$T/w3.out" ] && [ ! -s "$T/w4.out" ] && [ ! -s "$T/w6.out" ]' "#322 stage write guard: the clone's hooks, the starter worktree's hooks and src/ pass"
 ok '[ "$(j "$T/w5.out" .hookSpecificOutput.permissionDecision)" = deny ] && [ "$(j "$T/w7.out" .hookSpecificOutput.permissionDecision)" = deny ]' "#322 stage write guard: the main checkout's hooks, and a starter worktree with no starter root, are denied"
+# Round 2: only a live guard layer — a fixture project's settings inside the clone is an ordinary
+# file; another checkout's root settings and the user's Claude config dir stay denied.
+mkdir -p "$T/other/.git" "$T/other/.claude" "$T/cfg"
+pl edit-asks "$CLONE/.claude/lib/tests/fixtures/p/.claude/settings.local.json"; H "$T/w8.out"
+pl edit-asks "$CLONE/.claude/lib/tests/fixtures/p/.claude/team/sessions/x.settings.json"; H "$T/w9.out"
+pl edit-asks "$T/other/.claude/settings.json"; H "$T/w10.out"
+pl edit-asks "$T/cfg/settings.json"; CLAUDE_CONFIG_DIR="$T/cfg" H "$T/w11.out"
+ok '[ ! -s "$T/w8.out" ] && [ ! -s "$T/w9.out" ]' "#322 stage write guard: a fixture project's settings and role profile inside the clone pass"
+ok '[ "$(j "$T/w10.out" .hookSpecificOutput.permissionDecision)" = deny ] && [ "$(j "$T/w11.out" .hookSpecificOutput.permissionDecision)" = deny ]' "#322 stage write guard: another checkout's root settings and the Claude config dir are denied"
 
+echo "team-ask-test: #322 cases passed: $n322"
 [ "$fail" -eq 0 ] || exit 1
 echo "team-ask-test: OK ($n checks)"

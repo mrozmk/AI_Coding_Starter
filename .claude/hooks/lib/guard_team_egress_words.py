@@ -71,13 +71,36 @@ def data_heredocs_removed(text):
     return "\n".join(out)
 
 
+def active_backquote(text):
+    """True when <text> holds a backquote a shell runs: outside single quotes and not escaped
+    (`\\``, or one inside '…', is a literal character)."""
+    quote, i = None, 0
+    while i < len(text):
+        c = text[i]
+        if quote == "'":
+            quote = None if c == "'" else quote
+        elif c == "\\":
+            i += 1
+        elif c == "`":
+            return True
+        elif c == '"':
+            quote = None if quote == '"' else '"'
+        elif c == "'" and quote is None:
+            quote = "'"
+        i += 1
+    return False
+
+
 def units(cmd, depth=0):
     """(raw tokens, words) of every simple command of <cmd> at every nesting level: the commands,
     their unredirected readings, bash/sh -c strings, eval, tmux arguments, `$(…)` / backquote
     bodies and the strings of flock -c / env -S. Unparsable text yields what parsed. A data
-    here-doc's body is no command (data_heredocs_removed)."""
+    here-doc's body is no command (data_heredocs_removed); a literal backquote (escaped, or in
+    single quotes) opens no body (#322 round 2)."""
     import guard_team_egress as g
-    text, bodies = sub_masked(data_heredocs_removed(cmd))
+    plain = data_heredocs_removed(cmd)
+    live_bq = active_backquote(plain)
+    text, bodies = sub_masked(plain)
     try:
         tokens = tokenize(text)
     except ValueError:
@@ -101,7 +124,8 @@ def units(cmd, depth=0):
         out.append((raw, words))
         if depth >= 3:
             continue
-        nested = [g.SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w] + strings
+        nested = [g.SUBST.sub(" ; ", w) for w in (bq_literal(w, live_bq) for w in raw)
+                  if "$(" in w or "`" in w] + strings
         verb = os.path.basename(words[0]) if words else ""
         flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
         if verb in g.SHELLS and flag:
@@ -113,6 +137,13 @@ def units(cmd, depth=0):
         for inner in nested:
             out.extend(units(inner, depth + 1))
     return out
+
+
+def bq_literal(word, live):
+    """<word> without its literal backquotes: every escaped one, and all of them when the text has
+    no backquote a shell runs."""
+    word = word.replace("\\`", "")
+    return word if live else word.replace("`", "")
 
 
 def texts_of(cmd):

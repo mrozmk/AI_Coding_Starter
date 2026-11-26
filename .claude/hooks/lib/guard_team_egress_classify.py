@@ -5,7 +5,8 @@ classify_bash(cmd, project, cwd) / classify_webfetch(url, project) -> (kind, rea
   deny      a hard deny class (a request body or upload from a file or stdin, /dev/tcp|udp, a token
             in a URL, a download piped into a shell or interpreter, a write into
             .claude/settings*.json or a role profile, a stage's write into .claude/hooks outside its
-            clone and its run's starter worktree) — never cleared by anyone;
+            clone and its run's starter worktree) — never cleared by anyone; each detector judges
+            the executed effect, never a mention of its shape (round 2);
   operator  a hard Operator-only class (a method other than GET/HEAD or a literal body, explicit
             credentials, GH_HOST/GH_REPO/--hostname, a gh write to another repo, a git push whose
             destination is not the verified origin, a private host, an unpinned install, a Bash
@@ -32,8 +33,11 @@ from urllib.parse import urlsplit
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
-from guard_team_egress_loops import backstop  # noqa: E402
-from guard_team_egress_words import curl_options, data_heredocs_removed, texts_of, units  # noqa: E402
+from guard_destructive_sql import SEPARATORS, SHELL_C, commands, strip_wrappers, tokenize  # noqa: E402
+from guard_team_egress_loops import (  # noqa: E402
+    INTERP, MODIFIERS, SHELLS_I, backstop, scan, stdin_executor)
+from guard_team_egress_words import (  # noqa: E402
+    curl_options, data_heredocs_removed, positional, texts_of, units)
 from guard_team_egress_hard import (  # noqa: E402
     EGRESS_VERBS, URL_WORD, operator_reason, write_class)
 
@@ -55,8 +59,21 @@ TOKEN = re.compile(
     r"|(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?|ftp)://[^:@/\s]+:[^@/\s]+@"
     r"|(?i:(?:^|[/?&;=])(?:token|access_token|api_key|apikey|key|sig|password|secret)=[^&/\s]+)"
     r"|(?i:\bBearer\s+\S)")
-PIPED_SHELL = re.compile(r"\b(?:bash|sh|zsh|python3?|node|perl|ruby)\b[^\n;|&]*<\(\s*(?:curl|wget)\b"
-                         r"|-c\s+['\"]?\$\(\s*(?:curl|wget)\b")
+DOWNLOADERS = ("curl", "wget")
+EXEC_VERBS = SHELLS_I | INTERP | {"source", ".", "eval"}
+# An interpreter option whose value is program text: python -c, node -e/-p/--eval, perl -e/-E,
+# ruby -e, php -r, lua -e (a cluster such as perl's -ne too).
+CODE_OPT = re.compile(r"^-[A-Za-z]*[ceEpr]$|^--(?:eval|print)$")
+# A redirection operator, alone or glued to its target (`>`, `2>>`, `<`, `<>`, `&>`, `3<>`); `<<`
+# and `<<<` feed text, they open nothing.
+REDIR_ONLY = re.compile(r"(?:[0-9]+|\{\w+\}|&)?(?:<>|<|>>|>\||>)")
+REDIR_HEAD = re.compile(r"^(?:[0-9]+|\{\w+\}|&)?(?:<>|>>|>\||>|<(?!<))")
+# Option values that are data, not a destination: wget's and the common message/body/pattern ones.
+WGET_VALUE = ("-O", "-o", "-a", "-P", "-U", "-e", "-i", "-B", "-t", "-T", "-w", "-Q", "-l", "-A",
+              "-R", "-D", "-I", "-X", "--header", "--user-agent", "--referer")
+DATA_VALUE = ("-m", "--message", "-b", "--body", "-t", "--title", "-F", "-f", "--field",
+              "--raw-field", "-H", "--header", "-q", "--jq", "--template", "-d", "--data", "-X",
+              "--method", "-l", "--label", "-e", "--search", "-S")
 REGISTRY_OPTS = re.compile(r"^(?:--registry|-i|--index-url|--extra-index-url|--proxy|--https-proxy"
                            r"|--trusted-host|--userconfig|--globalconfig|--index|-c|--config)(?:=|$)")
 LITERAL_PATH = re.compile(r"^[^$`*?\[\]{}]+$")
@@ -257,31 +274,150 @@ def body_file(verb, args):
     return False
 
 
+def destinations(verb, args):
+    """The words an egress command contacts (#322 round 2): curl's URL operands, wget's and every
+    other verb's positional words — never the value of a body, header, message or pattern option."""
+    if verb == "curl":
+        return [v for c, v in curl_options(args) if c == "url"]
+    return positional(args, WGET_VALUE if verb == "wget" else DATA_VALUE)
+
+
+def runs_input(vals):
+    """True when this pipe consumer executes what it reads (stdin_executor), seen through a wrapper
+    it can be read through (`command grep` reads data). xargs, and a wrapper that cannot be read,
+    stay executors."""
+    head = os.path.basename(vals[0]) if vals else ""
+    if head in ("noglob", "nocorrect", "builtin"):
+        return runs_input(vals[1:]) if len(vals) > 1 else True
+    if head not in MODIFIERS:
+        return stdin_executor(vals)
+    try:
+        inner = strip_wrappers(list(vals))
+    except ValueError:
+        return True
+    if not inner or inner == list(vals) or os.path.basename(inner[0]) == "xargs":
+        return True
+    return runs_input(inner)
+
+
+def verb_of(raw):
+    """The basename of the command a wrapper chain runs, '' when unreadable (a wrapper `sudo …`
+    whose string does not parse runs nothing this reader can name)."""
+    try:
+        words = strip_wrappers(list(raw))
+    except ValueError:
+        return ""
+    return os.path.basename(words[0]) if words else ""
+
+
+def fetches(text):
+    """True when <text> runs curl or wget in command position."""
+    return any(w[:1] and os.path.basename(w[0]) in DOWNLOADERS for _, w in units(text))
+
+
+def code_words(words):
+    """The program text a shell or interpreter command runs from its own words: a shell's -c
+    string, an interpreter's -c/-e/-r/--eval value, eval's words."""
+    verb = os.path.basename(words[0]) if words else ""
+    if verb == "eval":
+        return [" ".join(words[1:])]
+    if verb not in SHELLS_I and verb not in INTERP:
+        return []
+    opt = SHELL_C if verb in SHELLS_I else CODE_OPT
+    return [words[k + 1] for k in range(1, len(words) - 1) if opt.match(words[k])]
+
+
+def download_run(text, depth=0):
+    """The deny reason when downloaded content is executed (#322 round 2), or '': curl/wget output
+    piped (through any data filter) into a consumer that runs its input (runs_input), a process
+    substitution `<(curl …)` read by a shell, interpreter or source, and `-c`/`-e`/eval code built
+    by `$(curl …)` — at every nesting level a shell executes. A consumer that reads the download as
+    data (jq, grep, sed, tar, `python3 -c '<own code>'`) is no such effect."""
+    plain = data_heredocs_removed(text)
+    piped, why = backstop(plain, DOWNLOADERS, "", runs_input)
+    if piped == "ask":
+        return "downloaded content piped into a shell or interpreter (" + why + ")"
+    try:
+        tokens = tokenize(plain)
+    except ValueError:
+        return ""
+    for i, t in enumerate(tokens):
+        if t != "<(":
+            continue
+        k = i
+        while k > 0 and not set(tokens[k - 1]) <= SEPARATORS:
+            k -= 1
+        try:
+            head = strip_wrappers([w for w in tokens[k:i] if w != "<"])
+        except ValueError:
+            head = tokens[k:i]
+        depth_in, j = 1, i + 1
+        while j < len(tokens) and depth_in:
+            depth_in += tokens[j].endswith("(") - (tokens[j] == ")")
+            j += 1
+        if head and os.path.basename(head[0]) in EXEC_VERBS and any(
+                verb_of(c) in DOWNLOADERS for c in commands(tokens[i + 1:j - 1])):
+            return "downloaded content run by " + os.path.basename(head[0]) + " (process substitution)"
+    if depth >= 3:
+        return ""
+    for raw in commands(tokens):
+        try:
+            words = strip_wrappers(raw)
+        except ValueError:
+            continue
+        for code in code_words(words):
+            got = scan(code)
+            bodies = [code[s + 2:e] for s, e in got[1]] if got else []
+            bodies += re.findall(r"(?<!\\)`([^`]*)`", code)
+            if any(fetches(b) for b in bodies):
+                return "downloaded content run by " + os.path.basename(words[0])
+            why = download_run(code, depth + 1)
+            if why:
+                return why
+    got = scan(plain)
+    for s, e in (got[1] if got else []):
+        why = download_run(plain[s + 2:e], depth + 1)
+        if why:
+            return why
+    return ""
+
+
+def net_opened(text):
+    """True when a shell opens /dev/tcp or /dev/udp (#322 round 2): a redirection target, or the
+    operand of exec / source / . / a shell, in any command at any nesting level (units). A mention
+    in a quoted argument, a pattern, a message or a data here-doc body is no such effect."""
+    import guard_team_egress as g
+    for raw, words in units(text):
+        for k, t in enumerate(raw):
+            m = REDIR_HEAD.match(t)
+            if (m and m.end() and g.NET_DEV.match(t[m.end():])) or (
+                    k and REDIR_ONLY.fullmatch(raw[k - 1]) and g.NET_DEV.match(t)):
+                return True
+        verb = os.path.basename(words[0]) if words else ""
+        if (verb in ("exec", "source", ".") or verb in SHELLS_I) and any(
+                g.NET_DEV.match(w) for w in words[1:]):
+            return True
+    return False
+
+
 def deny_units(text):
     """The deny reason of one text's commands (command positions only: a quoted mention of a tool
     in an argument is data), or ''."""
-    found = units(text)
-    for raw, words in found:
+    for raw, words in units(text):
         if not words:
             continue
         verb, args = os.path.basename(words[0]), words[1:]
         if body_file(verb, args):
             return verb + (" api" if verb == "gh" else "") + " request body or upload from a file or stdin"
-        if verb in EGRESS_VERBS and any(TOKEN.search(m.group(0)) for w in words
+        if verb in EGRESS_VERBS and any(TOKEN.search(m.group(0)) for w in destinations(verb, args)
                                         for m in URL_WORD.finditer(w)):
             return "token in a URL"
-    piped, why = backstop(data_heredocs_removed(text), ("curl", "wget"), "")
-    if piped == "ask":
-        return "downloaded content piped into a shell or interpreter (" + why + ")"
-    if PIPED_SHELL.search(text) and any(w[:1] and os.path.basename(w[0]) in ("curl", "wget")
-                                        for _, w in found):
-        return "downloaded content run by a shell or interpreter"
-    return ""
+    return download_run(text)
 
 
 def deny_text(text):
     import guard_team_egress as g
-    if g.net_device(text, [g.unquoted(text)]):
+    if net_opened(text):
         return g.NET_FOUND
     return deny_units(text)
 

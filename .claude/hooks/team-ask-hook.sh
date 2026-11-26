@@ -46,7 +46,7 @@ if [ "$EV" = PreToolUse ]; then
     P="$(real "$FILE")" && [ -n "$P" ] || guard_refuse "cannot resolve $FILE — refused"
     RUNS="$(real "$TD/runs")" || guard_refuse "cannot resolve the runs dir — refused"
     # Case-folded: on a case-insensitive volume `RUNS/x/ASKS` is the same directory.
-    P="$(tr '[:upper:]' '[:lower:]' <<<"$P")"; RUNS="$(tr '[:upper:]' '[:lower:]' <<<"$RUNS")"
+    PO="$P"; P="$(tr '[:upper:]' '[:lower:]' <<<"$P")"; RUNS="$(tr '[:upper:]' '[:lower:]' <<<"$RUNS")"
     case "$P" in "$RUNS"/*/asks|"$RUNS"/*/asks/*|"$RUNS"/*/decisions|"$RUNS"/*/decisions/*)
       jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
         permissionDecisionReason: "asks/ and decisions/ are written by the hook and the TeamLead'"'"'s scripts only"}}'
@@ -65,9 +65,21 @@ if [ "$EV" = PreToolUse ]; then
       exit 0 ;;
     esac
     # #322 (Operator decision d-2): settings and role profiles are never edited by a stage; the
-    # guard layer's hooks only in its own clone or its run's starter worktree.
-    case "$P" in */.claude/settings*.json|*/.claude/team/sessions/*.settings.json)
-      out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0 ;;
+    # guard layer's hooks only in its own clone or its run's starter worktree. Round 2: only a live
+    # guard layer — the clone's `.claude/`, the `.claude/` at a checkout's root (its parent holds
+    # `.git`) or the user's Claude config dir; a fixture project's `.claude/` inside a repository
+    # is no guard layer.
+    case "$P" in *.json)
+      CFG="$(real "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")" || guard_refuse "cannot resolve the Claude config dir — refused"
+      CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"
+      CFG="$(tr '[:upper:]' '[:lower:]' <<<"$CFG")"; CL="$(tr '[:upper:]' '[:lower:]' <<<"$CL")"
+      case "$P" in "$CFG"/settings*.json|"$CFG"/team/sessions/*.settings.json|"$CL"/.claude/settings*.json|"$CL"/.claude/team/sessions/*.settings.json)
+        out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0 ;;
+      */.claude/settings*.json|*/.claude/team/sessions/*.settings.json)
+        if [ -e "${PO%/.claude/*}/.git" ]; then
+          out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0
+        fi ;;
+      esac ;;
     esac
     case "$P" in */.claude/hooks/*)
       CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"

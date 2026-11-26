@@ -90,6 +90,33 @@ def resolve(target, cwd):
     return os.path.realpath(t)
 
 
+def claude_config_dir():
+    d = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    return os.path.realpath(d)
+
+
+def guard_layer(path, project):
+    """True when a settings or role-profile path (PROTECTED) belongs to a live guard layer (#322
+    round 2): the `.claude/` of the session's project, the `.claude/` at the root of a checkout
+    (its parent holds `.git` — the clone, the main checkout, the starter and its worktrees), or the
+    user's Claude config dir. A fixture project's `.claude/` inside a repository tree is not one."""
+    low, cfg = path.lower(), claude_config_dir().lower()
+    if low.startswith(cfg + os.sep) and any(
+            fnmatch.fnmatch(low[len(cfg) + 1:], p) for p in ("settings*.json", "team/sessions/*.settings.json")):
+        return True
+    if not any(fnmatch.fnmatch(low, p) for p in PROTECTED):
+        return False
+    k = low.rfind("/.claude/")
+    while k >= 0:
+        rest = low[k + len("/.claude/"):]
+        if fnmatch.fnmatch(rest, "settings*.json") or fnmatch.fnmatch(rest, "team/sessions/*.settings.json"):
+            root = path[:k]
+            return (bool(project) and root.lower() == os.path.realpath(project).lower()) or \
+                os.path.exists(os.path.join(root, ".git"))
+        k = low.rfind("/.claude/", 0, k)
+    return False
+
+
 def target_class(target, cwd, project):
     """(kind, reason) of one write target, or None."""
     path = resolve(target, cwd)
@@ -100,7 +127,7 @@ def target_class(target, cwd, project):
             return "deny", "write into a protected path after an unresolvable cd (" + target + ")"
         return None
     low = path.lower()
-    if any(fnmatch.fnmatch(low, p) for p in PROTECTED):
+    if guard_layer(path, project):
         return "deny", "write into settings or a role profile (" + os.path.basename(path) + ")"
     if fnmatch.fnmatch(low, HOOKS):
         # Operator decision d-4: a non-stage hooks write gets no class in this phase (#323 adds the
@@ -330,6 +357,10 @@ def gh_reason(words, args, project):
             repo = a.split("=", 1)[1]
         elif re.match(r"^-R.+", a):
             repo = a[2:].lstrip("=")
+    # A host-qualified repo (HOST/OWNER/REPO) on another host than the project's (github.com) is
+    # gh on another host, like --hostname — whatever owner/repo follows (#322 round 2).
+    if repo is not None and repo.count("/") >= 2 and repo.split("/", 1)[0].lower() != "github.com":
+        return "gh write to another host (" + repo + ")"
     # No known own repo (no profile, no origin): "another repo" cannot be told — no class.
     own = own_repo(project) if repo is not None else None
     if own is not None and repo.lower().split("/", repo.count("/") - 1)[-1] != own:

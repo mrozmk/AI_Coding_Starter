@@ -96,21 +96,22 @@ def stdin_executor(vals):
     return k >= len(vals) or vals[k] in STDIN_PATHS
 
 
-def piped_verdict(cmds, ops, upstream=("gh",), tag=" (Supervisor)"):
+def piped_verdict(cmds, ops, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor):
     """ask when a stdin executor reads a pipe from a chain with an <upstream> command, else defer."""
     src = ""
     for k, vals in enumerate(cmds):
         if not (k and ops[k - 1] == "|"):
             src = ""
-        elif src and stdin_executor(vals):
+        elif src and executes(vals):
             return "ask", src + " output piped into " + os.path.basename(vals[0]) + tag
         head = os.path.basename("".join(vals[:1]))
         src = src or (head if head in upstream else "")
     return "defer", ""
 
 
-def backstop(cmd, upstream=("gh",), tag=" (Supervisor)"):
-    """For a layout the reader refuses: piped_verdict over today's token stream; defer if unparsable."""
+def backstop(cmd, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor):
+    """For a layout the reader refuses: piped_verdict over today's token stream; defer if unparsable.
+    <executes> judges a pipe consumer (the #322 deny passes a narrower one)."""
     try:
         tokens = tokenize(cmd)
     except ValueError:
@@ -130,7 +131,7 @@ def backstop(cmd, upstream=("gh",), tag=" (Supervisor)"):
             cur = []
         elif ops and s and not (ops[-1] == "|" and set(s) <= {"("}):
             ops[-1] = op  # `| (bash)`: the pipe reaches the group's first command
-    return piped_verdict(cmds + [cur] if cur else cmds, ops, upstream, tag)
+    return piped_verdict(cmds + [cur] if cur else cmds, ops, upstream, tag, executes)
 
 
 def scan(text):
