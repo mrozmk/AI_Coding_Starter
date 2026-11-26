@@ -58,7 +58,7 @@ STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-
   cost-tests guard-team-egress-test guard-team-trunk-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
   finder-model-test codex-bg-model-test check-impl-contract-test coding-standards-contract-test coding-standards-gen-test qa-verify-contract-test refresh-brief-contract-test check-backlog-upkeep-contract-test start-claim-contract-test create-task-contract-test team-inbox-test team-ask-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test touches-test prompt-replay-test
-  prime-probes-test arch-assess-test upkeep-test
+  prime-probes-test prime-ba-test arch-assess-test upkeep-test
   starter-fork-commit-test team-starter-land-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test

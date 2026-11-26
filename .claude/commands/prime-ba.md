@@ -1,102 +1,116 @@
 ---
-description: Prime agent with product context for the Business Analyst role
+description: Prime agent with product context for the Business Analyst role (budgeted: index first, code map, no spec bodies)
+argument-hint: [full]
 ---
 
-# Prime BA: Load Product Context for Story Work
+# Prime BA: Load Product Context on a Budget
 
 ## Objective
 
-Build a product-level understanding of the project so the agent can help a Business Analyst write user stories, break features into tasks, and manage the Jira backlog. This command loads **product** context (PRD, specs, decisions, live backlog), not implementation context. For implementation-level priming, use `/prime`.
+Build a product-level understanding for Business-Analyst work — the scope register, the backlog,
+the recorded decisions, what is still unprocessed and where the code is — on a **measured budget**,
+so the session starts with room to work. This command loads **product** context, not implementation
+context; for implementation-level priming use `/prime`.
+
+`.claude/lib/prime-ba.mjs` does every measurement and extraction: it reserves the mandatory core,
+selects the optional layers inside what remains, and prints one row per item. This command runs it,
+reads exactly what it selects and reports facts.
+
+## Constants
+
+The tuning knobs, defined at the top of `.claude/lib/prime-ba.mjs` (the script prints them on its
+`CONST` row). Raise one when a layer is too thin — never remove the selector.
+
+| Constant | Value | Role |
+|---|---|---|
+| `DEFAULT_BUDGET` | 163840 (160 KB ≈ 40k tokens) | default-mode total of loaded content |
+| `FULL_BUDGET` | 327680 (320 KB ≈ 80k tokens) | full-mode total |
+| `PER_FILE_CAP` | 40960 (40 KB) | a file `LOAD`ed whole, default mode |
+| `FULL_PER_FILE_CAP` | 81920 (80 KB) | the same in full mode (lets a long `decisions.md` load whole) |
+| `PAGE_SIZE` | 24576 (24 KB) | one page of `plan` / `extract` output — stays one inline Bash result |
+| `PENDING_BUDGET` | 49152 (48 KB) | default-mode sub-budget for pending-source content |
+| `DECISIONS_NEWEST` | 10 | `decisions.md` entries in full |
+| `CHANGELOG_NEWEST` | 5 | `D-n` entries in full |
+| `SPECS_LISTED` | 10 | spec rows in the listing (the count is always given) |
+| `MAXLOAD` | 25 | `LOAD` rows — a guardrail, never yields |
+| `MAXSKIP` | 10 | skip rows named (counters uncapped) — a shaping cap; yields when the residue is the question (`rg --files .agents/specs`) |
+| `FETCH_FRESH_HOURS` | 24 | code-root `FETCH_HEAD` age before "unknown" |
+| `GIST_MAX` | 72 | characters of a register sentence on its index line |
+| `PRD_HEAD_LINES` | 100 | PRD lines read when the brief is empty |
+
+## Modes
+
+- **`/prime-ba`** — *default*. Always loaded (the mandatory core, measured and reserved first, never
+  skipped, paged when long):
+  - `.agents/memory/index.md`
+  - `.agents/memory/user-profile.md` (when present)
+  - `.agents/memory/project-brief.md` (when `populated` / `seeded`; else the first 100 lines of `docs/PRD.md` and a warning)
+  - the PRD scope register as an index + the newest 5 `D-n` (`extract register`, `extract changelog`)
+  - `docs/discovery.md` coverage, open questions and critical flows (`extract discovery`)
+  - `docs/architecture.md` status, subdomains and the `AD-n` table (`extract architecture`)
+  - `.agents/memory/decisions.md` headings + the newest 10 in full (`extract decisions`)
+  - the backlog state with the checker output (`extract backlog`)
+
+  Then, inside what remains: `.agents/backlog.md` whole, each code root's
+  `.agents/memory/architecture.md` and its `docs/map/system.yaml` nodes (`extract codemap`), and the
+  pending meeting-note families and `docs/discovery.md`. Specs are **listed, never read**.
+- **`/prime-ba full`** — the same, with `FULL_BUDGET` / `FULL_PER_FILE_CAP`: `decisions.md` whole,
+  pending content up to the remaining budget, then pending specs and the newest specs.
+
+**Mode detection:** full when `$ARGUMENTS` contains `full`. Any other argument → say once
+"`/prime-ba` takes no topic — the command that works on the topic loads it" and load nothing for it
+(`index.md` → Loader Convention).
 
 ## Process
 
-### 1. Read Core Product Documentation
+### 1. Plan
 
-Read in this order — stop reading a category if the file doesn't exist:
+Run `node .claude/lib/prime-ba.mjs plan` (`node .claude/lib/prime-ba.mjs plan --mode full` in full
+mode). Its first row says `pages=<n>`; a page that is not the last ends with
+`… continued — run: node .claude/lib/prime-ba.mjs … --page <n+1>` — run that line verbatim, every
+page, before acting on any row.
 
-- `CLAUDE.md` — project rules, language conventions, workflow
-- `docs/PRD.md` — product requirements (primary source of truth for what the product is)
-- `docs/discovery.md` — when present: the coverage table, the open `Q-n`, and the flows (`FL-n`) with their critical flag
-- `docs/architecture.md` — when present: `## Subdomains` and `## Decisions` (titles only — the `AD-n` detail is for `/plan-feature`, not for BA work)
-- `README.md` — project root readme (context on audience and state)
+### 2. Load exactly what the plan selects
 
-### 2. Ingest Raw Sources
+- **`LOAD` rows** — `Read` the path (with `limit` when the row has `limit=100`). A `family=` row is
+  one member of a meeting-note family: apply the corrections the way `meeting-notes.md` → "How
+  readers apply corrections" prescribes (suffix order, `## Metadata` first); a `was:` text you cannot
+  find is a conflict to report, never a choice.
+- **`EXTRACT` rows** — run `node .claude/lib/prime-ba.mjs <the row's cmd= field>` verbatim, every
+  page (the row's `pages=` says how many).
+- **Never** read a `SKIP_*`, `SPEC`, `PENDING` (not loaded), `RAW` or `INDEX` path "because it looks
+  relevant" — that is the budget being re-litigated by the reader it exists to constrain. A file you
+  read later on demand, for a concrete task, is said so.
+- `CLAUDE.md` is injected — never read. `README.md` is not read (it duplicates the brief).
+- The backlog freshness check needs no extra call: `extract backlog` runs
+  `node .claude/lib/backlog-check.mjs` and `/prime-ba` recomputes the fingerprint
+  (`backlog-check.mjs --fingerprint`'s value) to mark the `**Last check:**` fresh or stale. Never fix
+  the backlog from here — structural edits go through `/update-backlog` (`/setup:create-backlog` →
+  Maintenance contract). A missing checker, a legacy work-package backlog, a pre-Scope backlog
+  (`node .claude/lib/backlog-migrate.mjs --write`) or a pre-detail backlog is reported with the
+  checker's own message.
 
-Read the **effective source set**: every `.agents/meeting-notes/*.md` note with its corrections applied (every `-correction*` note whose `**Corrects:**` names it, in suffix order — metadata corrections first), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). These are immutable inputs that feed product thinking; a note supersedes the raw transcript it fully covers.
+### 3. Jira (optional)
 
-!`find . -maxdepth 3 -path './.agents/meeting-notes/*.md' 2>/dev/null`
+Jira is optional: BA priming is complete without it — the local backlog and the listings are the full
+picture when no tracker is connected. Skip this whole step when the probe fails and say so once in
+the report.
 
-List the notes: count, the three newest titles, and each note's corrections (`<note> ← <correction>, <correction-2>`).
+Jira config lives in environment variables that the MCP server reads directly — **do not** echo them
+from the shell (printing a token would leak it into `audit.log`). Probe connectivity by attempting a
+read-only MCP call and reacting to the result.
 
-!`ls -la .agents/sources/ 2>/dev/null || echo "no sources/ directory"`
-
-Of the raw files listed, read **only** those no `**Coverage:** full` note names in its `**Source:**` line (a fully covered transcript is superseded by its note). None left → note "no uncovered raw sources".
-
-### 3. Read Approved Specs
-
-List `.agents/specs/` — every file is an approved design doc from `/brainstorm`. Each spec represents a designed-but-not-necessarily-implemented feature.
-
-!`ls -la .agents/specs/ 2>/dev/null || echo "no specs/ directory"`
-
-Read each spec file found. Note its `Status` and `External docs required` flags.
-
-### 4. Load Project Memory
-
-- Read `.agents/memory/index.md` — always
-- Read `.agents/memory/decisions.md` — product/architectural decisions the BA must know
-- List `.agents/memory/domain/` directory — note which domains have accumulated knowledge:
-
-!`ls .agents/memory/domain/ 2>/dev/null || echo "no domain/ directory"`
-
-Don't read every domain file — just note which exist. Read a specific one only if the BA's task touches that domain.
-
-### 5. Check Plans Pipeline
-
-List plans — what's being implemented and what's already done:
-
-!`ls .agents/plans/active/ 2>/dev/null || echo "no active plans"`
-!`ls .agents/plans/done/ 2>/dev/null || echo "no completed plans"`
-
-Filenames only — don't read the plans themselves unless the BA asks.
-
-### 5b. Local backlog
-
-!`ls -la .agents/backlog.md 2>/dev/null || echo "no local backlog"`
-
-If `.agents/backlog.md` exists, read it (the index; the per-Task detail lives in `.agents/backlog/E<n>-<slug>.md` — read those only when the BA asks about a Task) and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits go through `/update-backlog`, `/setup:create-backlog` → Maintenance contract):
-
-```bash
-node .claude/lib/backlog-check.mjs
-```
-
-Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure. A pre-Scope backlog (`Wave` / `Slice` columns, no `Scope`) is reported with the checker's message, which names `node .claude/lib/backlog-migrate.mjs --write`.
-
-Report the backlog's `**Detail:**` field (`structure` = Summary lines only, criteria come from
-`/setup:delivery-plan`; `full` = every live Task has criteria in its Epic file) and its
-`**Last check:**` line with the recorded mode, and mark the check **stale** when its hash differs
-from `node .claude/lib/backlog-check.mjs --fingerprint` (`backlog.md` plus every Epic file in
-`.agents/backlog/`; a partial scope never reads as a whole-backlog `ship`, a `structure` check never
-as a detail check); none → "never checked — `/check-backlog`". A backlog whose criteria are still in
-`.agents/backlog.md` (pre-detail) is reported with the checker's message, which names
-`node .claude/lib/backlog-migrate.mjs --write`.
-
-Also report the scope register next to the backlog: the PRD's `**Baseline:**` / `**Current:**` and the backlog's `**Scope rev:**` (behind → "run `/update-backlog`"), the three newest `D-n` titles with their `**Approval:**`, and the **pending sources** — notes, specs and `docs/discovery.md` whose `shasum -a 256 | cut -c1-12` hash appears in no `D-n` `**Sources:**` line with a filled `**Tasks:**` line (names, count). Structural changes go through `/update-backlog`; never fix the backlog from here.
-
-### 6. Jira (optional)
-
-Jira is optional: BA priming is complete without it — the local backlog of section 5b and the specs/plans views are the full picture when no tracker is connected. Skip this whole section when the probe fails and say so once in the report.
-
-Jira config lives in environment variables that the MCP server reads directly — **do not** echo them from the shell (printing a token would leak it into `audit.log`). Probe connectivity by attempting a read-only MCP call and reacting to the result.
-
-**Step 6a — Probe connectivity:**
+**Step 3a — Probe connectivity:**
 
 Call `mcp__atlassian__jira_get_all_projects` (read-only, no confirmation needed).
-- **Succeeds** → Jira is configured and reachable. Continue to 6b.
-- **Fails** (auth / connection / not-configured error) → Jira is offline. Skip 6b and note `Jira offline — MCP not configured or unreachable` in the report (the BA can still work without it).
+- **Succeeds** → Jira is configured and reachable. Continue to 3b.
+- **Fails** (auth / connection / not-configured error) → Jira is offline. Skip 3b and note
+  `Jira offline — MCP not configured or unreachable` in the report (the BA can still work without it).
 
-**Step 6b — Fetch live backlog (read-only, no confirmation needed):**
+**Step 3b — Fetch live backlog (read-only, no confirmation needed):**
 
-Determine the target project key (prefer the project the BA names; otherwise pick from the projects returned in 6a, or ask). Then call, substituting the literal project key:
+Determine the target project key (prefer the project the BA names; otherwise pick from the projects
+returned in 3a, or ask). Then call, substituting the literal project key:
 
 ```
 mcp__atlassian__jira_search(
@@ -106,86 +120,61 @@ mcp__atlassian__jira_search(
 )
 ```
 
-If no project key can be determined → skip the fetch and note that the default project is not configured (the BA can still query manually via `/jira search`).
+If no project key can be determined → skip the fetch and note that the default project is not
+configured (the BA can still query manually via `/jira search`). No whole-project scan.
 
-**Step 6c — Local Jira workspace (no MCP, runs even when Jira is offline):**
+### 4. Local Jira workspace
 
-!`find . -maxdepth 5 -path './.agents/jira/*' -name '*.md' 2>/dev/null`
-
-From that listing report: drafts in progress per Epic (`inprogress/E<n>/`, files with pending `ops`
-named), and per sent Epic the **last resync** — the newest report whose file name is exactly
-`<YYYY-MM-DD-HHMMSS>-E<n>.md` or `<YYYY-MM-DD-HHMMSS>-E<n>-<k>.md` (`E1` never matches `E12`), by run id —
-with the unresolved structural / AC drift counts from that report, plus the titles of the two newest
-`Grooming patterns` blocks in `.agents/memory/domain/jira.md`. No overdue thresholds — just the
-dates.
-
-### 7. Understand Current Activity
-
-!`git log -10 --oneline`
-!`git status`
+From the plan's `JIRA_*` rows (no MCP, also when Jira is offline): drafts in progress per Epic
+(`JIRA_DRAFTS` — files with pending `ops` named), the newest resync report per sent Epic
+(`JIRA_RESYNC`, matched by its exact `E<n>`), and the two newest `Grooming patterns` blocks of
+`.agents/memory/domain/jira.md` (`JIRA_GROOMING`). The drift counts inside a resync report are read
+on demand, not per prime. No overdue thresholds — just the dates.
 
 ---
 
 ## Output Report
 
-Present a product-focused summary in these sections. Use bullets and tight prose — the BA needs to scan this fast.
+**Style: facts-only listing.** No procedural narration ("Czytam…", "Uruchamiam…"), no re-summary of
+the PRD or the brief (already in context), no closing summary. Narrate only an actual problem
+(→ Warnings).
 
-### Product Vision
-From PRD:
-- **Mission** — one-sentence product mission
-- **Target users** — primary personas
-- **MVP scope** — 3-5 bullets of what's in scope
-- **Out of scope** — 2-3 bullets of what's explicitly deferred
+### Loaded
+- One dot-separated line with the mode as prefix, naming every file read and every extract run,
+  e.g. `Loaded (default): index.md · project-brief.md · extract register · extract changelog · extract decisions · extract backlog · backlog.md`.
 
-If no PRD exists, say so and recommend running `/discover` first.
+### Context budget — facts
+- One line per `LAYER` row: `<layer> — <bytes> (<mandatory|optional>)`
+- `TOTAL` vs the budget, as the plan printed it
+- Skipped per reason (`SKIPPED_CAP` / `SKIPPED_MAXLOAD` / `SKIPPED_BUDGET`), naming the skipped items up to `MAXSKIP`
 
-### Discovery & architecture state
+### Register & backlog — facts
+- The register header line, the counts per kind and state, the newest `D-n` titles with their `**Approval:**`
+- `backlog-check` output verbatim (errors and warnings), or "clean"
+- `**Detail:**`, `**Last check:**` fresh / stale / never checked, `Current` vs `Scope rev` (behind → `/update-backlog`)
+- The Epic map with Task counts per `Status` when the extract carried it (the backlog over its cap or out of budget)
 
-- **Discovery** — coverage table verdict per area, the open `Q-n` (id + question), the flows with `Critical: yes`. Absent → "no `docs/discovery.md` — run `/discover`".
-- **Architecture** — the subdomain classification (core / supporting / generic) and the `AD-n` titles with their `Status`. Absent → "no `docs/architecture.md` — run `/architect`".
+### Pending sources
+- Count, then names + sizes from the `PENDING` rows, with `changed since D-k` where given
+- Raw sources no note fully covers (`RAW` rows: names + sizes) — listed, never read
+- Notes: count, the three newest titles, each note's corrections (`FAMILY` rows); any `ERROR` correction conflict or orphan
 
-### Backlog state (local)
+### Open `Q-n`
+- From the discovery extract's `## Open questions` (id + question); absent → "no `docs/discovery.md` — run `/discover`"
 
-From `.agents/backlog.md` (absent → "no local backlog"):
-- Epic map — one line per Epic: id, name, Tasks, points done/total
-- Task counts by `Status`: TODO / WIP / DONE
-- `backlog-check` output: errors and warnings verbatim, or "clean"
+### Code roots
+- One line per `CODE_ROOT` row (name, branch, HEAD, ahead/behind, dirty, last fetch, verdict), or the `NO_CODE_ROOT` line
 
-### Pipeline State (specs · plans · Jira)
+### Jira
+- Live: table of the 10 newest Epics — `Key | Summary | Status | Priority | Assignee`, each key linked to `$JIRA_URL/browse/<KEY>`; or `Jira offline — …` once
+- Local workspace: from step 4
 
-Three parallel views — the BA needs all three to understand what's happening:
+### Warnings (omit section if none)
+- One line per `WARN` row, and one per skip reason with its own count and bytes — never collapsed
+- One line per `ERROR` and `MISSING` row (what is absent and the command that creates it)
 
-**Designed (local specs):**
-- List each file in `.agents/specs/` with its one-line summary and `External docs required` flag
-
-**Planned (active implementation):**
-- List each file in `.agents/plans/active/`
-
-**Shipped (done):**
-- List each file in `.agents/plans/done/`
-
-**Live backlog (Jira, if available):**
-- Table of 10 latest epics — `Key | Summary | Status | Priority | Assignee`
-- Link each key to `$JIRA_URL/browse/<KEY>`
-
-### Gaps (candidates for story work)
-
-Cross-reference PRD features vs specs/epics. Identify:
-- PRD features with **no spec** in `.agents/specs/` — candidates for `/brainstorm` (active ids only — a superseded or withdrawn requirement is history, never a gap)
-- Specs with **no matching Jira epic** — candidates for creating Epics in Jira
-- Raw sources in `.agents/sources/` that have **no derived spec** — candidates for PRD refresh or `/brainstorm`
-
-Be concrete — name the feature and what's missing. If nothing obvious is missing, say so (in the user's communication language — CLAUDE.md → Language Rules).
-
-### Key Decisions
-
-Top 3-5 entries from `.agents/memory/decisions.md`. One line each — decision + why.
-
-If empty, note that `memory/decisions.md` is empty — no decisions recorded yet (in the user's communication language — CLAUDE.md → Language Rules).
-
-### Recommended Next Steps
-
-Given the gaps identified, recommend concrete next actions in priority order. Examples:
+### Next steps
+At most 3, the earliest that apply in this route order:
 - `/discover` — no PRD yet, product direction unclear
 - `/discover --import <file>` — requirements exist outside the repo (doc, CSV, spreadsheet) and carry no ids yet
 - `/architect` — PRD exists but no `docs/architecture.md` (no subdomains, no `AD-n`, no stack decision)
@@ -195,7 +184,8 @@ Given the gaps identified, recommend concrete next actions in priority order. Ex
 - `/jira create epic` — spec exists but no Jira epic (only when no local backlog — with one, `/jira sync` owns Epic creation)
 - Refresh PRD — raw sources present but PRD seems outdated
 
-Limit to 3 recommendations max — when more apply, keep the 3 earliest in the route order above and name the rest in one trailing line. If nothing obvious, say the backlog looks consistent and is ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
+The rest that apply go in one trailing line. Nothing applies → say the backlog looks consistent and is
+ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
 
 ---
 
@@ -207,3 +197,19 @@ After the report, remind yourself (and the user) of the BA role posture:
 - Tasks are stories or technical tasks, sized M/H/XH, with acceptance criteria carrying ids (`E<n>-<m>.AC<k>`)
 - When creating tasks in Jira, always under a parent Epic (no free-floating tasks — per `jira` skill hard-gate)
 - When in doubt about scope or product intent, ask — do not guess
+- Not 99 % sure → ask, never guess.
+- Verify against the code and the recorded decisions before proposing a change to an existing system.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end prime-ba`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

@@ -536,7 +536,7 @@ git -C "$ST" ls-files | awk -v m="$MANIFEST" '
   { print }' > "$WORK/solo.list"
 (cd "$ST" && tar cf - -T "$WORK/solo.list") | (cd "$D" && tar xf -)
 git -C "$D" init --quiet
-for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs touches.sh touches.py; do
+for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs prime-ba.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs touches.sh touches.py; do
   [ -f "$D/.claude/lib/$f" ] || fail "21: a project without teams lacks .claude/lib/$f"
 done
 mkdir -p "$D/.agents"

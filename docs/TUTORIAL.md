@@ -789,16 +789,16 @@ The discovery and the PRD are the common foundation of all scenarios. The differ
 
 ### Step 2: Load the product context (prime-ba)
 
-> For analyst work there's a **dedicated** priming command — it loads the **product** context (PRD, specs, decisions, backlog), not the implementation context like the regular `/prime`.
+> For analyst work there's a **dedicated** priming command — it loads the **product** context (scope register, decisions, backlog, pending sources), not the implementation context like the regular `/prime`.
 
 📋 **Type:**
 ```
 /prime-ba
 ```
 
-💬 **What happens:** Claude loads `PRD.md`, the materials from `sources/`, the approved specs from `.agents/specs/`, the decisions and the live backlog — i.e. everything an analyst needs to lay out and organize work.
+💬 **What happens:** Claude runs a budgeted prime: the memory index and brief, the PRD scope register as an index with the newest decisions, the discovery and architecture extracts, the backlog check, your pending sources and where the code is — specs and long documents are listed, not read, so the session starts with room to work.
 
-✅ **How you know it's OK:** Claude prints a product summary (for whom, MVP, state of work) without reaching for implementation details.
+✅ **How you know it's OK:** Claude prints a facts-only report — what it loaded and how much of the budget it used, the backlog and register state, pending sources, code roots and at most three next steps.
 
 ⏭️ **Next:** Step 3.
 
