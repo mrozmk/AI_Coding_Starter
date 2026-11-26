@@ -221,10 +221,12 @@ def foreign(src, text, paths):
 
 
 def summary(tool, ti):
-    """The Notification hook's historical what: `<tool>: <first line>`, unmasked, 200 cap."""
+    """The Notification hook's historical what: `<tool>: <first line>`, unmasked and uncapped — the
+    writer masked before its 200 cap, so a masked secret can let `what` reach past raw char 200;
+    wild() reads a capped what as a prefix."""
     d = next((ti[k] for k in ("command", "file_path", "url", "path") if isinstance(ti.get(k), str)), "")
     s = "%s: %s" % (tool, (d.splitlines() or [""])[0])
-    return re.sub(r" {2,}", " ", re.sub(r"[\x00-\x1f\x7f]", " ", s)).strip()[:200]
+    return re.sub(r" {2,}", " ", re.sub(r"[\x00-\x1f\x7f]", " ", s)).strip()
 
 
 def wild(what, text):
@@ -387,7 +389,9 @@ class Builder:
         rec = self.record("ask", "%s/%s/%s" % (os.path.basename(co["path"]), run, aid), utc(a.get("filed_at")),
                           co.get("project"), a.get("role"), tool if isinstance(tool, str) else None)
         rec.update(observed=observed, prompted=True,
-                   evidence={k: a.get(k) for k in ("kind", "tier", "tier_cause", "state") if a.get(k) is not None},
+                   # A tier cause can quote the command it judged: masked like the input.
+                   evidence={k: touches.mask_value(a[k]) if isinstance(a[k], str) else a[k]
+                             for k in ("kind", "tier", "tier_cause", "state") if a.get(k) is not None},
                    _run=(co["path"], run), _aid=aid, _kind=a.get("kind"))
         if a.get("kind") == "permission" and isinstance(tool, str) and tool:
             self.set_input(rec, tool, ti, p.get("cwd"), co, None)
@@ -453,6 +457,9 @@ class Builder:
                        replayable=bool(ti), join="input")
             co_p, co = self.src.checkout_of(inp.get("cwd") or "")
             rec.update(zip(("cwd_class", "cwd_rel", "paths"), place(self.src, inp.get("cwd"), co, None)))
+            if inp.get("cut"):
+                # A decision on the surviving prefix is not the original call's decision.
+                rec.update(modeled=True, modeled_why="input cut to the line budget")
         return rec
 
     def read_teamlead_logs(self):

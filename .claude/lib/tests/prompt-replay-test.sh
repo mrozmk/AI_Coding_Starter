@@ -123,6 +123,25 @@ printf '%s' "$P12" | $PP hook --log "$T/p12.log"
 ! { all_text "$C"; cat "$T/p12.log"; } | grep -qE 'two words|CANARYHDR|CANARYSID|pa ss' # guard-push:allow
 ok "b12 key-aware masking in both layers, the sheet and a probe log" $?
 
+# Own fixture copy: these records would shift the main corpus's expected counts.
+FX13="$T/fx13"; mkfx "$FX13"; R13="$FX13/alfa/.agents/team/runs/alfa-20261103-000000/asks"; mkdir -p "$R13"
+FX="$FX13" ask "$R13/a-1.json" a-1 Bash '{"command":"ls"}' operator
+jq '.tier_cause = "egress: curl https://h.example/?token=CANARYCAUSE"' "$R13/a-1.json" > "$R13/a-1.tmp" && mv "$R13/a-1.tmp" "$R13/a-1.json" # guard-push:allow
+S13="$FX13/home/.claude/projects/$(slug "$FX13/main")/s1.jsonl"; L13="$FX13/main/.agents/touches/2026-11.jsonl"
+TOK13=$(printf 'Z%.0s' $(seq 60)); PAD13=$(printf 'y%.0s' $(seq 150))
+tu S1 2026-11-10T11:00:00.000Z "$FX13/main" tq1 "echo token=$TOK13 $PAD13 SUFFIXMARK" >> "$S13"
+jq -nc --arg w "Bash: echo token=*** $PAD13 SUFFIXMARK" \
+  '{at:"2026-11-10T11:00:02Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:$w, reason:"direct", answer:"", wait_s:null}' >> "$L13"
+jq -nc --arg c "$FX13/main" '{at:"2026-11-10T11:30:00Z", machine:"m", who:"u", where:"solo .", kind:"permission", what:"Bash: rm x",
+  reason:"direct", answer:"", wait_s:null, input:{tool:"Bash", fields:{command:"rm x"}, cwd:$c, role:"solo", session:"S9", cut:{command:5000}}}' >> "$L13"
+$PR build --sources "$FX13/sources.json" --out "$T/c13" >/dev/null 2>&1
+! grep -q CANARYCAUSE "$T/c13/touched.jsonl" "$T/c13/labelling-sheet.csv" \
+  && jq -e 'select(.ref | endswith("alfa-20261103-000000/a-1")) | .evidence.tier_cause | contains("token=***")' "$T/c13/touched.jsonl" >/dev/null
+ok "b13 an ask's tier cause is masked like its input" $?
+jq -r 'select(.source == "touch" and (.evidence.what | endswith("SUFFIXMARK"))) | .join' "$T/c13/touched.jsonl" | grep -q '^inferred ' \
+  && jq -e 'select(.source == "touch" and .evidence.what == "Bash: rm x") | select(.modeled == true and .modeled_why == "input cut to the line budget")' "$T/c13/touched.jsonl" >/dev/null
+ok "b14 a masked what past raw char 200 joins its call; a cut touch input is modeled" $?
+
 $PR verify --corpus "$C" >/dev/null 2>&1; r1=$?
 mkdir "$T/cv"; cp "$C"/* "$T/cv/"; sed '1s/"source"/"sourcf"/' "$C/touched.jsonl" > "$T/cv/touched.jsonl"
 e2=$($PR verify --corpus "$T/cv" 2>&1); r2=$?
