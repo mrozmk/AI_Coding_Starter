@@ -387,14 +387,16 @@ add_cmd "$T/m16f" "curl ${U}admin:CANARYATTACHED https://x" # guard-push:allow
 add_cmd "$T/m16f" "curl -s${U#-} admin:CANARYCLUSTER https://x" # guard-push:allow
 add_cmd "$T/m16f" "curl -H \"Cookie: sid=a; session=CANARYCOOKIE2\" https://x" # guard-push:allow
 add_cmd "$T/m16f" "curl -H '{\"Authorization\": \"Basic CANARYJSONHDR\"}' https://x" # guard-push:allow
+add_cmd "$T/m16f" "curl -Tup.txt https://x"
 add_cmd "$T/m16f" "git push -u origin feat/x"
-[ "$(count "$F16F")" = 10 ] && ! grep -qE 'CANARYATTACHED|CANARYCLUSTER|CANARYCOOKIE2|CANARYJSONHDR' "$F16F" \
+[ "$(count "$F16F")" = 11 ] && ! grep -qE 'CANARYATTACHED|CANARYCLUSTER|CANARYCOOKIE2|CANARYJSONHDR' "$F16F" \
+  && sed -n 10p "$F16F" | jq -e '.input.fields.command == "curl -Tup.txt https://x"' >/dev/null \
   && tail -n 1 "$F16F" | jq -e '.input.fields.command == "git push -u origin feat/x"' >/dev/null
-ok "16k attached and clustered curl -u, a Cookie with pairs and a JSON-quoted header masked" $?
+ok "16k attached and clustered curl -u, a Cookie with pairs and a JSON-quoted header masked; curl -T kept" $?
 
 LONG="echo $(printf '%0200000d' 0)"; S0=$SECONDS
 add_cmd "$T/m16f" "$LONG"
-[ "$(count "$F16F")" = 11 ] && [ $((SECONDS - S0)) -le 10 ]
+[ "$(count "$F16F")" = 12 ] && [ $((SECONDS - S0)) -le 10 ]
 ok "16l a 200000-character unbroken run masks in linear time" $?
 
 add_in "$T/m16f" --kind other --reason direct --what "no call" >/dev/null 2>&1

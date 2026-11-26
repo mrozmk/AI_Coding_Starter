@@ -44,9 +44,10 @@ _PEM = re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----(?:.*?-----END[A-Z ]*PRIVAT
 # separator, a Cookie value holds `;` between its pairs.
 _AUTHZ = re.compile(r"""((?:Proxy-)?Authorization["']?\s*:\s*["']?)[^\r\n"';|&]+""", re.I)
 _COOKIE = re.compile(r"""(Cookie["']?\s*:\s*["']?)[^\r\n"'|&]+""", re.I)
-# Scoped to curl: a bare `-u` is also `git push -u origin`; a short-flag cluster (-su) or an
-# attached value (-uX:Y) is still the user flag.
-_CURLU = re.compile(r"(\bcurl\b[^\n|;&]*?\s(?:-[A-Za-z]*?u\s*|--user(?:\s+|=)))(%s|\S+)" % _Q)
+# Scoped to curl: a bare `-u` is also `git push -u origin`; a cluster of curl's argument-less
+# flags (-su) or an attached value (-uX:Y) is still the user flag, an attached argument of
+# another flag (-Tup.txt) is not.
+_CURLU = re.compile(r"(\bcurl\b[^\n|;&]*?\s(?:-[sSkLvfiIjnNOqRgG0-9#]*u\s*|--user(?:\s+|=)))(%s|\S+)" % _Q)
 _USERINFO = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@")
 # Never an scp-like remote (git@host:path): the egress guard reads its host. The lookbehind starts
 # the local part only at a run's start (linear on a long run, not quadratic).
