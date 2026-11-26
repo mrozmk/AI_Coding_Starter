@@ -125,18 +125,15 @@ def install_inputs(command, cwd):
         return None, [], []
     verb = os.path.basename(words[0])
     args = words[1:]
+    from guard_team_egress_hard import NPM_INSTALL, npm_sub_index, pip_form
     # Only a leading installer has its inputs read; one behind `cd … &&`, a wrapper or a pipe would
     # run with no pin at all, so it is refused here.
-    rest = args[2:] if verb in ("python3", "python") and args[:2] == ["-m", "pip"] else args
-    if any(os.path.basename(w.lstrip("(")) in INSTALL_VERBS for w in rest):
+    verb, args = pip_form(verb, args)
+    if any(os.path.basename(w.lstrip("(")) in INSTALL_VERBS for w in args):
         raise Refused("an installer that is not the entry's first word is not batched — give it its own entry")
-    if verb in ("python3", "python") and args[:2] == ["-m", "pip"]:
-        verb, args = "pip", args[2:]
-    i = 0  # npm's global options may come before its command: `npm --prefix P ci`
-    while verb == "npm" and i < len(args) and args[i].startswith("-"):
-        i += 2 if args[i] in ("--prefix", "-C", "-w", "--workspace", "--userconfig") else 1
+    i = npm_sub_index(args) if verb == "npm" else 0
     sub = args[i] if i < len(args) else ""
-    if verb == "npm" and sub in ("i", "install", "add", "ci", "in"):
+    if verb == "npm" and sub in NPM_INSTALL + ("ci",):
         prefix = cwd
         for i, a in enumerate(args):
             if a == "--prefix" and i + 1 < len(args):

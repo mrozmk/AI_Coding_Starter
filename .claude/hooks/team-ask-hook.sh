@@ -64,25 +64,18 @@ if [ "$EV" = PreToolUse ]; then
         permissionDecisionReason: "the Operator'"'"'s mandate and the delegation ledger are written by team-mandate.sh and the Supervisor'"'"'s delegated answer only"}}'
       exit 0 ;;
     esac
-    # #322 (Operator decision d-2): settings and role profiles of a live guard layer (guard_layer:
-    # all but a fixture tree inside a repository) are never edited by a stage; the hooks only
-    # in its own clone or its run's starter worktree. exit 0 = guard layer, 1 = not, else refused.
-    case "$P" in *.json) python3 -I "$MAIN/.claude/hooks/lib/guard_team_egress_hard.py" guard-layer "$PO" "$CLONE"; GL=$?
-      [ "$GL" -le 1 ] || guard_refuse "the guard layer check failed — refused"
-      [ "$GL" = 1 ] || { out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0; } ;;
-    esac
-    case "$P" in */.claude/hooks/*)
-      CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"
-      CL="$(tr '[:upper:]' '[:lower:]' <<<"$CL")"
-      case "$P" in "$CL"/*) exit 0 ;; esac
-      SR="$(jq -r '.teams.starter_root // empty' "$CLONE/.claude/project-profile.json" 2>/dev/null)"
-      ST="$(jq -r '.team // empty' "$TD/team.json" 2>/dev/null)"; SK="$(jq -r '.ticket // empty | tostring' "$TD/team.json" 2>/dev/null)"
-      if [ -n "$SR" ] && [ -n "$ST" ] && [ -n "$SK" ]; then
-        SW="$(real "$CLONE/$SR")" || guard_refuse "cannot resolve the starter worktree — refused"
-        SW="$(tr '[:upper:]' '[:lower:]' <<<"$SW-$ST-$SK")"
-        case "$P" in "$SW"/*) exit 0 ;; esac
-      fi
-      out_pre_deny "a stage edits hooks only in its own clone or its run's starter worktree (#322)"; exit 0 ;;
+    # #322 (Operator decision d-2): settings and role profiles of a live guard layer (all but a
+    # fixture tree inside a repository) are never edited by a stage; the hooks only in its own clone
+    # or its run's starter worktree. One decider with the Bash classifier (target_class):
+    # exit 0 = deny, 1 = not, else refused.
+    case "$P" in *.json|*/.claude/hooks/*)
+      python3 -I "$MAIN/.claude/hooks/lib/guard_team_egress_hard.py" target-class "$PO" "$CLONE"; TC=$?
+      [ "$TC" -le 1 ] || guard_refuse "the guard layer check failed — refused"
+      [ "$TC" = 1 ] && exit 0
+      case "$P" in */.claude/hooks/*)
+        out_pre_deny "a stage edits hooks only in its own clone or its run's starter worktree (#322)" ;;
+      *) out_pre_deny "settings and role profiles are never edited by a stage (#322)" ;; esac
+      exit 0 ;;
     esac
     exit 0 ;;
   esac
@@ -158,6 +151,8 @@ fallback() {
 # AskUserQuestion dialog there, or a `<team> d-<n> …` message the Supervisor relayed from its own
 # transcript) with this very answer.
 verify_operator() { verify_decision "$(jq -r '.decision // ""' <<<"$2")" "$1" "$2"; }
+# dfm_h <key> — one frontmatter value of the decision file "$f" (the caller's local).
+dfm_h() { sed -n '/^---$/,/^---$/p' "$f" | sed -n "s/^$1: *//p" | head -n 1; }
 
 # verify_decision <d-n> <ask id | -batch> <answer json | ""> — the human evidence of a decision:
 # bound to that ask with this very answer, or (-batch, #322) an allowed, unrevoked batch decision
@@ -168,7 +163,6 @@ verify_decision() {
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
   [ -f "$f" ] || return 1
-  dfm_h() { sed -n '/^---$/,/^---$/p' "$f" | sed -n "s/^$1: *//p" | head -n 1; }
   case "$(dfm_h status)" in answered|dispatched) ;; *) return 1 ;; esac
   if [ "$id" = -batch ]; then
     [ "$(dfm_h kind)" = batch ] && [ "$(dfm_h answer_outcome)" = allow ] && [ -z "$(dfm_h revoked_at)" ] \

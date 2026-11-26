@@ -35,11 +35,11 @@ sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import SEPARATORS, SHELL_C, commands, strip_wrappers, tokenize  # noqa: E402
 from guard_team_egress_loops import (  # noqa: E402
-    INTERP, MODIFIERS, SHELLS_I, backstop, scan, stdin_executor)
+    INTERP, MODIFIERS, SHELLS_I, backstop, first_word, scan, stdin_executor)
 from guard_team_egress_words import (  # noqa: E402
-    curl_options, data_heredocs_removed, positional, texts_of, units)
+    curl_options, data_heredocs_removed, plain_output, positional, texts_of, units)
 from guard_team_egress_hard import (  # noqa: E402
-    EGRESS_VERBS, URL_WORD, operator_reason, write_class)
+    EGRESS_VERBS, URL_WORD, operator_reason, worst, write_class)
 
 RESOLVER = socket.getaddrinfo
 DNS_TIMEOUT = 2.0
@@ -76,7 +76,6 @@ DATA_VALUE = ("-m", "--message", "-b", "--body", "-t", "--title", "-F", "-f", "-
               "--method", "-l", "--label", "-e", "--search", "-S")
 REGISTRY_OPTS = re.compile(r"^(?:--registry|-i|--index-url|--extra-index-url|--proxy|--https-proxy"
                            r"|--trusted-host|--userconfig|--globalconfig|--index|-c|--config)(?:=|$)")
-LITERAL_PATH = re.compile(r"^[^$`*?\[\]{}]+$")
 
 
 # --- hosts ---------------------------------------------------------------------------------------
@@ -329,12 +328,14 @@ def code_words(words):
 
 def download_run(text, depth=0):
     """The deny reason when downloaded content is executed (#322 round 2), or '': curl/wget output
-    piped (through any data filter) into a consumer that runs its input (runs_input), a process
+    piped (through any data filter, the downloader read through its wrappers: `timeout 9 curl`)
+    into a consumer that runs its input (runs_input), a process
     substitution `<(curl …)` read by a shell, interpreter or source, and `-c`/`-e`/eval code built
     by `$(curl …)` — at every nesting level a shell executes. A consumer that reads the download as
     data (jq, grep, sed, tar, `python3 -c '<own code>'`) is no such effect."""
     plain = data_heredocs_removed(text)
-    piped, why = backstop(plain, DOWNLOADERS, "", runs_input)
+    piped, why = backstop(plain, DOWNLOADERS, "", runs_input,
+                          lambda vals: verb_of(vals) if verb_of(vals) in DOWNLOADERS else first_word(vals))
     if piped == "ask":
         return "downloaded content piped into a shell or interpreter (" + why + ")"
     try:
@@ -434,14 +435,14 @@ def curl_config_present():
 
 
 def curl_get_ok(vals, project):
-    """`curl` with only -s/-S/-f clusters, at most one `-o <literal file>`, exactly one URL passing
+    """`curl` with only -s/-S/-f clusters, at most one `-o <plain_output>`, exactly one URL passing
     public_get, and no curl config file read implicitly."""
     urls, outs, i = [], 0, 1
     while i < len(vals):
         a = vals[i]
         if re.fullmatch(r"-[sSf]+", a):
             i += 1
-        elif a == "-o" and i + 1 < len(vals) and LITERAL_PATH.match(vals[i + 1]) and not vals[i + 1].startswith("-"):
+        elif a == "-o" and i + 1 < len(vals) and plain_output(vals[i + 1]):
             outs, i = outs + 1, i + 2
         elif a.startswith("-"):
             return False
@@ -472,11 +473,12 @@ def classify_bash(cmd, project, cwd=None):
     import guard_team_egress as g
     if not isinstance(cmd, str):
         return "ask", "unreadable Bash command"
-    for text in texts_of(cmd):
+    texts = texts_of(cmd)
+    for text in texts:
         why = deny_text(text)
         if why:
             return "deny", why
-    wrote = write_class(cmd, project, cwd)
+    wrote = worst([w for w in (write_class(t, project, cwd) for t in texts) if w])
     if wrote and wrote[0] == "deny":
         return wrote
     base = g.reading_reason_of(cmd, project)

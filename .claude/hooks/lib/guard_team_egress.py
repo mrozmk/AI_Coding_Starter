@@ -4,8 +4,7 @@
 operator / ask, the same for every role). pass -> no output; deny -> permissionDecision deny (a hard
 deny class, a mechanical block: the Supervisor's touch log records it as kind block); operator and
 ask -> permissionDecision ask. Never allows. bash_effect / webfetch_effect are the classifier's
-entry points for other callers; bash_reason / webfetch_reason return the reason of any non-pass
-kind. The reading below (reading_reason_of) is the classifier's pass test: what it lets through is
+entry points for other callers. The reading below (reading_reason_of) is the classifier's pass test: what it lets through is
 a pass unless a deny or operator detector fires first.
 
 A best-effort guard over Bash and WebFetch, not an allowlist (MCP tools and WebSearch are out of
@@ -65,6 +64,7 @@ from guard_team_egress_supervisor import (  # noqa: E402
     record_touch)
 from guard_team_egress_classify import (  # noqa: E402
     classify_bash, classify_webfetch, git_read_host_ok, git_runs_command)
+from guard_team_egress_words import SHELLS, nested_texts  # noqa: E402
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -76,9 +76,7 @@ INLINE = {"python": {"-c", "-m", "-"}, "python3": {"-c", "-m", "-"},
 # `python -m <module>` for these runs the project's own tests / stdlib tools, not a network client.
 LOCAL_MODULES = {"pytest", "unittest", "doctest", "py_compile", "compileall", "json.tool"}
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
-SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
-SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
 # bash's socket pseudo-files: a redirection there is egress whatever the verb.
 NET_DEV = re.compile(r"/dev/(tcp|udp)\b")
@@ -282,18 +280,8 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
                     return "git to " + host
         if depth >= 3:
             continue
-        # From the raw words: an assignment `x=$(curl …)` is stripped as a wrapper above.
-        nested = [SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w] + strings
-        flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
-        if verb in SHELLS and flag:
-            nested.append(words[flag + 1])
-        elif verb == "eval":
-            # eval joins its arguments into one command: `eval 'gh issue view 1' '--repo h/o/r'`.
-            nested.append(" ".join(words[1:]))
-        elif verb == "tmux":
-            nested.extend(words[1:])
         # A wrapper rewrites a nested string too: `xargs -I o bash -c 'gh … -R o/r'`.
-        for inner in nested:
+        for inner in nested_texts(raw, words, strings, verb):
             if (inner, plain) in inners:
                 continue
             inners.add((inner, plain))
@@ -342,15 +330,6 @@ def bash_effect(cmd, project, cwd=None):
 
 def webfetch_effect(url, project):
     return classify_webfetch(url, project)
-
-
-def bash_reason(cmd, project, cwd=None):
-    """The reason of any non-pass kind, '' for a pass (callers that only need "asks or not")."""
-    return bash_effect(cmd, project, cwd)[1]
-
-
-def webfetch_reason(url, project):
-    return webfetch_effect(url, project)[1]
 
 
 def reading_reason_of(cmd, project):

@@ -7,15 +7,14 @@
 # ask (team-answer.sh's rule): a deny grants nothing, so it needs no Operator verification. Under
 # the run's ask lock: no decision bound to the ask that is not withdrawn. An allow never qualifies.
 lead_egress_deny() {
-  local v rc=0
+  local f rc=0
   [ "$(jq -r '.authority // ""' <<<"$2")" = teamlead ] && [ "$(jq -r '.form // ""' <<<"$2")" = deny ] \
     && [ "$(jq -r '.decision // ""' <<<"$2")" = "" ] && [ "$(ask_get "$1" kind)" = permission ] \
     && [ -z "$(ask_get "$1" requires_decision)" ] || return 1
   case "$(ask_get "$1" tier_cause)" in "egress: "*) ;; *) return 1 ;; esac
   ask_lock || return 1
-  for v in "$ASK_TD/runs/$ASK_RUN/decisions"/d-*.md; do
-    [ -f "$v" ] && sed -n '/^---$/,/^---$/p' "$v" | grep -qx "bind_ask: $1" \
-      && ! sed -n '/^---$/,/^---$/p' "$v" | grep -qx "status: withdrawn" && { rc=1; break; }
+  for f in "$ASK_TD/runs/$ASK_RUN/decisions"/d-*.md; do
+    [ -f "$f" ] && [ "$(dfm_h bind_ask)" = "$1" ] && [ "$(dfm_h status)" != withdrawn ] && { rc=1; break; }
   done
   ask_unlock
   return "$rc"
@@ -38,8 +37,8 @@ batch_claim() {
     verify_decision "$did" -batch "" || continue
     ask_lock || return 1
     f="$dd/$did.md"
-    if stopped || [ "$(sj run)" != "$RUN" ] || ! sed -n '/^---$/,/^---$/p' "$f" | grep -qx "answer_outcome: allow" \
-        || sed -n '/^---$/,/^---$/p' "$f" | grep -q "^revoked_at:"; then
+    if stopped || [ "$(sj run)" != "$RUN" ] || [ "$(dfm_h answer_outcome)" != allow ] \
+        || [ -n "$(dfm_h revoked_at)" ]; then
       ask_unlock; return 1
     fi
     for id in $(ask_ids); do

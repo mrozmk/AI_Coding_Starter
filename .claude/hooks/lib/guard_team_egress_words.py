@@ -13,10 +13,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, commands, strip_wrappers, tokenize, unredirected)
+    SHELL_C, SUBST, commands, strip_shell_comments, strip_wrappers, tokenize, unredirected)
 from guard_team_egress_loops import for_bodies, scan  # noqa: E402
 
+SHELLS = {"bash", "sh", "zsh"}  # a -c string they run is read as commands (guard_team_egress too)
 SUB_WORD = "__SUB__"
+# A `>` / `<` inside quotes is a character of a word, never a redirection: the tokenizer drops the
+# quotes, so ops_masked stands such a character in for it before tokenizing.
+QUOTED_OPS = {">": "\x1f", "<": "\x1e"}
 # curl short options that take a value; the class each one carries.
 CURL_VALUE = set("XdFuUHKEToberwxyzYCcDmPtQAe")
 CURL_CLASS = {"X": "method", "d": "body", "F": "body", "u": "creds", "U": "creds", "K": "creds",
@@ -32,6 +36,7 @@ REDIR_OP = re.compile(r"^(?:[0-9]+|\{\w+\})?(?:&>>?|>>?|>\|)$")
 REDIR_GLUED = re.compile(r"(?:^|(?<=[^\\>]))(?:[0-9]+)?(?:>>?|>\|)([^>&|\s][^>\s]*)$")
 # The only unquoted word characters the reader accepts (ASCII; no glob, `~`, `$`, `\`, `#` …).
 LOOP_WORD = re.compile(r"[A-Za-z0-9_./:,=+@%-]+")
+LITERAL_PATH = re.compile(r"^[^$`*?\[\]{}]+$")
 
 
 def sub_masked(text):
@@ -44,6 +49,32 @@ def sub_masked(text):
     for s, e in reversed(got[1]):
         text = text[:s] + SUB_WORD + text[e + 1:]
     return text, bodies
+
+
+def ops_masked(text):
+    """<text> without its comments, every `>` / `<` inside quotes replaced (QUOTED_OPS), so a
+    redirection reader never reads a quoted mention (`grep 'a>f'`) as one; <text> unchanged when
+    scan cannot read it (a backslash, a backquote: the mention then stays a redirection)."""
+    plain = strip_shell_comments(text)
+    got = scan(plain)
+    if not got:
+        return text
+    return "".join(QUOTED_OPS.get(c, c) if got[0][i] else c for i, c in enumerate(plain))
+
+
+def plain_output(path):
+    """A `curl -o` target the classifier's pass form takes: a relative literal path with no `..` and
+    no dot-named part — never `.git/config`, a shell rc file or anything else that later runs."""
+    parts = [p for p in path.split("/") if p not in ("", ".")]
+    return bool(parts and LITERAL_PATH.match(path) and not path.startswith(("/", "~", "-"))
+                and not any(p.startswith(".") for p in parts))
+
+
+def unmasked(word):
+    """<word> with the characters ops_masked replaced given back."""
+    for op, mark in QUOTED_OPS.items():
+        word = word.replace(mark, op)
+    return word
 
 
 HEREDOC_OPEN = re.compile(r"<<-?[ \t]*(['\"]?)([A-Za-z0-9_]+)\1")
@@ -96,13 +127,13 @@ def units(cmd, depth=0):
     their unredirected readings, bash/sh -c strings, eval, tmux arguments, `$(…)` / backquote
     bodies and the strings of flock -c / env -S. Unparsable text yields what parsed. A data
     here-doc's body is no command (data_heredocs_removed); a literal backquote (escaped, or in
-    single quotes) opens no body (#322 round 2)."""
-    import guard_team_egress as g
+    single quotes) opens no body (#322 round 2). In raw a quoted `>`/`<` stays masked (ops_masked,
+    the redirection readers' input); words carry it back."""
     plain = data_heredocs_removed(cmd)
     live_bq = active_backquote(plain)
     text, bodies = sub_masked(plain)
     try:
-        tokens = tokenize(text)
+        tokens = tokenize(ops_masked(text))
     except ValueError:
         try:
             tokens, bodies = tokenize(data_heredocs_removed(cmd)), []
@@ -118,25 +149,33 @@ def units(cmd, depth=0):
         seen.add(tuple(raw))
         strings = []
         try:
-            words = strip_wrappers(raw, strings)
+            words = [unmasked(w) for w in strip_wrappers(raw, strings)]
         except ValueError:
             words = []
+        strings = [unmasked(s) for s in strings]
         out.append((raw, words))
         if depth >= 3:
             continue
-        nested = [g.SUBST.sub(" ; ", w) for w in (bq_literal(w, live_bq) for w in raw)
-                  if "$(" in w or "`" in w] + strings
         verb = os.path.basename(words[0]) if words else ""
-        flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
-        if verb in g.SHELLS and flag:
-            nested.append(words[flag + 1])
-        elif verb == "eval":
-            nested.append(" ".join(words[1:]))
-        elif verb == "tmux":
-            nested.extend(words[1:])
-        for inner in nested:
+        for inner in nested_texts([unmasked(bq_literal(w, live_bq)) for w in raw], words, strings, verb):
             out.extend(units(inner, depth + 1))
     return out
+
+
+def nested_texts(raw, words, strings, verb):
+    """The texts one simple command runs nested — its `$(…)` / backquote words (from <raw>: an
+    assignment `x=$(curl …)` is stripped as a wrapper from <words>), the strings strip_wrappers
+    collected (flock -c, env -S), a shell's -c string, eval's arguments joined (`eval 'gh issue view
+    1' '--repo h/o/r'` is one command), tmux's arguments. The one walk of units and verb_in."""
+    nested = [SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w] + strings
+    flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
+    if verb in SHELLS and flag:
+        nested.append(words[flag + 1])
+    elif verb == "eval":
+        nested.append(" ".join(words[1:]))
+    elif verb == "tmux":
+        nested.extend(words[1:])
+    return nested
 
 
 def bq_literal(word, live):
@@ -220,7 +259,7 @@ def redirect_targets(raw):
         elif t.startswith("&>") and len(t) > 2:
             out.append(t[2:].lstrip(">"))
         i += 1
-    return out
+    return [unmasked(t) for t in out]
 
 
 def word_targets(words):

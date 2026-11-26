@@ -24,8 +24,8 @@ from guard_destructive_sql import commands, strip_wrappers, tokenize  # noqa: E4
 from guard_team_egress_effect import (  # noqa: E402
     GH_READ_FORMS, PY_DOC, gh_api_read, inline_literals, py_flags)
 from guard_team_egress_words import (  # noqa: E402
-    curl_options, data_heredocs_removed, positional, py_write_targets, redirect_targets, sub_masked,
-    units, word_targets)
+    curl_options, data_heredocs_removed, ops_masked, positional, py_write_targets, redirect_targets,
+    sub_masked, units, unmasked, word_targets)
 
 URL_WORD = re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s'\"<>|;&()`]+")
 EGRESS_VERBS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp", "gh", "npm", "npx", "pip",
@@ -37,7 +37,8 @@ WGET_OPERATOR = re.compile(r"^--(?:post-data|method|user|password|http-user|http
                            r"|proxy-user|proxy-password)(?:=|$)")
 EXACT_NPM = re.compile(r"^(?:@[^@/\s]+/)?[^@/\s]+@\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 EXACT_PIP = re.compile(r"^[A-Za-z0-9_.\[\],-]+==[0-9A-Za-z.+!-]+$")
-PROTECTED = ("*/.claude/settings*.json", "*/.claude/team/sessions/*.settings.json")
+PROTECTED_REL = ("settings*.json", "team/sessions/*.settings.json")  # under a .claude/ dir
+PROTECTED = tuple("*/.claude/" + p for p in PROTECTED_REL)
 PROTECTED_BASE = ("settings*.json", "*.settings.json")
 HOOKS = "*/.claude/hooks/*"
 CD_LITERAL = re.compile(r"^(?:~(?=/|$))?[^$`*?\[\]{}~]*$")
@@ -102,15 +103,14 @@ def guard_layer(path, project):
     user's Claude config dir, and any `.claude/` outside every repository. Only a fixture
     project's `.claude/` inside a repository tree (an ancestor holds `.git`) is not one."""
     low, cfg = path.lower(), claude_config_dir().lower()
-    if low.startswith(cfg + os.sep) and any(
-            fnmatch.fnmatch(low[len(cfg) + 1:], p) for p in ("settings*.json", "team/sessions/*.settings.json")):
+    if low.startswith(cfg + os.sep) and any(fnmatch.fnmatch(low[len(cfg) + 1:], p) for p in PROTECTED_REL):
         return True
     if not any(fnmatch.fnmatch(low, p) for p in PROTECTED):
         return False
     k = low.rfind("/.claude/")
     while k >= 0:
         rest = low[k + len("/.claude/"):]
-        if fnmatch.fnmatch(rest, "settings*.json") or fnmatch.fnmatch(rest, "team/sessions/*.settings.json"):
+        if any(fnmatch.fnmatch(rest, p) for p in PROTECTED_REL):
             root = path[:k]
             if (project and root.lower() == os.path.realpath(project).lower()) or \
                     os.path.exists(os.path.join(root, ".git")):
@@ -134,7 +134,11 @@ def target_class(target, cwd, project):
     if path is None:
         base = os.path.basename(target).lower()
         # TeamLead (Q1): only a protected name is classed; any other unresolvable target gets none.
-        if any(fnmatch.fnmatch(base, p) for p in PROTECTED_BASE) or "hooks/" in target.lower():
+        # A hooks path only for a stage (d-4) and only where it can be .claude/hooks: under a
+        # `.claude/` part, or `hooks/…` straight under the unknown cwd — never `src/hooks/x.ts`.
+        low = re.sub(r"^(?:\./)+", "", target.lower())
+        hooks = team_stage(project) and ("/.claude/hooks/" in "/" + low or low.startswith("hooks/"))
+        if any(fnmatch.fnmatch(base, p) for p in PROTECTED_BASE) or hooks:
             return "deny", "write into a protected path after an unresolvable cd (" + target + ")"
         return None
     low = path.lower()
@@ -158,14 +162,14 @@ def segment_cwds(cmd, base):
     """[(raw, words, cwd)] of the top-level simple commands of <cmd> in order; a `cd <literal>`
     moves the cwd, any other cd/pushd/popd makes it unknown (None)."""
     try:
-        tokens = tokenize(sub_masked(data_heredocs_removed(cmd))[0])
+        tokens = tokenize(ops_masked(sub_masked(data_heredocs_removed(cmd))[0]))
     except ValueError:
         return []
     grouped = "(" in tokens or ")" in tokens
     out, cwd = [], base
     for raw in commands(tokens):
         try:
-            words = strip_wrappers(raw)
+            words = [unmasked(w) for w in strip_wrappers(raw)]
         except ValueError:
             words = []
         out.append((raw, words, cwd))
@@ -329,6 +333,22 @@ def push_reason(words, cwd, project):
     return "git push to a destination other than origin (" + remote + ")"
 
 
+NPM_INSTALL = ("i", "install", "add", "isntall", "in")
+
+
+def npm_sub_index(args):
+    """The index of npm's command in <args>: global options may come first (`npm --prefix P ci`)."""
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        i += 2 if args[i] in ("--prefix", "-C", "-w", "--workspace", "--userconfig", "--registry") else 1
+    return i
+
+
+def pip_form(verb, args):
+    """(verb, args) with `python3 -m pip …` read as `pip …`."""
+    return ("pip", args[2:]) if verb in ("python3", "python") and args[:2] == ["-m", "pip"] else (verb, args)
+
+
 def install_reason(verb, args):
     if verb in ("npx", "uvx"):
         pos = positional(args, ("-p", "--package", "--from", "--with"))
@@ -337,10 +357,8 @@ def install_reason(verb, args):
     if verb == "pipx" and args[:1] and args[0] in ("run", "install"):
         pos = positional(args[1:], ("--spec", "--python", "--pip-args"))
         return "" if pos and "==" in pos[0] else "pipx " + args[0] + " of an unpinned package"
-    i = 0  # npm's global options may come before its command: `npm --prefix P install x`
-    while verb == "npm" and i < len(args) and args[i].startswith("-"):
-        i += 2 if args[i] in ("--prefix", "-C", "-w", "--workspace", "--userconfig", "--registry") else 1
-    if verb == "npm" and args[i:i + 1] and args[i] in ("i", "install", "add", "isntall", "in"):
+    i = npm_sub_index(args) if verb == "npm" else 0
+    if verb == "npm" and args[i:i + 1] and args[i] in NPM_INSTALL:
         pos = positional(args[i + 1:], ("--prefix", "-w", "--workspace", "--tag", "--registry"))
         bad = [p for p in pos if "://" in p or p.startswith(("git+", "github:", "git@")) or not EXACT_NPM.match(p)]
         return "npm install of an unpinned or remote package (" + bad[0] + ")" if bad else ""
@@ -384,7 +402,7 @@ def operator_words(raw, words, cwd, project):
     from guard_team_egress_classify import private_host
     if not words:
         return ""
-    verb, args = os.path.basename(words[0]), words[1:]
+    verb, args, raw = os.path.basename(words[0]), words[1:], [unmasked(w) for w in raw]
     prefix = raw[:len(raw) - len(words)] if raw[len(raw) - len(words):] == words else raw
     if verb in EGRESS_VERBS and any(CRED_ENV.match(w) for w in prefix):
         return "credentials in the environment of " + verb
@@ -421,10 +439,9 @@ def operator_words(raw, words, cwd, project):
         return gh_reason(words, args, project)
     if verb == "git":
         return push_reason(words, cwd, project) if "push" in words else ""
+    verb, args = pip_form(verb, args)
     if verb in ("npm", "npx", "pip", "pip3", "pipx", "uvx"):
         return install_reason(verb, args)
-    if verb in ("python3", "python") and args[:2] == ["-m", "pip"]:
-        return install_reason("pip", args[2:])
     return ""
 
 
@@ -444,12 +461,13 @@ def operator_reason(cmd, project, cwd):
 
 
 if __name__ == "__main__":
-    # team-ask-hook.sh: `guard-layer <path> <project>` → exit 0 (a live guard layer), 1 (not), 2 (a
-    # bug or bad argv: the hook refuses — a raised exception must never read as "not").
+    # team-ask-hook.sh's stage write guard: `target-class <path> <project>` → exit 0 (a deny: a live
+    # guard layer's settings or role profile, hooks outside the clone and the run's starter worktree),
+    # 1 (not), 2 (a bug or bad argv: the hook refuses — a raised exception must never read as "not").
     try:
-        if sys.argv[1:2] != ["guard-layer"] or len(sys.argv) != 4:
-            raise ValueError("usage: guard-layer <path> <project>")
-        sys.exit(0 if guard_layer(sys.argv[2], sys.argv[3]) else 1)
+        if sys.argv[1:2] != ["target-class"] or len(sys.argv) != 4:
+            raise ValueError("usage: target-class <path> <project>")
+        sys.exit(0 if (target_class(sys.argv[2], None, sys.argv[3]) or ("",))[0] == "deny" else 1)
     except Exception as e:  # fail closed
         print("guard_team_egress_hard: " + str(e), file=sys.stderr)
         sys.exit(2)

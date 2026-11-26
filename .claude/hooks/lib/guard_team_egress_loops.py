@@ -96,7 +96,12 @@ def stdin_executor(vals):
     return k >= len(vals) or vals[k] in STDIN_PATHS
 
 
-def piped_verdict(cmds, ops, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor):
+def first_word(vals):
+    return os.path.basename("".join(vals[:1]))
+
+
+def piped_verdict(cmds, ops, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor,
+                  producer=first_word):
     """ask when a stdin executor reads a pipe from a chain with an <upstream> command, else defer."""
     src = ""
     for k, vals in enumerate(cmds):
@@ -104,14 +109,15 @@ def piped_verdict(cmds, ops, upstream=("gh",), tag=" (Supervisor)", executes=std
             src = ""
         elif src and executes(vals):
             return "ask", src + " output piped into " + os.path.basename(vals[0]) + tag
-        head = os.path.basename("".join(vals[:1]))
+        head = producer(vals)
         src = src or (head if head in upstream else "")
     return "defer", ""
 
 
-def backstop(cmd, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor):
+def backstop(cmd, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor, producer=first_word):
     """For a layout the reader refuses: piped_verdict over today's token stream; defer if unparsable.
-    <executes> judges a pipe consumer (the #322 deny passes a narrower one)."""
+    <executes> judges a pipe consumer (the #322 deny passes a narrower one), <producer> names a pipe
+    stage's command (the #322 deny reads it through its wrappers)."""
     try:
         tokens = tokenize(cmd)
     except ValueError:
@@ -131,7 +137,7 @@ def backstop(cmd, upstream=("gh",), tag=" (Supervisor)", executes=stdin_executor
             cur = []
         elif ops and s and not (ops[-1] == "|" and set(s) <= {"("}):
             ops[-1] = op  # `| (bash)`: the pipe reaches the group's first command
-    return piped_verdict(cmds + [cur] if cur else cmds, ops, upstream, tag, executes)
+    return piped_verdict(cmds + [cur] if cur else cmds, ops, upstream, tag, executes, producer)
 
 
 def scan(text):

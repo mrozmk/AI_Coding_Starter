@@ -84,8 +84,8 @@ bound_decision() {
   local v
   for v in "$ASK_TD/runs/$ASK_RUN/decisions"/d-*.md; do
     [ -f "$v" ] || continue
-    sed -n '/^---$/,/^---$/p' "$v" | grep -qx "bind_ask: $ASK" || continue
-    sed -n '/^---$/,/^---$/p' "$v" | grep -qx "status: withdrawn" && continue
+    [ "$(auth_fm "$v" bind_ask)" = "$ASK" ] || continue
+    [ "$(auth_fm "$v" status)" = withdrawn ] && continue
     basename "$v" .md; return 0
   done
 }
