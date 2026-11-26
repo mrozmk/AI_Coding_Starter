@@ -78,7 +78,7 @@ page, before acting on any row.
   find is a conflict to report, never a choice.
 - **`EXTRACT` rows** — run `node .claude/lib/prime-ba.mjs <the row's cmd= field>` verbatim, every
   page (the row's `pages=` says how many).
-- **Never** read a `SKIP_*`, `SPEC`, `PENDING` (not loaded), `RAW` or `INDEX` path "because it looks
+- **Never** read a `SKIP_*`, `SPEC`, `PENDING` (not loaded), `WAITING`, `RAW` or `INDEX` path "because it looks
   relevant" — that is the budget being re-litigated by the reader it exists to constrain. A file you
   read later on demand, for a concrete task, is said so.
 - `CLAUDE.md` is injected — never read. `README.md` is not read (it duplicates the brief).
@@ -158,6 +158,7 @@ the PRD or the brief (already in context), no closing summary. Narrate only an a
 
 ### Pending sources
 - Count, then names + sizes from the `PENDING` rows, with `changed since D-k` where given
+- Waiting requirements specs (`WAITING` rows): name + status — not pending; a `Waiting — <role>` one resumes with `/brainstorm-ba <spec>` once the reply is in, a `Draft` one is an interrupted run that resumes now
 - Raw sources no note fully covers (`RAW` rows: names + sizes) — listed, never read
 - Notes: count, the three newest titles, each note's corrections (`FAMILY` rows); any `ERROR` correction conflict or orphan
 
@@ -182,12 +183,14 @@ At most 3, the earliest that apply in this route order:
 - `/architect` — PRD exists but no `docs/architecture.md` (no subdomains, no `AD-n`, no stack decision)
 - `/setup:create-backlog` — PRD + architecture exist but no `.agents/backlog.md`
 - `/jira sync` — local backlog exists, its `Jira` cells are empty and `tracker=jira`
+- `/brainstorm-ba <spec>` — a `WAITING` row whose status is `Draft` (an interrupted run), or `Waiting — <role>` and the answer it waits for has arrived
 - `/brainstorm <Task>` — a sized H/XH Task with no spec yet
 - `/jira create epic` — spec exists but no Jira epic (only when no local backlog — with one, `/jira sync` owns Epic creation)
 - Refresh PRD — raw sources present but PRD seems outdated
 
 The rest that apply go in one trailing line. Nothing applies → say the backlog looks consistent and is
-ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
+ready for requirement work with `/brainstorm-ba <input>` — a client message, a design change, a spike
+result → verified Task definitions (in the user's communication language — CLAUDE.md → Language Rules).
 
 ---
 
@@ -201,6 +204,7 @@ After the report, remind yourself (and the user) of the BA role posture:
 - When in doubt about scope or product intent, ask — do not guess
 - Not 99 % sure → ask, never guess.
 - Verify against the code and the recorded decisions before proposing a change to an existing system.
+- Requirement work (an input → verified Task definitions) runs in `/brainstorm-ba`; `/brainstorm` designs a tool or a Task's implementation.
 
 ## Stage end marker (token usage)
 

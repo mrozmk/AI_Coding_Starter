@@ -446,12 +446,20 @@ export function pendingSources(root) {
     const f = readText(root, c.path);
     if (!f) continue;
     const hash = sha12(f.buf);
-    const item = { ...c, size: f.size, hash, pending: true, changed: null };
+    const item = { ...c, size: f.size, hash, pending: true, changed: null, waiting: null };
     if (proc) {
       if (proc.hashes.has(hash)) item.pending = false;
       else {
         const other = (proc.byPath.get(c.path) ?? []).filter((e) => e.hash && e.hash !== hash);
         if (other.length) item.changed = other.sort((a, b) => b.n - a.n)[0].id;
+      }
+    }
+    // An unapproved requirements spec (/brainstorm-ba) waits for an answer; it is not a source yet.
+    if (item.pending && c.kind === 'spec') {
+      const { kind, status } = specHead(f.text);
+      if (kind === 'requirements' && !/^Approved\b/.test(status)) {
+        item.pending = false;
+        item.waiting = status;
       }
     }
     items.push(item);
@@ -642,6 +650,14 @@ export function codeRootState(abs, now = Date.now()) {
 // Listings
 // ---------------------------------------------------------------------------------------------
 
+function specHead(text) {
+  const head = text.split('\n').slice(0, 30);
+  const kind = head.map((l) => /^\*\*Kind:\*\*\s*(\S+)/.exec(l)?.[1]).find(Boolean) ?? 'design';
+  const status = head.map((l) => /^\*\*Status:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.trim() ?? '—';
+  const title = (head.find((l) => l.startsWith('# ')) ?? '# —').slice(2).replace(/^Design:\s*/, '').trim();
+  return { kind, status, title };
+}
+
 function specRows(root) {
   const specs = listMd(root, '.agents/specs');
   let total = 0;
@@ -650,10 +666,7 @@ function specRows(root) {
     .sort((a, b) => (a.date === b.date ? (a.p < b.p ? 1 : -1) : a.date < b.date ? 1 : -1));
   const rows = [`SPECS_TOTAL\t${specs.length} files / ${total} bytes (listing only — never auto-read)`];
   for (const { p, date } of dated.slice(0, SPECS_LISTED)) {
-    const head = (readText(root, p)?.text ?? '').split('\n').slice(0, 30);
-    const kind = head.map((l) => /^\*\*Kind:\*\*\s*(\S+)/.exec(l)?.[1]).find(Boolean) ?? 'design';
-    const status = head.map((l) => /^\*\*Status:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.trim() ?? '—';
-    const title = (head.find((l) => l.startsWith('# ')) ?? '# —').slice(2).replace(/^Design:\s*/, '').trim();
+    const { kind, status, title } = specHead(readText(root, p)?.text ?? '');
     rows.push(`SPEC\t${date || '—'}\t${kind}\t${status}\t${title}\t${p}`);
   }
   return { rows, specs: dated.map((d) => d.p) };
@@ -843,7 +856,8 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   const specList = guard('specs', () => specRows(root), { rows: [], specs: [] });
   if (full) {
     const pendSpecs = pend.items.filter((i) => i.kind === 'spec' && i.pending).sort((a, b) => a.size - b.size);
-    const taken = new Set(pendSpecs.map((s) => s.path));
+    // A waiting requirements spec is not a source yet: never loaded, in full mode either.
+    const taken = new Set([...pendSpecs, ...pend.items.filter((i) => i.waiting)].map((s) => s.path));
     for (const s of pendSpecs) optional.push({ kind: 'LOAD', path: s.path, bytes: s.size, cost: 1, layer: 'specs', group: 'main' });
     for (const p of specList.specs) {
       if (taken.has(p)) continue;
@@ -891,8 +905,9 @@ export function buildPlan(root, mode = 'default', { rootArg = null, argsIgnored 
   // --- reconcile against the rendered plan ---
   const listings = guard('listings', () => [
     ...specList.rows,
-    ...(pend.noPrd ? ['PENDING_NOTE\tno PRD change log — every source is pending'] : []),
+    ...(pend.noPrd ? ['PENDING_NOTE\tno PRD change log — every source but a waiting requirements spec is pending'] : []),
     ...pend.items.filter((i) => i.pending).map((i) => `PENDING\t${i.kind}\t${i.size}\t${i.path}${i.changed ? `\tchanged since ${i.changed}` : ''}`),
+    ...pend.items.filter((i) => i.waiting).map((i) => `WAITING\t${i.kind}\t${i.waiting}\t${i.path}`),
     ...noteRows(root, fam.families),
     ...guard('raw sources', () => rawSources(root, metas), []).map((r) => `RAW\t${r.size}\t./${r.path}`),
     ...planRows(root),

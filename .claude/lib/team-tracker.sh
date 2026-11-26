@@ -8,7 +8,7 @@
 #   set-status <key> started|delivered | --name <option> | --clear   (--name/--clear: the
 #                                                             restore form of a released claim)
 #   create-followup --marker <m> --title <t> --body-file <f>  (adds the issue to the Project)
-#   list --out <file>                                        (read-only; /tasks-status)
+#   list [--state open|all] --out <file>                     (read-only; /tasks-status, /brainstorm-ba)
 #   show <key> --out <file>                                  (read-only; /tasks-status)
 #   create-issue --marker <m> --title <t> --body-file <f>    (marker on ANY body line; /github-sync;
 #                                                             adds the issue to the Project)
@@ -350,12 +350,13 @@ write_atomic() {
   mv "$2.tmp.$$" "$2" || die 2 "cannot write '$2'"
 }
 
-# list: every OPEN issue of the repo (PRs dropped) with its Project status, and the Status field's
-# options in board order. Read-only. `status` is null for an issue not on the board; `on_board` > 1
-# is an ambiguous repo+number match, reported, never resolved by picking one.
+# list: every OPEN issue (or every issue with --state all) of the repo (PRs dropped) with its Project
+# status, and the Status field's options in board order. Read-only. `status` is null for an issue not
+# on the board; `on_board` > 1 is an ambiguous repo+number match, reported, never resolved by picking
+# one. With --state all each item also carries the issue's `state`; the default output is unchanged.
 op_list() {
-  local out="$1"
-  gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=open&per_page=100" --paginate > "$TMP/raw.json"
+  local out="$1" state="${2:-open}"
+  gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=$state&per_page=100" --paginate > "$TMP/raw.json"
   jq -s 'add // [] | map(select(.pull_request | not))' "$TMP/raw.json" > "$TMP/open.json" \
     || die 4 "issue list of $TEAM_GH_REPO is not parseable"
   if [ -n "$TEAM_GH_PROJECT_NUMBER" ]; then
@@ -366,7 +367,8 @@ op_list() {
     echo '{"items": []}' > "$TMP/items.json"; echo '{"fields": []}' > "$TMP/fields.json"
   fi
   jq -n --slurpfile o "$TMP/open.json" --slurpfile i "$TMP/items.json" \
-    --slurpfile f "$TMP/fields.json" --arg repo "$TEAM_GH_REPO" --arg fid "$TEAM_GH_STATUS_FIELD_ID" '
+    --slurpfile f "$TMP/fields.json" --arg repo "$TEAM_GH_REPO" --arg fid "$TEAM_GH_STATUS_FIELD_ID" \
+    --arg state "$state" '
     [$i[0].items[] | select(.content.type == "Issue" and .content.repository == $repo)] as $b
     | {tracker: "github", repo: $repo,
        statuses: [$f[0].fields[]? | select(.id == $fid) | .options[]?.name],
@@ -375,7 +377,8 @@ op_list() {
             status: (if ($m | length) == 1 then ($m[0].status // null) else null end),
             on_board: ($m | length), updated: ($x.updated_at // ""),
             assignees: [$x.assignees[]?.login], labels: [$x.labels[]?.name],
-            url: ($x.html_url // "")}]}' > "$TMP/list.json" \
+            url: ($x.html_url // "")}
+           + (if $state == "all" then {state: ($x.state // "")} else {} end)]}' > "$TMP/list.json" \
     || die 4 "issue list of $TEAM_GH_REPO cannot be joined with project $TEAM_GH_PROJECT_NUMBER"
   write_atomic "$TMP/list.json" "$out"
   jq -r '"items=" + (.items | length | tostring)' "$out"
@@ -650,7 +653,7 @@ fi
 [ "$TEAM_TRACKER" != none ] || [ -n "$TEAM_TRACKER_TEAMS" ] \
   || die 2 "read: local L<n> tickets need the teams block — tracker=none without teams has no tickets"
 
-OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; STATUS=""; POS=()
+OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; STATUS=""; LIST_STATE=""; POS=()
 NAME=""; HAS_NAME=0; CLEAR=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -658,6 +661,7 @@ while [ $# -gt 0 ]; do
     --clear)      CLEAR=1; shift ;;
     --out)        OUT="${2:-}"; shift 2 || die 2 "--out needs a directory" ;;
     --status)     STATUS="${2:-}"; shift 2 || die 2 "--status needs a name" ;;
+    --state)      LIST_STATE="${2:-}"; shift 2 || die 2 "--state needs open or all" ;;
     --marker)     MARKER="${2:-}"; shift 2 || die 2 "--marker needs a value" ;;
     --body-file)  BODY_FILE="${2:-}"; shift 2 || die 2 "--body-file needs a path" ;;
     --title)      TITLE="${2:-}"; shift 2 || die 2 "--title needs a value" ;;
@@ -730,7 +734,8 @@ case "$op" in
   list)
     [ $# -eq 0 ] || die 2 "list takes no ticket key"
     [ -n "$OUT" ] || die 2 "list needs --out <file>"
-    op_list "$OUT" ;;
+    case "${LIST_STATE:-open}" in open|all) ;; *) die 2 "--state must be open or all" ;; esac
+    op_list "$OUT" "${LIST_STATE:-open}" ;;
   show)
     [ $# -eq 1 ] || die 2 "show needs a ticket key"
     [ -n "$OUT" ] || die 2 "show needs --out <file>"

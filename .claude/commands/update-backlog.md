@@ -72,6 +72,10 @@ fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a
   `**Sources:**` line **whose `**Tasks:**` line is filled**. A source only `/discover` recorded is
   still pending (reconcile mode covers it). A changed file is pending again — say which `D-n`
   processed its earlier version.
+- **Requirements specs** (`**Kind:** requirements`, written by `/brainstorm-ba`) are a source only
+  when their `**Status:**` starts with `Approved`. A `Draft` or `Waiting — <role>` one is skipped —
+  from the pending set and as an argument — with one line: "`<path>` is a requirements spec still
+  `<status>` — resume it with `/brainstorm-ba <path>`". Design specs keep the rule above.
 - **"BA direct decision"** — a decision the user states in chat is a source too; quote it.
 - **Missing quality Tasks** — `node .claude/lib/backlog-check.mjs` (read-only) prints a `quality
   Tasks not planned`, a `regression Tasks not planned` or a `regression neither planned nor ruled
@@ -160,7 +164,9 @@ Regression Tasks and criterion tags follow that file's `## Regression`; new crit
 One `AskUserQuestion` per question, multiple choice, your recommendation first. Rules as in
 `/meeting-notes` Phase 4: "you choose" → pick and state the assumption; bounced back → propose with a
 reason; "don't know" → `[Assumption — to verify]`; more than 8 questions → offer to finish in the
-preview. Always asked, even when the source is clear:
+preview. An open question of an approved requirements spec, and every Task it marks `held`, stays
+open: it is never an intent and never becomes `[Assumption — to verify]` — the preview lists it as
+`open — <owner>`. Always asked, even when the source is clear:
 
 - every removal and withdrawal;
 - placement of a new item: developer work (a Task) or work another team delivers (an `X-n` row in

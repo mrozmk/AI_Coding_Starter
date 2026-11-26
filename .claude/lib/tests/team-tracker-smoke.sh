@@ -826,6 +826,21 @@ jq -e '[.items[] | select(.key == "1001")][0] | .status == null and .on_board ==
   "$WORK/list.json" >/dev/null || fail "list: an ambiguous board match must not pick one"
 jq -e '[.items[] | select(.key == "600")] == []' "$WORK/list.json" >/dev/null \
   || fail "list: a pull request was listed as an issue"
+grep -q 'issues?state=open&' "$GH_LOG" || fail "list without --state must keep requesting state=open"
+jq -e '.items[0] | has("state") | not' "$WORK/list.json" >/dev/null \
+  || fail "list without --state must keep today's item shape (no state field)"
+# Keep the log: the case's later checks still count the default list's calls. Assert on the
+# lines this call adds after the offset only.
+GH_OFF="$(wc -l < "$GH_LOG" | tr -d ' ')"
+run "$MAIN" $TRK list --state all --out "$WORK/list-all.json"
+expect 0 "items=" "list --state all requests every issue state"
+tail -n "+$((GH_OFF + 1))" "$GH_LOG" > "$WORK/gh-log-all"
+grep -q 'issues?state=all&' "$WORK/gh-log-all" || fail "list --state all did not request state=all"
+! grep -q 'issues?state=open&' "$WORK/gh-log-all" || fail "list --state all still requested state=open"
+jq -e '.items[0] | has("state")' "$WORK/list-all.json" >/dev/null \
+  || fail "list --state all must carry each issue's state"
+run "$MAIN" $TRK list --state closed --out "$WORK/x.json"
+expect 2 "--state must be open or all" "list --state rejects a value other than open or all"
 
 export STUB_GH_PAGE2_FAIL=1
 rm -f "$WORK/list2.json"

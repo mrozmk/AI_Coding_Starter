@@ -188,6 +188,60 @@ test('pending small spec is queued but not loaded in default mode', () => {
   assert.ok(loadPaths(plan(d, ['--mode', 'full'])).includes('.agents/specs/2026-01-01-small.md'));
 });
 
+const reqSpec = (status) => `# Requirements: x\n\n**Date:** 2026-01-02\n**Status:** ${status}\n**Kind:** requirements\n`;
+
+test('requirements spec in Draft or Waiting is WAITING, not PENDING', () => {
+  const d = tmpRepo();
+  frame(d);
+  write(d, 'docs/PRD.md', prdText({ ids: 2 }));
+  const A = '.agents/specs/2026-01-02-req.md';
+  const B = '.agents/specs/2026-01-03-req2.md';
+  write(d, A, reqSpec('Draft'));
+  write(d, B, reqSpec('Waiting — client'));
+  for (const out of [plan(d), plan(d, ['--mode', 'full'])]) {
+    const waiting = rows(out, 'WAITING');
+    assert.deepEqual(waiting.find((r) => r[3] === A), ['WAITING', 'spec', 'Draft', A]);
+    assert.deepEqual(waiting.find((r) => r[3] === B), ['WAITING', 'spec', 'Waiting — client', B]);
+    assert.ok(!rows(out, 'PENDING').some((r) => r[3] === A || r[3] === B));
+    assert.ok(!loadPaths(out).includes(A) && !loadPaths(out).includes(B), out);
+  }
+});
+
+test('approved requirements spec stays PENDING', () => {
+  const d = tmpRepo();
+  frame(d);
+  write(d, 'docs/PRD.md', prdText({ ids: 2 }));
+  const A = '.agents/specs/2026-01-02-req.md';
+  write(d, A, reqSpec('Approved'));
+  const out = plan(d);
+  assert.ok(rows(out, 'PENDING').some((r) => r[3] === A));
+  assert.ok(!rows(out, 'WAITING').some((r) => r[3] === A));
+});
+
+test('draft design spec stays PENDING', () => {
+  const d = tmpRepo();
+  frame(d);
+  write(d, 'docs/PRD.md', prdText({ ids: 2 }));
+  const A = '.agents/specs/2026-01-02-y.md';
+  write(d, A, '# Design: y\n\n**Date:** 2026-01-02\n**Status:** Draft\n');
+  const out = plan(d);
+  assert.ok(rows(out, 'PENDING').some((r) => r[3] === A));
+  assert.ok(!rows(out, 'WAITING').some((r) => r[3] === A));
+});
+
+test('processed requirements spec is neither pending nor waiting', () => {
+  const d = tmpRepo();
+  frame(d);
+  const A = '.agents/specs/2026-01-02-req.md';
+  const text = reqSpec('Draft');
+  write(d, A, text);
+  const hash = sha12(text);
+  write(d, 'docs/PRD.md', `# PRD\n\n## Change log\n\n### D-1 — 2026-01-02 — d1\n**Kind:** scope\n**Sources:** \`${A}\` (sha256:${hash})\n**Tasks:** E1-1\n`);
+  const out = plan(d);
+  assert.ok(!rows(out, 'PENDING').some((r) => r[3] === A));
+  assert.ok(!rows(out, 'WAITING').some((r) => r[3] === A));
+});
+
 test('large PRD loads the register index and newest 5 D-n, not the narrative', () => {
   const d = tmpRepo();
   frame(d);
