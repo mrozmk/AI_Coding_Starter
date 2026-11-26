@@ -64,22 +64,12 @@ if [ "$EV" = PreToolUse ]; then
         permissionDecisionReason: "the Operator'"'"'s mandate and the delegation ledger are written by team-mandate.sh and the Supervisor'"'"'s delegated answer only"}}'
       exit 0 ;;
     esac
-    # #322 (Operator decision d-2): settings and role profiles are never edited by a stage; the
-    # guard layer's hooks only in its own clone or its run's starter worktree. Round 2: only a live
-    # guard layer — the clone's `.claude/`, the `.claude/` at a checkout's root (its parent holds
-    # `.git`) or the user's Claude config dir; a fixture project's `.claude/` inside a repository
-    # is no guard layer.
-    case "$P" in *.json)
-      CFG="$(real "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")" || guard_refuse "cannot resolve the Claude config dir — refused"
-      CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"
-      CFG="$(tr '[:upper:]' '[:lower:]' <<<"$CFG")"; CL="$(tr '[:upper:]' '[:lower:]' <<<"$CL")"
-      case "$P" in "$CFG"/settings*.json|"$CFG"/team/sessions/*.settings.json|"$CL"/.claude/settings*.json|"$CL"/.claude/team/sessions/*.settings.json)
-        out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0 ;;
-      */.claude/settings*.json|*/.claude/team/sessions/*.settings.json)
-        if [ -e "${PO%/.claude/*}/.git" ]; then
-          out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0
-        fi ;;
-      esac ;;
+    # #322 (Operator decision d-2): settings and role profiles of a live guard layer (guard_layer:
+    # the clone, a checkout root, the Claude config dir) are never edited by a stage; the hooks only
+    # in its own clone or its run's starter worktree. exit 0 = guard layer, 1 = not, else refused.
+    case "$P" in *.json) python3 -I "$MAIN/.claude/hooks/lib/guard_team_egress_hard.py" guard-layer "$PO" "$CLONE"; GL=$?
+      [ "$GL" -le 1 ] || guard_refuse "the guard layer check failed — refused"
+      [ "$GL" = 1 ] || { out_pre_deny "settings and role profiles are never edited by a stage (#322)"; exit 0; } ;;
     esac
     case "$P" in */.claude/hooks/*)
       CL="$(real "$CLONE")" || guard_refuse "cannot resolve the clone — refused"

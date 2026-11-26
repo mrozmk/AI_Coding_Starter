@@ -430,3 +430,15 @@ def operator_reason(cmd, project, cwd):
         if why:
             return why
     return ""
+
+
+if __name__ == "__main__":
+    # team-ask-hook.sh: `guard-layer <path> <project>` → exit 0 (a live guard layer), 1 (not), 2 (a
+    # bug or bad argv: the hook refuses — a raised exception must never read as "not").
+    try:
+        if sys.argv[1:2] != ["guard-layer"] or len(sys.argv) != 4:
+            raise ValueError("usage: guard-layer <path> <project>")
+        sys.exit(0 if guard_layer(sys.argv[2], sys.argv[3]) else 1)
+    except Exception as e:  # fail closed
+        print("guard_team_egress_hard: " + str(e), file=sys.stderr)
+        sys.exit(2)
