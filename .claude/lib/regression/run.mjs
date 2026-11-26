@@ -358,7 +358,8 @@ export function decideVerdict({ kind, cls, guard, runnerExit, signal, plan, buil
   for (const o of cls.orphans) red.push(`no scenario id: ${o.title} (${o.project})`);
   for (const o of cls.outside_selection) red.push(`outside the selection: ${o.id}/${o.project} (${o.file})`);
   if (guard.outsideTest) red.push('blocked request outside a test');
-  if (!cls.executed.length) red.push('zero executed cases');
+  // A valid report with nothing executed, or nothing selected, is RED; an absent or invalid report is INCOMPLETE.
+  if (!cls.executed.length && (cls.valid || !plan.cases.length)) red.push('zero executed cases');
   if (!cls.valid) incomplete.push('runner report missing, unparseable or invalid');
   if (cls.report_errors) incomplete.push(`report errors: ${cls.report_errors}`);
   if (signal) incomplete.push(`runner ended by ${signal}`);

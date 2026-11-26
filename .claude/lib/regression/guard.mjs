@@ -530,27 +530,29 @@ function webSocketHandler(g) {
  * close WebSockets on production (no `routeWebSocket` there → the run stops), replace
  * `context.request` with the guarded client. Idempotent; attests the current test once per context.
  */
-export async function installGuard(context, manifest, { testInfo } = {}) {
-  if (context[GUARDED]) {
-    attestCase(context[GUARDED].g, context, testInfo);
+export function installGuard(context, manifest, { testInfo } = {}) {
+  return (async () => {
+    if (context[GUARDED]) {
+      attestCase(context[GUARDED].g, context, testInfo);
+      return context;
+    }
+    const g = guardState(manifest);
+    if (g.ledger.stopped()) throw new Error('regression guard: the run is stopped');
+    if (g.policy.production && typeof context.routeWebSocket !== 'function') {
+      g.ledger.stop('websocket routing unavailable');
+      throw new Error('regression guard: websocket routing unavailable — production is refused rather than run unguarded');
+    }
+    const raw = context.request;
+    Object.defineProperty(context, GUARDED, { value: { g }, enumerable: false, configurable: true });
+    if (typeof context.routeWebSocket === 'function') await context.routeWebSocket(/.*/, webSocketHandler(g));
+    await context.route('**/*', (route) => routeHandler(g, raw, route));
+    if (raw) {
+      const guarded = guardRequestContext(raw, manifest, { state: g });
+      Object.defineProperty(context, 'request', { value: guarded, configurable: true, writable: true });
+    }
+    attestCase(g, context, testInfo);
     return context;
-  }
-  const g = guardState(manifest);
-  if (g.ledger.stopped()) throw new Error('regression guard: the run is stopped');
-  if (g.policy.production && typeof context.routeWebSocket !== 'function') {
-    g.ledger.stop('websocket routing unavailable');
-    throw new Error('regression guard: websocket routing unavailable — production is refused rather than run unguarded');
-  }
-  const raw = context.request;
-  Object.defineProperty(context, GUARDED, { value: { g }, enumerable: false, configurable: true });
-  if (typeof context.routeWebSocket === 'function') await context.routeWebSocket(/.*/, webSocketHandler(g));
-  await context.route('**/*', (route) => routeHandler(g, raw, route));
-  if (raw) {
-    const guarded = guardRequestContext(raw, manifest, { state: g });
-    Object.defineProperty(context, 'request', { value: guarded, configurable: true, writable: true });
-  }
-  attestCase(g, context, testInfo);
-  return context;
+  })();
 }
 
 /** The only way a session adapter (or the fixture's wrapper) creates a context. */
@@ -613,10 +615,26 @@ export function guardRequestContext(api, manifest, { state } = {}) {
   return new Proxy(api, { get: (target, prop) => (prop in wrapper ? wrapper[prop] : typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop]) });
 }
 
+/**
+ * The bytes a plain-HTTP adapter call sends — the same bytes the guard judges. A string, a Buffer
+ * (or Uint8Array) or URLSearchParams; any other body type is refused before transport.
+ */
+function adapterBody(body, headers) {
+  if (body === undefined || body === null) return { body: undefined, headers };
+  if (typeof body === 'string' || Buffer.isBuffer(body)) return { body, headers };
+  if (body instanceof Uint8Array) return { body: Buffer.from(body), headers };
+  if (body instanceof URLSearchParams) {
+    const typed = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
+    return { body: body.toString(), headers: typed ? headers : { ...headers, 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' } };
+  }
+  throw new Error('regression guard: unsupported body type — send a string, a Buffer or URLSearchParams');
+}
+
 /** The hop walk over node `fetch` for a session adapter's plain HTTP sign-in, on the run's ledger. */
 export async function guardedFetch(manifest, { method = 'GET', url, headers = {}, body } = {}, { tag = null } = {}) {
   const g = guardState(manifest);
-  const result = await walk(g, { method, url, body, headers }, async (hop, h) => {
+  const sent = adapterBody(body, headers);
+  const result = await walk(g, { method, url, body: sent.body, headers: sent.headers }, async (hop, h) => {
     const r = await fetch(hop.url, { method: hop.method, headers: h, body: hop.body ?? undefined, redirect: 'manual' });
     const buf = Buffer.from(await r.arrayBuffer());
     return { status: () => r.status, headers: () => Object.fromEntries(r.headers.entries()), body: async () => buf, text: async () => buf.toString('utf8') };

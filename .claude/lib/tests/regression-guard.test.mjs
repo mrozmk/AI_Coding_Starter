@@ -571,3 +571,13 @@ test('refuses multipart and replays a captured request whole', async () => {
   assert.equal(hit.body, 'q=1', 'the captured body');
   assert.equal(hit.headers['x-trace'], 't1', 'the captured headers');
 });
+
+test('guarded fetch judges and sends the same form bytes', async () => {
+  const m = manifest({ operations: { 'sign-in': { method: 'POST', url: '/login$', body: 'user=key&pass=x' } } });
+  const r = await guardedFetch(m, { method: 'POST', url: `${A}/login`, body: new URLSearchParams({ user: 'key', pass: 'x' }) });
+  assert.equal(r.status, 200, 'the named operation matched the form payload');
+  const hit = hitsOf('/login').at(-1);
+  assert.equal(hit.body, 'user=key&pass=x');
+  assert.match(hit.headers['content-type'], /^application\/x-www-form-urlencoded/);
+  await assert.rejects(guardedFetch(m, { method: 'POST', url: `${A}/login`, body: { user: 'key' } }), /unsupported body type/);
+});

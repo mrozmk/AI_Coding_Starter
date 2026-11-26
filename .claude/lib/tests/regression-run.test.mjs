@@ -337,6 +337,17 @@ test('run incomplete on report errors, an expected failure or a non-zero runner 
   }
 });
 
+test('run incomplete when the runner writes no report', async () => {
+  const root = copyRoot();
+  knownBuild(root);
+  useRunner(root, '- attest-all 0');
+  const r = await cli(['run', '--root', root]);
+  assert.equal(r.status, 4, r.out);
+  assert.match(r.stdout, /^reason: runner report missing, unparseable or invalid$/m);
+  assert.doesNotMatch(r.stdout, /zero executed cases/);
+  assert.doesNotMatch(r.stdout, /regression-tests heal/, 'no heal for a run that produced no results');
+});
+
 test('run incomplete without a build sha', async () => {
   const root = copyRoot();
   useRunner(root, 'green attest-all 0');

@@ -32,7 +32,8 @@ allowlist, budget and stops (a sign-in counts in the budget):
 - every browser context it opens is created by `newGuardedContext(browser, manifest, options)`
   (`serviceWorkers: 'block'` + `installGuard`) — never a bare `browser.newContext`;
 - plain HTTP goes through `guardedFetch(manifest, {method, url, headers, body})`, never a bare
-  `fetch` or HTTP client;
+  `fetch` or HTTP client; `body` is a string, a Buffer or `URLSearchParams` (any other type is
+  refused — the guard judges exactly the bytes it sends);
 - after signing in — and on every `session` call, also when it reuses a cached storage state — it
   calls `attestSession(manifest, account)` (`manifest = loadRunManifest()`), which writes the
   `session` attestation for the account.
