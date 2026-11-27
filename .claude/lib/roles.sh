@@ -51,7 +51,7 @@ claude_name() {
 # one this falls through silently. The redirect sits inside the substitution, since one after a bare
 # assignment leaves the substitution's stderr on the terminal.
 codex_home() {
-  local c p rp rc
+  local c p rp rcp
   c="$( { . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}"; } 2>/dev/null )" || c=""
   p="$(sed -n '/^[[:space:]]*$/d; /^#/d; p; q' "$MAIN/.claude/codex-profile" 2>/dev/null || true)"
   case "$p" in "~/"*) p="$HOME/${p#\~/}" ;; esac
@@ -59,8 +59,8 @@ codex_home() {
     rp="$(cd "$p" 2>/dev/null && pwd -P || true)"
     [ -n "$rp" ] || { echo "Codex profile $p from .claude/codex-profile does not resolve — no session launched"; return 1; }
     if [ -n "$c" ]; then
-      rc="$(cd "$c" 2>/dev/null && pwd -P || true)"
-      [ -n "$rc" ] && [ "$rc" = "$rp" ] \
+      rcp="$(cd "$c" 2>/dev/null && pwd -P || true)"
+      [ -n "$rcp" ] && [ "$rcp" = "$rp" ] \
         || { echo "Codex home $c of the team channel differs from $p in .claude/codex-profile — rerun /setup:teams → channel; no session launched"; return 1; }
     fi
   fi
@@ -322,9 +322,9 @@ up() {
   done
   if [ -n "$todo" ]; then
     ch="$(codex_home)" || { echo "refused: $ch" >&2; exit 1; }
+    # shellcheck disable=SC2086
+    materialize $todo || exit 1
   fi
-  # shellcheck disable=SC2086
-  [ -z "$todo" ] || materialize $todo || exit 1
   err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
   for r in $todo; do
     cli="$(roles_cfg "$r" cli)"; sid=""; rch="$ch"

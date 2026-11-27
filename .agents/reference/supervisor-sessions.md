@@ -201,8 +201,8 @@ Follow the role contract the session context names and reconcile now …"; a Cod
 when its model is `default`). `CODEX_HOME` /
 `CLAUDE_CONFIG_DIR` are forwarded per session, never with `tmux set-environment -g`.
 `CODEX_HOME` comes from the team channel's `codex_home`, else from `.claude/codex-profile` when it
-has a value line — for Claude and Codex roles alike — else, for a Claude role, from the launcher's
-own environment; a profile value that does not resolve, or a channel home that differs from it,
+has a value line — for Claude and Codex roles alike — else, for a Claude role (and any role taken
+with `here`, which keeps the terminal's environment), from the launcher's own environment; a profile value that does not resolve, or a channel home that differs from it,
 refuses `roles.sh up` / `here` / `resume` before any session starts.
 `CLAUDE_CONFIG_DIR` comes from `.claude/claude-profile` when it has a value line (`here` and the
 preflight's settings check use the same dir), else from the launcher's own environment; a declared

@@ -76,6 +76,7 @@ clr() { : > "$STUB_LOG"; }
 line() { grep -qF -- "$1" "$2" || { cp "$2" "$WORK/out" 2>/dev/null || true; fail "$3: no '$1'"; }; }
 noline() { ! grep -qF -- "$1" "$2" || { cp "$2" "$WORK/out" 2>/dev/null || true; fail "$3: unexpected '$1'"; }; }
 starts() { grep -c '^tmux new-session' "$STUB_LOG" || true; }
+nsline() { grep "^tmux new-session.* -s smk-$1 " "$STUB_LOG" > "$WORK/ns-$1" || true; }  # one role's start line
 
 # ---- (1) up: three roles, argv, env, profiles, hints; a second up starts nothing -----------------
 clr; run "$MAIN" $RS; expect 0 "Supervisor: started" "(1) up"
@@ -88,8 +89,8 @@ for r in Supervisor Fable Astra; do for d in tmp new done; do
   [ -d "$MAIN/.agents/team/inbox/$r/$d" ] || fail "(1) no inbox $r/$d after up"; done; done
 [ "$(starts)" = 3 ] || fail "(1) $(starts) new-session calls, expected 3"
 for r in Supervisor Fable Astra; do
-  grep "^tmux new-session.* -s smk-$(echo "$r" | tr '[:upper:]' '[:lower:]') " "$STUB_LOG" > "$WORK/env-$r"
-  line "-e TEAM_SESSION_ROLE=$r " "$WORK/env-$r" "(1) env $r"; line "-e HARNESS_ADDRESS=$r " "$WORK/env-$r" "(1) env $r"
+  lc="$(echo "$r" | tr '[:upper:]' '[:lower:]')"; nsline "$lc"
+  line "-e TEAM_SESSION_ROLE=$r " "$WORK/ns-$lc" "(1) env $r"; line "-e HARNESS_ADDRESS=$r " "$WORK/ns-$lc" "(1) env $r"
 done
 grep '^tmux new-session.* -s smk-astra ' "$STUB_LOG" > "$WORK/astra"
 line "codex --no-daemon -c model_reasoning_effort=high 'You are Astra. Follow the role contract" "$WORK/astra" "(1) Astra argv"
@@ -465,7 +466,6 @@ echo "team-smoke-roles: (13b) resume rings a waiting inbox OK"
 # ---- (13c) Codex home from .claude/codex-profile: Codex and Claude roles; none; unresolvable --------
 CP="$MAIN/.claude/codex-profile"; cp "$CP" "$WORK/codex-profile.bak"
 CH="$(cd "$HOME/.codex-acmeshop" && pwd -P)"
-nsline() { grep "^tmux new-session.* -s smk-$1 " "$STUB_LOG" > "$WORK/ns-$1" || true; }
 # the fixture's value line
 clr; run "$MAIN" $RS up Astra; expect 0 "Astra: started" "(13c) value: up Astra"
 nsline astra; line "-e CODEX_HOME=$CH " "$WORK/ns-astra" "(13c) value: up Astra"
