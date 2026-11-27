@@ -3,7 +3,7 @@
 // collected, update mode, repeats, output under the run directory, snapshot path, tolerance),
 // `visualTargets` lists the targets the spec declares tests for, `renderTarget` renders one target and
 // appends exactly one outcome line to `<run>/visual.jsonl` (plus one renderer line per worker and
-// project). No `@playwright/test` import: Playwright objects arrive as arguments.
+// project). No Playwright test-runner import: Playwright objects arrive as arguments.
 // Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §13.
 //
 // Library only (no CLI). The pass manifest (`REGRESSION_RUN`) is written by run.mjs.
@@ -12,13 +12,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { VISUAL_DEFAULTS } from './config.mjs';
-import { escapeRe } from './guard.mjs';
 
 const FONT_DIRS = ['/System/Library/Fonts', '/Library/Fonts', '~/Library/Fonts', '/usr/share/fonts', '/usr/local/share/fonts', '~/.fonts', '~/.local/share/fonts'];
 const STORY_ROOTS = ['#storybook-root', '#root'];
 const MASK_COLOR = '#FF00FF';
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const posix = (p) => p.split(path.sep).join('/');
 const firstLine = (s) => String(s ?? '').split('\n').map((l) => l.trim()).find(Boolean) ?? '';
 
@@ -27,7 +26,7 @@ export function visualOptions(manifest) {
   const v = manifest?.visual;
   if (!v) return { testDir: '.', testMatch: /(?!)/, repeatEach: 1, retries: 0, updateSnapshots: 'none', ignoreSnapshots: false, expect: {}, use: {} };
   const template = `${posix(path.relative(v.config_dir, v.snapshot_dir))}/{projectName}/{arg}{ext}`;
-  const tolerance = v.tolerance ?? VISUAL_DEFAULTS.tolerance;
+  const tolerance = v.tolerance ?? { threshold: 0.2, max_diff_pixels: 0 };
   return {
     testDir: path.dirname(v.spec_abs),
     // Only the configured spec: a second visual.spec.ts under testDir is never collected.
@@ -39,7 +38,7 @@ export function visualOptions(manifest) {
     updateSnapshots: v.pass === 'capture' ? 'all' : 'none',
     ignoreSnapshots: false,
     expect: { toHaveScreenshot: { pathTemplate: template, threshold: tolerance.threshold, maxDiffPixels: tolerance.max_diff_pixels, animations: 'disabled', caret: 'hide', scale: 'css' } },
-    use: { serviceWorkers: 'block', reducedMotion: 'reduce', colorScheme: 'light', timezoneId: v.timezone ?? VISUAL_DEFAULTS.timezone },
+    use: { serviceWorkers: 'block', reducedMotion: 'reduce', colorScheme: 'light', timezoneId: v.timezone ?? 'UTC' },
   };
 }
 
@@ -178,7 +177,7 @@ export async function renderTarget({ page, browser }, testInfo, target, expect, 
     const masks = [...(v.mask ?? []), ...(target.mask ?? [])].map((m) => page.locator(m.selector));
     const ratio = await maskRatio(page, masks, target.full_page === true);
     ev.masked_ratio = Math.round(ratio * 10000) / 10000;
-    if (ratio > (v.max_mask_ratio ?? VISUAL_DEFAULTS.max_mask_ratio)) fail(`mask covers ${(ratio * 100).toFixed(1)}%`);
+    if (ratio > (v.max_mask_ratio ?? 0.25)) fail(`mask covers ${(ratio * 100).toFixed(1)}%`);
     await page.evaluate(() => null, 'before-shot');
     if (target.source === 'storybook' && target.error && await page.locator(target.error).count()) fail('story error display');
     const opts = { mask: masks, maskColor: MASK_COLOR, fullPage: target.full_page === true };

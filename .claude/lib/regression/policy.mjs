@@ -15,16 +15,16 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
-  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey, envKind, visualSettings, runnerDevices,
+  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey, envKind, visualSettings, runnerDevices, VISUAL_DEVICES,
 } from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf } from './catalog.mjs';
 
 export const MODES = ['smoke', 'full', 'visual'];
 export const VISUAL_ACTIONS = ['compare', 'update'];
-const VISUAL_REPEAT = { capture: 1, stability: 3, compare: 1 };
+export const VISUAL_REPEAT = { capture: 1, stability: 3, compare: 1 };
 const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
 
-const sha256 = (data) => createHash('sha256').update(data).digest('hex');
+export const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 
 /** sha256 over `path\0bytes\0` of each repo-relative file, sorted by path. */
 export function digestFiles(root, files) {
@@ -69,7 +69,6 @@ export function exclusionReason(scenario, policy, envName) {
   return null;
 }
 
-
 /**
  * Targets × runner projects: `{cases: [{id, title, project, spec, file, source}], no_device: [{id, device}]}`.
  * A device without a runner project is `no_device`: never run, its baselines never orphans.
@@ -96,7 +95,7 @@ export function expandTargets(cfg, targets) {
 export function visualPlan(cfg, envName, action = 'compare') {
   const s = visualSettings(cfg);
   const routes = s.routes.map((r) => ({
-    id: `route:${r.id}`, source: 'routes', title: r.title, url: r.path, devices: Array.isArray(r.devices) ? r.devices : ['desktop', 'mobile'],
+    id: `route:${r.id}`, source: 'routes', title: r.title, url: r.path, devices: Array.isArray(r.devices) ? r.devices : [...VISUAL_DEVICES],
     mask: Array.isArray(r.mask) ? r.mask : [], full_page: r.full_page === true, wait_for: r.wait_for ?? null, ready: null, error: null, file: `routes--${r.id}.png`,
   }));
   const { cases, no_device: noDevice } = expandTargets(cfg, routes);

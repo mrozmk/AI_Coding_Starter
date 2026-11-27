@@ -1048,7 +1048,7 @@ test('a candidate changed after verification leaves the accepted tree unchanged'
   const settings = (await lib('config')).visualSettings(readConfig(root));
   const runId = runIdOf(root, u);
   const candidate = path.join(root, RUNS, runId, 'visual/capture/candidates/desktop-chrome/routes--home.png');
-  const r = v.acceptOffer({ root, settings, runId, token: acceptTokenOf(u), runsDir: path.join(root, RUNS), afterVerify: () => fs.appendFileSync(candidate, 'late') });
+  const r = await v.acceptOffer({ root, settings, runId, token: acceptTokenOf(u), runsDir: path.join(root, RUNS), afterVerify: () => fs.appendFileSync(candidate, 'late') });
   assert.equal(r.exit, 3);
   assert.match(r.message, /stale offer — the candidates or the baselines changed during accept/);
   const afterTree = tree(path.join(root, BASE, 'test')).map((f) => [f, sha(fs.readFileSync(path.join(root, BASE, 'test', f)))]);
@@ -1222,7 +1222,7 @@ test('visual not configured is a usage refusal', async () => {
 });
 
 test('visual templates declare tests in the spec and import the guarded fixtures', async () => {
-  const { scanIntegration } = await lib('run');
+  const { visualIntegration } = await lib('run');
   const config = fs.readFileSync(path.join(REPO, '.claude/templates/regression/visual.config.ts.template'), 'utf8');
   const spec = fs.readFileSync(path.join(REPO, '.claude/templates/regression/visual.spec.ts.template'), 'utf8');
   assert.match(spec, /^import \{ test, expect \} from '<fixtures-relative>';$/m);
@@ -1236,10 +1236,5 @@ test('visual templates declare tests in the spec and import the guarded fixtures
   const functional = fs.readFileSync(path.join(REPO, '.claude/templates/regression/playwright.config.ts.template'), 'utf8');
   assert.match(functional, /outputDir: opts\.outputDir/);
   const root = copyRoot();
-  const findings = scanIntegration(root, {
-    configFile: 'e2e/visual/visual.config.ts',
-    configNeeds: [{ module: /\.claude\/lib\/regression\/guard\.mjs$/, binding: 'runnerOptions' }, { module: /\.claude\/lib\/regression\/visual-spec\.mjs$/, binding: 'visualOptions' }],
-    specs: ['e2e/visual/visual.spec.ts'],
-  });
-  assert.deepEqual(findings, [], 'the fixture copies of the templates are guard-integrated');
+  assert.deepEqual(visualIntegration(root, readConfig(root)), [], 'the fixture copies of the templates are guard-integrated');
 });

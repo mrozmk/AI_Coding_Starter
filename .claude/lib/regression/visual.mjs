@@ -10,9 +10,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { isObject, docKey, visualSettings, VISUAL_DEFAULTS, VISUAL_ID } from './config.mjs';
-import { digestJson, canonicalJson, visualPlan } from './policy.mjs';
+import { digestJson, canonicalJson, visualPlan, sha256, VISUAL_REPEAT } from './policy.mjs';
 import { guardedFetch, scenarioId, escapeRe } from './guard.mjs';
 
 export const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -23,7 +23,6 @@ const INDEX_FILE = 'index.json';
 const SHA_HEX = /^[0-9a-f]{64}$/;
 const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
 
-const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const posix = (p) => p.split(path.sep).join('/');
 const keyOf = (c) => `${c.id}\0${c.project}`;
 const imageKey = (c) => `${c.project}/${c.file}`;
@@ -398,7 +397,7 @@ export const emptyPass = (pass, cases) => classifyPass({ pass, cases, repeat: 1,
  * The record block of a compare pass: targets with their outcomes (renderer-checked), orphans,
  * counts, the differences, the incomplete-pass reasons, the integrity reasons and the outcome.
  */
-export function classifyVisual({ settings, env, cases, noDevice, sources, pass, verify, runner, integrityExtra = [], production = false, baselinesRel }) {
+export function classifyVisual({ settings, env, cases, noDevice, sources, pass, verify, runner, integrityExtra = [], incompleteExtra = [], production = false, baselinesRel, build = null }) {
   const counts = emptyCounts();
   const targets = [];
   const differences = [];
@@ -431,6 +430,7 @@ export function classifyVisual({ settings, env, cases, noDevice, sources, pass, 
   if (runner.signal) incomplete.push(`visual runner ended by ${runner.signal}`);
   else if (runner.code !== 0 && runner.code !== null && !counts.differs && !counts.error) incomplete.push(`visual runner exit ${runner.code}`);
   if (!production) incomplete.push(...pass.attestation);
+  incomplete.push(...incompleteExtra);
   const integrity = [...verify.integrity, ...integrityExtra];
   const outcome = integrity.length || incomplete.length ? 'incomplete' : differences.length ? 'differs' : 'clean';
   return {
@@ -439,7 +439,7 @@ export function classifyVisual({ settings, env, cases, noDevice, sources, pass, 
     portability: portability([...new Set(cases.map((c) => c.project))], verify.index, pass.renderers),
     sources: sources.map(({ name, state, count, reason }) => ({ name, state, count, ...(reason ? { reason } : {}) })),
     targets, orphans, no_device: noDevice, counts, differences, incomplete, integrity,
-    attestation: production ? pass.attestation : [], guard_red: [...new Set(pass.guard_red)], outcome,
+    attestation: production ? pass.attestation : [], guard_red: [...new Set(pass.guard_red)], outcome, build,
   };
 }
 
@@ -524,7 +524,7 @@ export function evaluateUpdate({ cases, capture, stability, hashes, rehashes, st
     if (!hashes[key]) reasons.push('no candidate file');
     const outcomes = st.map((e) => e.outcome);
     const differences = st.filter((e) => e.outcome !== 'same').length;
-    if (st.length !== 3) reasons.push('stability pass did not run');
+    if (st.length !== VISUAL_REPEAT.stability) reasons.push('stability pass did not run');
     for (const e of st) {
       if (renderError(e) && kind === 'stable') { kind = 'error'; reasons.push(`stability #${e.repeat}: ${e.reason}`); }
       else if (e.outcome !== 'same') reasons.push(`stability #${e.repeat}: ${e.outcome === 'error' ? e.reason : e.outcome}`);
@@ -624,7 +624,7 @@ export function consumeAcceptToken(runsDir, env, runId, token, digest) {
  * tree beside `<env>`, verify it byte by byte against the offered index, then swap by two renames.
  * Pure file work — no request, no render. The caller holds the checkout lock. `{exit, message}`.
  */
-export function acceptOffer({ root, settings, runId, token, runsDir, afterVerify }) {
+export async function acceptOffer({ root, settings, runId, token, runsDir, afterVerify }) {
   let offer;
   try { offer = JSON.parse(fs.readFileSync(path.join(runsDir, runId, 'visual', 'offer.json'), 'utf8')); } catch { return { exit: 3, message: `refused: no offer for run ${runId} — run visual update first` }; }
   const env = offer.env;

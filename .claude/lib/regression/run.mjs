@@ -33,7 +33,6 @@ import {
   buildOffer, offerLine, issueAcceptToken, acceptOffer,
 } from './visual.mjs';
 
-export { RUNS_DIR };
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
 const SHA_KEYS = ['sha', 'commit', 'commit_sha', 'git_sha', 'build_sha', 'revision'];
 const HEX_SHA = /^[0-9a-f]{7,40}$/;
@@ -539,7 +538,7 @@ function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, 
     started_at: startedAt, ended_at: new Date().toISOString(), head_sha: headSha(root),
     build_sha: build.before.sha, build_sha_after: build.after.sha, build_sha_source: build.before.source,
     runner_exit: runner.code, runner_signal: runner.signal ?? null, report_errors: cls.report_errors,
-    digests: plan.digests, devices: [...new Set(plan.cases.map((c) => c.project))], command: plan.cases.length ? command : null,
+    digests: plan.digests, devices: [...new Set(plan.cases.map((c) => c.project))], command,
     versions: { node: process.version, runner: cls.runner_version }, confirmed,
     cases: cls.cases.map(({ id, project, result, duration_ms }) => ({ id, project, result, duration_ms })),
     orphans: cls.orphans, outside_selection: cls.outside_selection,
@@ -663,11 +662,9 @@ async function runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifes
   const integrityExtra = watch.changed ? [watch.changed] : [];
   if (v.action === 'compare') {
     const pass = passes.compare ?? emptyPass('compare', cases);
-    const block = classifyVisual({ settings: s, env: plan.env, cases, noDevice, sources, pass, verify, runner: runners.compare ?? { code: null, signal: null }, integrityExtra, production, baselinesRel });
-    if (interrupted) block.incomplete.push(interrupted);
-    if (sbCfg && build.storybook_index_before && build.storybook_index_after && build.storybook_index_before !== build.storybook_index_after) block.incomplete.push('storybook index changed during the run');
-    if (interrupted || block.incomplete.length || block.integrity.length) block.outcome = 'incomplete';
-    block.build = build;
+    const incompleteExtra = interrupted ? [interrupted] : [];
+    if (sbCfg && build.storybook_index_before && build.storybook_index_after && build.storybook_index_before !== build.storybook_index_after) incompleteExtra.push('storybook index changed during the run');
+    const block = classifyVisual({ settings: s, env: plan.env, cases, noDevice, sources, pass, verify, runner: runners.compare ?? { code: null, signal: null }, integrityExtra, incompleteExtra, production, baselinesRel, build });
     return { block, runners };
   }
   const { block, evals } = classifyUpdate({
@@ -821,7 +818,7 @@ async function cmdRun(args) {
       visual = { integrity: [watch.changed] };
       v = combineVerdict({ ...base.parts, incomplete: [...base.parts.incomplete, watch.changed], warnings: base.warnings });
     }
-    const record = buildRecord({ root, plan, runId, startedAt, command, confirmed, build: { before, after }, runner, cls, guard, v, visual });
+    const record = buildRecord({ root, plan, runId, startedAt, command: plan.cases.length ? command : null, confirmed, build: { before, after }, runner, cls, guard, v, visual });
     const recordFile = path.join(dir, 'record.json');
     fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
     if (visual?.action) printVisual(visual);
@@ -882,7 +879,6 @@ async function cmdVisual(args) {
     const v = visualVerdict({ plan, guard, block: res.block, build: { before, after } });
     const runner = res.runners[plan.visual.passes.at(-1)] ?? Object.values(res.runners).at(-1) ?? { code: null, signal: null };
     const record = buildRecord({ root, plan, runId, startedAt, command: s.command, confirmed, build: { before, after }, runner, cls: EMPTY_CLS, guard, v, visual: res.block });
-    record.command = s.command;
     const recordFile = path.join(dir, 'record.json');
     fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
     printVisual(res.block);
@@ -914,7 +910,7 @@ function offerStep({ root, s, plan, runId, dir, res, verify, v, before, after, g
   return 3;
 }
 
-function cmdVisualAccept(args) {
+async function cmdVisualAccept(args) {
   const root = path.resolve(args.root);
   const loaded = loadConfig(root);
   if (!loaded.adopted) { console.error('regression not adopted'); return 2; }
@@ -926,7 +922,7 @@ function cmdVisualAccept(args) {
   const co = acquireLock(`checkout-${h16(realRootOf(root))}`, { pid: process.pid, pgid: null, run_id: args.run });
   if (co.error) { console.error(`refused: ${co.error}`); return 3; }
   try {
-    const r = acceptOffer({ root, settings: visualSettings(loaded.config), runId: args.run, token: args.token, runsDir });
+    const r = await acceptOffer({ root, settings: visualSettings(loaded.config), runId: args.run, token: args.token, runsDir });
     if (r.exit === 0) console.log(r.message); else console.error(r.message);
     return r.exit;
   } finally {
