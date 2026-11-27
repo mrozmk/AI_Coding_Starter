@@ -442,5 +442,33 @@ o2=$($TS report --main "$T/m16h2" --since 2026-09-01 2>&1; $TS report --brief --
 [ -n "$o1" ] && [ "$o1" = "$o2" ] && printf '%s' "$o1" | grep -q '— 3 since'
 ok "16h report and --brief ignore input" $?
 
+# (17) #323: cleared and shadow lines — never a touch, reported in their own sections.
+mkrepo "$T/m17"; F17="$(mfile "$T/m17")"
+CJ='{"id":"c-1-0123456789abcdef","class":"gh-own-repo-write","request_hash":"h","list_version":"1-x","authority":"supervisor (cleared)"}'
+(cd "$T/m17" && $TS clear --kind cleared --who Fable --what "gh issue comment 5" --answer allow --clearance "$CJ")
+jq -e 'select(.kind == "cleared") | .reason == "supervisor" and .who == "Fable" and .clearance.class == "gh-own-repo-write"
+  and .clearance.authority == "supervisor (cleared)" and .clearance.list_version == "1-x"' "$F17" >/dev/null
+ok "#323 cleared line carries class, request hash and list version" $?
+for r in would-clear would-clear would-pass own hard none; do
+  (cd "$T/m17" && $TS clear --kind shadow --who Fable --what "shadow $r" \
+    --clearance "{\"result\":\"$r\",\"class\":\"public-get-long\",\"request_hash\":\"h\",\"list_version\":\"1-x\",\"host\":\"claude\"}")
+done
+(cd "$T/m17" && $TS add --kind decision --reason no-rule --what "d-1 answered — authority supervisor (delegated)")
+(cd "$T/m17" && $TS report --since 1d) > "$T/r17.out" 2>&1
+grep -q '^Operator touches — 1 since' "$T/r17.out"
+ok "#323 cleared line is not a touch" $?
+grep -q '^Operator touches — 1 since' "$T/r17.out" && [ "$(jq -s 'map(select(.kind == "shadow")) | length' "$F17")" = 6 ]
+ok "#323 shadow line is not a touch" $?
+grep -q '^Supervisor clearances (no human) — 1$' "$T/r17.out" && grep -q '  1  gh-own-repo-write  allow' "$T/r17.out"
+ok "#323 report shows clearances apart" $?
+grep -q '^Shadow — would pass 1 · would clear 2 (public-get-long 2) · own 1 · hard 1 · none 1$' "$T/r17.out"
+ok "#323 report shows shadow apart" $?
+! grep -A3 'Supervisor clearances' "$T/r17.out" | grep -q 'delegated' && grep -q '  1  no-rule  decision' "$T/r17.out"
+ok "#323 delegated stays apart" $?
+(cd "$T/m17" && $TS clear --kind cleared --who x --what w --clearance '{"id": 5}'; $TS clear --kind bogus --who x --what w --clearance '{}') >/dev/null 2>&1
+[ "$(count "$F17")" = 9 ] && [ "$(tail -n 1 "$F17" | jq -c .clearance)" = '{}' ] \
+  && ! (cd "$T/m17" && $TS report --since 1d 2>&1) | grep -q malformed
+ok "#323 clear: a non-string clearance value is dropped, a bad kind writes nothing" $?
+
 echo "touches-test: $pass passed"
 [ "$fail" = 0 ] || { echo "touches-test: FAILED"; exit 1; }

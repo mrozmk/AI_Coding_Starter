@@ -9,8 +9,10 @@
 #   (any case; at most 7 days; only trailing whitespace or one final period may follow — a
 #   qualifier, a condition or any other word refuses, nothing is silently dropped). Classes:
 #   no-rule, lead-unsure — a question the TeamLead escalated because no rule answers it or it will
-#   not decide. An operator-tier request (settings, production ask, delete, egress), a deny rule
-#   and anything else are never delegable. Each named team is covered for the run it is on when
+#   not decide. An operator-tier request (settings, production ask, delete, a hard egress class), a
+#   deny rule and anything else are never delegable; an operator-tier permission whose only cause
+#   is an ask-kind egress the clearance checker does not call hard is (#323 T3). Each named team is
+#   covered for the run it is on when
 #   the message is typed; its next run is not.
 #   The latest instruction in that transcript governs: a later `mandate …` replaces an earlier
 #   one, the typed message `revoke mandate` cancels it for good, and any other message that
@@ -60,12 +62,13 @@ mandate_parse() {
     "$(printf '%s\n' ${teams//,/ } | sort -u | paste -sd, -)"
 }
 
-# mandate_instruction <message> → 0 when the message is an instruction about the mandate at all
-# (it starts with `mandate` or `revoke mandate`), whether or not it is a valid grant.
+# mandate_instruction <message> [<word>] → 0 when the message is an instruction about the mandate
+# (or the <word> switch, e.g. `clearance`) at all — it starts with `<word>` or `revoke <word>` —,
+# whether or not it is a valid grant.
 mandate_instruction() {
-  local lt
+  local lt w="${2:-mandate}"
   lt="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"; lt="${lt#"${lt%%[![:space:]]*}"}"
-  case "$lt" in mandate|mandate[[:space:]]*|"revoke mandate"*) return 0 ;; esac
+  case "$lt" in "$w"|"$w"[[:space:]]*|"revoke $w"*) return 0 ;; esac
   return 1
 }
 
@@ -97,22 +100,23 @@ mandate_transcript() {
   printf '%s\n' "$t"
 }
 
-# mandate_read <transcript> → the typed user messages naming the word, one {uuid, ts, m} row per
-# line; rc 1 unless the WHOLE transcript reads: every record parses (one value out per line in —
-# a cut record, lines run together or a blank line change the count) and the last one ends its
-# line. Every record is validated before any message is looked at.
+# mandate_read <transcript> [<word>] → the typed user messages naming the word (default
+# `mandate`; team-clearance.sh reads `clearance`), one {uuid, ts, m} row per line; rc 1 unless the
+# WHOLE transcript reads: every record parses (one value out per line in — a cut record, lines run
+# together or a blank line change the count) and the last one ends its line. Every record is
+# validated before any message is looked at.
 mandate_read() {
-  local out lines
+  local out lines w="${2:-mandate}"
   [ -r "$1" ] || return 1
   [ -s "$1" ] || return 0
   [ -z "$(tail -c 1 "$1" 2>/dev/null)" ] || return 1
   lines="$(wc -l < "$1")" || return 1
-  out="$(jq -c 'if type == "object" and .type == "user" and ((.isMeta // false) | not)
+  out="$(jq -c --arg w "$w" 'if type == "object" and .type == "user" and ((.isMeta // false) | not)
       and ((.toolUseResult // null) == null)
     then {uuid: (.uuid // "" | tostring), ts: ((.timestamp // "" | tostring) | sub("\\.[0-9]+Z$"; "Z")),
        m: (.message.content | if type == "string" then . elif type == "array"
          then (map(select(type == "object" and .type == "text") | .text | tostring) | join(" ")) else "" end)}
-      | if (.m | test("mandate"; "i")) then . else 0 end
+      | if (.m | test($w; "i")) then . else 0 end
     else 0 end' "$1" 2>/dev/null)" || return 1
   [ "$(printf '%s\n' "$out" | wc -l)" -eq "$lines" ] || return 1
   printf '%s\n' "$out" | grep -v '^0$' || true
@@ -127,7 +131,9 @@ mandate_session_start() {
   printf '%sZ\n' "${BASH_REMATCH[0]}"
 }
 
-# mandate_history <main> [<transcript>] → every mandate instruction the Operator typed in the registered
+# mandate_history <main> [<transcript>] [<word>] → every mandate instruction (with a word, e.g.
+# `clearance`: every instruction about that switch, mandate_instruction) the Operator typed in the
+# registered
 # Supervisor session, one compact JSON row {uuid, ts, m} per line, in transcript order. The
 # transcript comes from the registration (<main>/.agents/team/registry/Supervisor.json) and the
 # declared Claude profile — never from mandate.json. Typed user messages only (no machine line: a
@@ -139,10 +145,11 @@ mandate_session_start() {
 # the revoke. A record still being written is retried briefly (TEAM_MANDATE_READ_TRIES, 0.3 s
 # apart), and refuses until it reads whole.
 mandate_history() {
-  local t="${2:-}" n=0 rows row m bad="the Supervisor session's history cannot be read whole — no mandate is taken from a partial history"
+  local t="${2:-}" w="${3:-mandate}" n=0 rows row m
+  local bad="the Supervisor session's history cannot be read whole — no $w is taken from a partial history"
   # A caller that already resolved the registration passes its transcript: one lookup, not two.
   [ -n "$t" ] || t="$(mandate_transcript "$1")" || return
-  while ! rows="$(mandate_read "$t")"; do
+  while ! rows="$(mandate_read "$t" "$w")"; do
     n=$((n + 1)); [ "$n" -lt "${TEAM_MANDATE_READ_TRIES:-4}" ] || { echo "$bad" >&2; return 3; }
     sleep 0.3
   done
@@ -150,7 +157,7 @@ mandate_history() {
     [ -n "$row" ] || continue
     m="$(jq -r .m <<<"$row")"
     ! team_evidence_machine_line "$m" || continue
-    mandate_instruction "$m" || continue
+    mandate_instruction "$m" "$w" || continue
     jq -e '.uuid != "" and (.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' <<<"$row" >/dev/null 2>&1 \
       || { echo "$bad" >&2; return 3; }
     printf '%s\n' "$row"
@@ -254,23 +261,48 @@ mandate_run_ever() {
   return 1
 }
 
+# mandate_ask_check <main> <clone> <ask file> → the main checkout's checker lines
+# (team_prompt_check.py) for the filed request's payload, run now; nothing on any failure.
+mandate_ask_check() {
+  local tmp out=""
+  tmp="$(mktemp "${TMPDIR:-/tmp}/mandate-ask.XXXXXX")" || return 0
+  jq -c .payload "$3" > "$tmp" 2>/dev/null \
+    && out="$(python3 -I "$1/.claude/lib/team_prompt_check.py" "$2" --input-json "$tmp" --main "$1" 2>/dev/null)" || out=""
+  rm -f "$tmp"
+  printf '%s\n' "$out"
+}
+
+# mandate_egress_only <checker lines> → 0 when the egress is the request's only cause
+# (`batch: eligible`) and no hard egress class: a `clearance:` line of pass, none or a clearable
+# class — never hard, never undecided (a guard the checker does not reproduce) — #323 T3.
+mandate_egress_only() {
+  local c; c="$(sed -n 's/^clearance: //p' <<<"$1")"
+  [ "$(sed -n 's/^batch: //p' <<<"$1")" = eligible ] || return 1
+  case "$c" in pass|none|"clearable "?*) return 0 ;; esac
+  return 1
+}
+
 # mandate_ask_class <main> <clone> <ask file> <touch reason> → the mandate class of a decision
 # bound to that ask, or nothing when no mandate can cover it. Only a lead-tier ask is delegable,
 # by the lead's escalation reason (no-rule, lead-unsure): a question or a plan; a permission only
 # when the main checkout's checker, run now on the filed request, says `tier: lead` (never the ask
-# file's own tier). An operator-tier request and a stop (text) ask — which has no live input to
-# verify at delivery — are never delegable.
+# file's own tier), or (#323 T3) `tier: operator — egress: …` with `batch: eligible` (the egress
+# is the only cause) and a `clearance:` line of pass, none or a clearable class (mandate_egress_only:
+# no hard egress class, no undecided guard). Every
+# other operator-tier request and a stop (text) ask — which has no live input to verify at
+# delivery — are never delegable.
 mandate_ask_class() {
-  local tmp out kind
+  local out kind
   kind="$(jq -r '.kind // ""' "$3" 2>/dev/null)"
   case "$kind" in
     question|plan) ;;
     permission)
-      tmp="$(mktemp "${TMPDIR:-/tmp}/mandate-ask.XXXXXX")" || return 0
-      jq -c .payload "$3" > "$tmp" 2>/dev/null \
-        && out="$(python3 -I "$1/.claude/lib/team_prompt_check.py" "$2" --input-json "$tmp" --main "$1" 2>/dev/null)" || out=""
-      rm -f "$tmp"
-      [ "$(sed -n 1p <<<"$out")" = "tier: lead" ] || return 0 ;;
+      out="$(mandate_ask_check "$1" "$2" "$3")"
+      case "$(sed -n 1p <<<"$out")" in
+        "tier: lead") ;;
+        "tier: operator — egress: "*) mandate_egress_only "$out" || return 0 ;;
+        *) return 0 ;;
+      esac ;;
     *) return 0 ;;
   esac
   case "$4" in no-rule|lead-unsure) echo "$4" ;; esac

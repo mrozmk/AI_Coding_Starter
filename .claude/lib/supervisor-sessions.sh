@@ -70,9 +70,12 @@ chan_kind() {
 # One profile per role: the template is teams.sessions.<Role>.settings (an undeclared Supervisor uses its
 # own name), and env.TEAM_SESSION_ROLE is the role, never the template's value. The kit
 # file gives only `.hooks.Stop`: a PreToolUse or PermissionRequest hook could approve a tool call,
-# and an old kit's Notification entry calls a removed hook, so nothing else is ever taken.
+# and an old kit's Notification entry calls a removed hook, so nothing else is ever taken. The
+# template's own hooks come from the repo (#323: the clearance hook): {{MAIN}} → this checkout,
+# {{SEAL}} → the sha256 of .agents/team/clearance.json at this launch (or off), {{RULES}} → the
+# digest of the launch rules (the checker's rules-digest); the kit's Stop is appended to them.
 materialize() {
-  local r="$1" d="$PROFILES" loc="$root/.claude/settings.local.json" out kh=null c
+  local r="$1" d="$PROFILES" loc="$root/.claude/settings.local.json" out kh=null c seal=off rd
   local kf t=""
   [[ "$r" =~ ^[A-Z][A-Za-z0-9]{1,23}$ ]] || { echo "error: materialize: '$r' is not a role name" >&2; exit 2; }
   # A teams.sessions.TeamLead declaration would still resolve a template below.
@@ -91,17 +94,26 @@ materialize() {
   mkdir -p "$d" && chmod 700 "$d"
   [ -f "$loc" ] || loc=/dev/null
   out="$d/$r.settings.json"
+  . "$root/.claude/lib/team-clearance.sh" && seal="$(clearance_seal "$root")" || seal=off
   ( umask 077
-    jq -s --arg c "/$c*" --argjson kh "$kh" --arg r "$r" '
+    jq -s --arg c "/$c*" --argjson kh "$kh" --arg r "$r" --arg m "$root" --arg s "$seal" '
+      def subst: if type == "object" and (.command | type) == "string"
+        then .command |= (gsub("\\{\\{MAIN\\}\\}"; $m) | gsub("\\{\\{SEAL\\}\\}"; $s)) else . end;
       (.[2] // {}) as $l | [.[0], .[1], $l] as $all
+      | ((.[0].hooks // {}) | map_values(map(.hooks |= map(subst)))) as $th
+      | ($th + (if $kh then {Stop: (($th.Stop // []) + $kh.Stop)} else {} end)) as $hooks
       | {env: ((.[0].env // {}) + {TEAM_SESSION_ROLE: $r}),
          permissions: {allow: [.[0].permissions.allow // [] | .[] | gsub("\\{\\{CLONES\\}\\}"; $c)],
                        deny: ([$all[] | .permissions.deny // [] | .[]] | unique),
                        ask: ([$all[] | .permissions.ask // [] | .[]] | unique)}}
-      + (if .[0].hooks then {hooks: .[0].hooks} else {} end)
-      + (if $kh then {hooks: $kh} else {} end)' \
+      + (if ($hooks | length) > 0 then {hooks: $hooks} else {} end)' \
       "$root/.claude/team/sessions/$t.settings.json" "$root/.claude/settings.json" "$loc" \
       | ss_put "$out" )
+  # The launch rules' digest goes into the hook command (#323 R2-8): a profile replaced after the
+  # launch, or a changed user or managed rule, gives the clearance hook no decision.
+  if jq -e '[.hooks // {} | .[][] | .hooks[]? | .command // "" | test("\\{\\{RULES\\}\\}")] | any' "$out" >/dev/null 2>&1; then
+    ( umask 077; clearance_fill_rules "$root" "$root" "$out" | ss_put "$out" )
+  fi
   jq -r --arg r "$r" '"profile \($r): \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }

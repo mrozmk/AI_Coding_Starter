@@ -1,5 +1,5 @@
 {
-  "_comment": "Stage hooks of a run with a per-run TeamLead (the ask channel, .agents/reference/team-lead.md §6). Not a session profile: the runner materialises it at every stage launch into <clone>/.agents/team/stage-hooks.settings.json ({{MAIN}} = the main checkout, every ask entry — the commands that set TEAM_ASK_TIMEOUT={{TIMEOUT}} — gets the measured ask wait as its timeout and {{TIMEOUT}}; the 600 there is a placeholder) and passes it with --settings.",
+  "_comment": "Stage hooks of a run with a per-run TeamLead (the ask channel, .agents/reference/team-lead.md §6). Not a session profile: the runner materialises it at every stage launch into <clone>/.agents/team/stage-hooks.settings.json ({{MAIN}} = the main checkout, every ask entry — the commands that set TEAM_ASK_TIMEOUT={{TIMEOUT}} — gets the measured ask wait as its timeout and {{TIMEOUT}}; the 600 there is a placeholder; {{SEAL}} = the sha256 of the main checkout's .agents/team/clearance.json at this launch, or off — #323) and passes it with --settings.",
   "hooks": {
     "PreToolUse": [
       {
@@ -11,13 +11,13 @@
         "hooks": [{ "type": "command", "command": "TEAM_ASK_TIMEOUT={{TIMEOUT}} bash \"{{MAIN}}/.claude/hooks/team-ask-hook.sh\"", "timeout": 600 }]
       },
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [{ "type": "command", "command": "bash \"{{MAIN}}/.claude/hooks/team-ask-hook.sh\"", "timeout": 10, "onFailure": "block" }]
       }
     ],
     "PermissionRequest": [
       {
-        "hooks": [{ "type": "command", "command": "TEAM_ASK_TIMEOUT={{TIMEOUT}} bash \"{{MAIN}}/.claude/hooks/team-ask-hook.sh\"", "timeout": 600 }]
+        "hooks": [{ "type": "command", "command": "TEAM_ASK_TIMEOUT={{TIMEOUT}} TEAM_CLEARANCE_SEAL={{SEAL}} bash \"{{MAIN}}/.claude/hooks/team-ask-hook.sh\"", "timeout": 600 }]
       }
     ],
     "Stop": [

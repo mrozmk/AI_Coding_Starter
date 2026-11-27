@@ -270,13 +270,16 @@ lead_close_refused() {  # lead_close_refused <why> [ended]
 # stage_hooks_materialise — <clone>/.agents/team/stage-hooks.settings.json from the main checkout's
 # template: every command an absolute path into the main checkout, every ask timeout (and the hook's
 # TEAM_ASK_TIMEOUT) the measured hook wait (TEAM_ASK_TIMEOUT_SECS, 715 s: the hook answers by
-# its own deadline 15 s earlier). → 1 when the template cannot be rendered.
+# its own deadline 15 s earlier), {{SEAL}} the sha256 of the main checkout's clearance switch
+# record at this launch, or off (#323). → 1 when the template cannot be rendered.
 stage_hooks_materialise() {
-  jq --arg m "$root" --argjson t "${TEAM_ASK_TIMEOUT_SECS:-715}" 'del(._comment)
+  local seal
+  . "$root/.claude/lib/team-clearance.sh" && seal="$(clearance_seal "$root")" || seal=off
+  jq --arg m "$root" --argjson t "${TEAM_ASK_TIMEOUT_SECS:-715}" --arg s "$seal" 'del(._comment)
     | .hooks |= map_values(map(.hooks |= map(
         (if (.command | test("TEAM_ASK_TIMEOUT=")) then .timeout = $t
            | .command |= gsub("\\{\\{TIMEOUT\\}\\}"; ($t | tostring)) else . end)
-        | .command |= gsub("\\{\\{MAIN\\}\\}"; $m))))' \
+        | .command |= (gsub("\\{\\{MAIN\\}\\}"; $m) | gsub("\\{\\{SEAL\\}\\}"; $s)))))' \
     "$root/.claude/team/stage-hooks.json" > "$TD/stage-hooks.settings.json.tmp" \
     && jq -e '.hooks.Stop' "$TD/stage-hooks.settings.json.tmp" >/dev/null \
     && mv "$TD/stage-hooks.settings.json.tmp" "$TD/stage-hooks.settings.json"

@@ -297,6 +297,19 @@ W "$T/implP" '{key:"m", ctx:"stage", tool:"Bash", input:{command:"git merge --no
   && W "$SRC" '{key:"w", ctx:"supervisor", tool:"WebFetch", input:{url:"https://docs-example.dev/a?x=1"}}' | jq -e '.guard == "" and .outcome == "pass"' >/dev/null
 ok "w1 worker fixtures: a genuine class, a main-checkout refusal, a locally allowed WebFetch host" $?
 
+# --- #323: the clearance column ---------------------------------------------------------------------
+EU='https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32021D1339'
+W "$SRC" '{key:"c1", ctx:"advisor", tool:"WebFetch", input:{url:$u}}' --arg u "$EU" > "$T/c1.json"
+$PR run --corpus "$C" --impl "$SRC" --layer touched --labels "$T/l3.csv" > "$T/c1r.out" 2>&1; r=$?
+jq -e '.effect_outcome == "operator" and .clearance == "clearable" and .clearance_class == "public-get-long"
+  and .cleared_outcome == "supervisor-clearable"' "$T/c1.json" >/dev/null \
+  && [ "$r" = 0 ] && grep -q '^### Clearance view (#323)' "$T/c1r.out" && grep -q '^- Harmless exact entries: ' "$T/c1r.out" \
+  && grep -q '^- Dangerous entries that reach no human: ' "$T/c1r.out"
+ok "#323 replay: clearable column" $?
+W "$SRC" '{key:"c2", ctx:"supervisor", tool:"WebFetch", input:{url:$u}}' --arg u "$EU" \
+  | jq -e '.clearance == "clearable" and .clearance_class == "public-get-long" and .cleared_outcome == "own"' >/dev/null
+ok "#323 replay: supervisor ctx is own" $?
+
 # --- #322: effect dispatch, deny, resolver stub, effect view, git context, isolation ------------
 mkdir -p "$T/implD"; cp -R "$SRC/.claude" "$T/implD/.claude"
 cat >> "$T/implD/.claude/hooks/lib/guard_team_egress.py" <<'EOF'

@@ -6,9 +6,10 @@
 # $CLAUDE_PROJECT_DIR = the clone, so a ticket that edits this file cannot change its own run.
 #   PreToolUse AskUserQuestion → question · PreToolUse ExitPlanMode → plan ·
 #   PermissionRequest → permission (stage and sub-agent) · Stop → text (a blocked record or a
-#   plain-text stop) · PreToolUse Edit|Write|NotebookEdit → the asks/ and decisions/ write guard
-#   (#322: also settings and role profiles, and .claude/hooks outside the clone and its run's
-#   starter worktree).
+#   plain-text stop) · PreToolUse Edit|Write|MultiEdit|NotebookEdit → the asks/ and decisions/
+#   write guard (#322: also settings and role profiles, and .claude/hooks outside the clone and its
+#   run's starter worktree; #323: also the clearance ledger). #323 carrier B (clearance_stage,
+#   team-ask-batch.sh): a clearable operator-tier permission → the Supervisor; allow = supervisor (cleared).
 # The ask branches fail open (exit 0, no output: the normal prompt shows); the write guard fails
 # closed (exit 2, registered with onFailure: block). TEAM_ASK_TIMEOUT = the registration's timeout;
 # the hook answers by its own deadline 15 s before it.
@@ -31,14 +32,14 @@ guard_refuse() { echo "team ask write guard: $1" >&2; exit 2; }
 out_pre_deny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
   permissionDecision: "deny", permissionDecisionReason: $r}}'; }
 if ! command -v jq >/dev/null 2>&1; then
-  case "$PAYLOAD" in *'"PreToolUse"'*'"Edit"'*|*'"PreToolUse"'*'"Write"'*|*'"PreToolUse"'*'"NotebookEdit"'*)
+  case "$PAYLOAD" in *'"PreToolUse"'*'"Edit"'*|*'"PreToolUse"'*'"Write"'*|*'"PreToolUse"'*'"NotebookEdit"'*|*'"PreToolUse"'*'"MultiEdit"'*)
     guard_refuse "jq missing — refused" ;; esac
   exit 0
 fi
 EV="$(jq -r '.hook_event_name // ""' <<<"$PAYLOAD" 2>/dev/null)"
 TOOL="$(jq -r '.tool_name // ""' <<<"$PAYLOAD" 2>/dev/null)"
 if [ "$EV" = PreToolUse ]; then
-  case "$TOOL" in Edit|Write|NotebookEdit)
+  case "$TOOL" in Edit|Write|MultiEdit|NotebookEdit)
     FILE="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$PAYLOAD" 2>/dev/null)"
     [ -n "$FILE" ] || guard_refuse "no file path in the tool call — refused"
     case "$FILE" in /*) ;; *) FILE="$CLONE/$FILE" ;; esac
@@ -64,6 +65,8 @@ if [ "$EV" = PreToolUse ]; then
         permissionDecisionReason: "the Operator'"'"'s mandate and the delegation ledger are written by team-mandate.sh and the Supervisor'"'"'s delegated answer only"}}'
       exit 0 ;;
     esac
+    case "$P" in */.agents/team/clearance|*/.agents/team/clearance/*|*/.agents/team/clearance.json*)  # #323
+      out_pre_deny "the clearance ledger is written by team-clearance.sh only"; exit 0 ;; esac
     # #322 (Operator decision d-2): settings and role profiles of a live guard layer (all but a
     # fixture tree inside a repository) are never edited by a stage; the hooks only in its own clone
     # or its run's starter worktree. One decider with the Bash classifier (target_class):
@@ -482,6 +485,10 @@ case "$EV:$TOOL" in
     # `operator (batch d-<n>)` (batch_claim, team-ask-batch.sh).
     if [ "$tier" = operator ] && [ "$(sed -n 's/^batch: //p' <<<"$out")" = eligible ] && ! stopped \
         && batch_claim; then
+      exit 0
+    fi
+    CLEARANCE="$(sed -n 's/^clearance: //p' <<<"$out")"  # #323 carrier B: `clearable <class id>`
+    if [ "$tier" = operator ] && [ "${CLEARANCE%% *}" = clearable ] && ! stopped && clearance_stage "${CLEARANCE#clearable }"; then
       exit 0
     fi
     handle permission "$(cat "$TMP.in")" "$tier" "$cause" ;;

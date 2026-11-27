@@ -150,9 +150,15 @@ The launcher **materialises** each profile into `.agents/team/watch/profiles/<ro
 (the deny floor survives whether `--settings` merges or overrides those keys), the profile `allow`
 with `{{CLONES}}` expanded to `//<clone parent>/<clone prefix>*` from `teams.clone_parent` /
 `teams.clone_name` (a `/path` rule in a `--settings` file anchors at that file's directory). From the installed kit's
-`role-hooks.settings.json` it takes exactly `.hooks.Notification` and `.hooks.Stop`, never its
-permissions, env or any other event: a `PreToolUse` or `PermissionRequest` hook could approve a
-tool call.
+`role-hooks.settings.json` it takes exactly `.hooks.Stop`, never its permissions, env or any other
+event: a `PreToolUse` or `PermissionRequest` hook could approve a tool call. The template's own
+hooks come from the repo (#323): every hook command gets `{{MAIN}}` → this checkout and `{{SEAL}}` →
+the sha256 of `.agents/team/clearance.json` at this launch (or `off`), then `{{RULES}}` → the digest
+of the launch rules (`guard_team_egress_clear.py rules-digest`); the kit's `Stop` is appended to the
+template's events, never replacing them. A template with no hooks and no kit writes no `hooks` key.
+The Advisor and Supervisor templates register the clearance hook for `PermissionRequest` and its
+write guard for `PreToolUse` Edit/Write/MultiEdit/NotebookEdit ([security-egress.md](security-egress.md)
+→ Supervisor clearance).
 
 | Role | Denied on top of the project + local rules |
 |---|---|

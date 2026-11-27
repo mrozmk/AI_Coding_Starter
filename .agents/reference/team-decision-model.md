@@ -33,6 +33,7 @@ Every answer the lead sends to a stage names an authority and lands in `runs/<ru
 | `teamlead` | the run's lead | everything that is not human-only: permission prompts, menus, stops, gates, acceptance, rework within the budget |
 | `operator` | the Operator, through a pending decision the lead relays | human-only items; the lead never approves one itself |
 | `supervisor (delegated)` | the Supervisor, under the Operator's mandate, through the same pending decision | only a decision whose class the mandate in force names (Mandate, below); never recorded as `operator` |
+| `supervisor (cleared)` | the Supervisor, through a clearance request a hook filed (#323, [security-egress.md](security-egress.md) → Supervisor clearance) — no decision, no lead turn | only a request of a Supervisor-clearable class, under the Operator's typed switch (enforce); script-checked yes / no / unsure, claimed once by the asking hook; apart from `supervisor (delegated)` and never recorded as `operator` |
 
 **Human-only** (`teams.teamlead.human_only`, default `settings-profiles` + `prod-ask`): any edit of
 settings or permission profiles, an ask rule the project added beyond the starter's baseline

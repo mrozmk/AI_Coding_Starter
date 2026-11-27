@@ -11,7 +11,11 @@ KEYS = ("at", "machine", "who", "where", "kind", "what", "reason", "answer", "wa
 HUMAN_KINDS = ("question", "permission", "plan", "text", "decision", "restart", "other")
 HUMAN_REASONS = ("human-only", "no-rule", "lead-unsure", "channel-failed", "guard", "direct")
 # A hook's automatic refusal: written only by `block`, reported apart from the Operator touches.
-KINDS, REASONS = HUMAN_KINDS + ("block",), HUMAN_REASONS + ("hook",)
+# #323: `cleared` (a Supervisor clearance answer, reason supervisor) and `shadow` (what the
+# clearance hook would have done, reason hook) — written only by `clear`, never a touch.
+NON_HUMAN = ("block", "cleared", "shadow")
+KINDS, REASONS = HUMAN_KINDS + NON_HUMAN, HUMAN_REASONS + ("hook", "supervisor")
+CLEARANCE_KEYS = ("id", "class", "request_hash", "list_version", "authority", "result", "host")
 AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 MONTH_RE, ASK_RE = re.compile(r"^\d{4}-\d{2}\.jsonl$"), re.compile(r"^a-\d+\.json$")
 LINE_MAX, NEAR_S, TAIL_BYTES = 4000, 10, 65536
@@ -282,6 +286,9 @@ def _parse_entry(line):
     bad += [] if bad or e["reason"] in REASONS else ["bad reason"]
     bad += [] if bad or AT_RE.match(e["at"]) else ["bad at"]
     bad += [] if bad or "input" not in e or isinstance(e["input"], dict) else ["bad type input"]
+    c = e.get("clearance")
+    bad += [] if bad or c is None or (isinstance(c, dict) and all(
+        k in CLEARANCE_KEYS and isinstance(v, str) for k, v in c.items())) else ["bad clearance"]
     return (None, bad[0]) if bad else (e, None)
 
 def load(main, since_month=None, only=None):
@@ -317,8 +324,9 @@ def norm(what):
     return re.sub(r"\s+", " ", re.sub(r"\d+", "#", s)).strip()[:48]
 
 def touches_only(entries):
-    """The Operator touches: every entry but a hook block (no human acted on it)."""
-    return [e for e in entries if e["kind"] != "block"]
+    """The Operator touches: every entry but a hook block, a Supervisor clearance and a shadow line
+    (no human acted on them)."""
+    return [e for e in entries if e["kind"] not in NON_HUMAN]
 
 def ranked_clusters(entries):
     """[((reason, norm what), entries)] by size, then newest; the hook's generic what never clusters."""
@@ -360,6 +368,21 @@ def report(a, main):
         print("Hook blocks (no human) — %d" % len(blocks))
         for (_, _), v in [kv for kv in ranked_clusters(blocks) if len(kv[1]) >= 2][:5]:
             print('  %d× — "%s"' % (len(v), v[-1]["what"]))
+    cleared = [e for e in period if e["kind"] == "cleared" and a.reason in (None, "supervisor")]
+    if cleared:
+        print("Supervisor clearances (no human) — %d" % len(cleared))
+        by = collections.Counter(((e.get("clearance") or {}).get("class", "?"), e["answer"] or "?") for e in cleared)
+        for (cls, ans), k in sorted(by.items()):
+            print("  %d  %s  %s" % (k, cls, ans))
+    shadow = [e for e in period if e["kind"] == "shadow" and a.reason in (None, "hook")]
+    if shadow:
+        res = collections.Counter((e.get("clearance") or {}).get("result", "?") for e in shadow)
+        cls = collections.Counter((e.get("clearance") or {}).get("class", "?") for e in shadow
+                                  if (e.get("clearance") or {}).get("result") == "would-clear")
+        print("Shadow — would pass %d · would clear %d%s · own %d · hard %d · none %d" % (
+            res["would-pass"], res["would-clear"],
+            " (%s)" % ", ".join("%s %d" % kv for kv in sorted(cls.items())) if cls else "",
+            res["own"], res["hard"], res["none"]))
     return 0
 
 def brief(a, main):
@@ -567,6 +590,34 @@ def block(argv):
         append(main, make_entry("block", "%s: %s" % (src, what), "hook", where=where))
     return 0
 
+def clear(argv):
+    """`clear --kind cleared|shadow --who W --what X [--answer A] --clearance JSON [--main DIR]`:
+    one #323 clearance line (the asking session in who, the clearance object kept); always 0."""
+    opts, i = {}, 0
+    names = ("--kind", "--who", "--what", "--answer", "--clearance", "--main")
+    while i + 1 < len(argv) and argv[i] in names:
+        opts[argv[i]] = argv[i + 1]
+        i += 2
+    kind = opts.get("--kind")
+    if i != len(argv) or kind not in ("cleared", "shadow") or not _clean(opts.get("--what", "")) \
+            or os.environ.get("TOUCHES_BLOCK_OFF"):
+        return 0
+    try:
+        c = json.loads(opts.get("--clearance") or "{}")
+    except ValueError:
+        return 0
+    if not isinstance(c, dict):
+        return 0
+    c = {k: _clean(v, 120) for k, v in c.items() if k in CLEARANCE_KEYS and isinstance(v, str)}
+    main = resolve_main(opts.get("--main"), os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    if main:
+        e = make_entry(kind, opts["--what"], "supervisor" if kind == "cleared" else "hook",
+                       opts.get("--answer", ""), where="session " + _clean(opts.get("--who", "?"), 120))
+        e["who"] = _ident(opts.get("--who", "")) or e["who"]
+        e["clearance"] = c
+        append(main, e)
+    return 0
+
 def _parser():
     ap = argparse.ArgumentParser(prog="touches.sh")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -582,6 +633,11 @@ def _parser():
     return ap
 
 def main(argv):
+    if argv[:1] == ["clear"]:
+        try:
+            return clear(argv[1:])
+        except Exception:  # a hook calls this fire-and-forget: never fail, never print
+            return 0
     if argv[:1] == ["block"]:
         try:
             return block(argv[1:])

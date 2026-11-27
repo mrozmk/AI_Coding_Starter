@@ -75,6 +75,10 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
      nothing). They feed the report's `Mandate` line: the mandate in force and every answer the
      Supervisor gave as a delegate, kept apart from the Operator's own answers and from the
      Operator touches.
+   - **Supervisor clearance** (#323) — only with a `teams` block: run
+     `bash .claude/lib/team-clearance.sh show` once (a missing script or a non-zero exit →
+     nothing). It feeds the report's `Clearance` line with the `Supervisor clearances (no human)`
+     and `Shadow` sections of the step 8 touch report; never an Operator touch.
 
 7. **Recommend.** For every task and every "waiting" row write **Next action** yourself (main
    session, not the extractor): one concrete step toward Done, who does it, ≤ 15 words. Prefer, in
@@ -111,6 +115,8 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
 **Operator touches (7 days):** <header line count> — <up to 3 group rows, newest first>; recurring: <top Recurring line> — omit when the log is absent or the report says none recorded.
 
 **Mandate:** <classes> until <expiry> — <n> delegated answer(s): <team d-n → reply, newest first, up to 5> — omit when no mandate is in force and no delegated answer exists; the list is never cut when the Operator asks for the delegated answers.
+
+**Clearance:** <shadow | enforcing <hosts> until <expiry>> — <n> cleared (7 d, by class) · <n> would clear — from `team-clearance.sh show` and the touch report's `Supervisor clearances (no human)` and `Shadow` sections; omit when there is nothing to show (no switch and no cleared or shadow line).
 
 <n> tasks · <k> extracted · <t> teams
 ```

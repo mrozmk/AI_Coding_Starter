@@ -28,10 +28,9 @@ lead_egress_deny() {
 # the pins, the use and the expiry. Claimed → allow, `operator (batch d-<n>)` in answers.md, no
 # Operator touch (no human acted now).
 batch_claim() {
-  local dd="$ASK_TD/runs/$ASK_RUN/decisions" cand did k id now f req
+  local dd="$ASK_TD/runs/$ASK_RUN/decisions" cand did k now f
   [ -d "$dd" ] || return 1
   cand="$(python3 -I "$LIB/team_batch.py" candidates --dir "$dd" --input "$TMP.in" --now "$(ask_utc)" 2>/dev/null)" || return 1
-  req="$(jq -cS . "$TMP.in" 2>/dev/null)" || return 1
   while read -r did k; do
     [ -n "$did" ] && [ -n "$k" ] || continue
     verify_decision "$did" -batch "" || continue
@@ -41,11 +40,7 @@ batch_claim() {
         || [ -n "$(dfm_h revoked_at)" ]; then
       ask_unlock; return 1
     fi
-    for id in $(ask_ids); do
-      [ "$(ask_get "$id" session_id)" = "$STAGE_SID" ] && [ -f "$ASK_D/$id.answer.json" ] || continue
-      case "$(ask_get "$id" state)" in delivered|withdrawn) continue ;; esac
-      [ "$(jq -cS .payload "$ASK_D/$id.json" 2>/dev/null)" = "$req" ] && { ask_unlock; return 1; }
-    done
+    prior_answer && { ask_unlock; return 1; }
     now="$(ask_utc)"
     if python3 -I "$LIB/team_batch.py" claim --dir "$dd" --id "$did" --entry "$k" --input "$TMP.in" --now "$now"; then
       echo "$now batch $did entry $k — authority operator (batch $did)" >> "$ASK_TD/runs/$ASK_RUN/answers.md"
@@ -108,4 +103,74 @@ verify_delegated() {
   args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$att" "$ssid" "$dig" "$reply" "$mid" "$cls")"
   [ -n "$(team_evidence_tool_call "$t" "$floor" "$MAIN" "$args")" ] || return 1
   reply_matches "$1" "$2" "$reply" "$3" "$4" "$5"
+}
+
+# prior_answer — 0 when an earlier ask of this session for this very request ($TMP.in) has an
+# answer waiting (that answer wins, an Operator deny included: handle delivers it). Under ask_lock.
+prior_answer() {
+  local id req; req="$(jq -cS . "$TMP.in" 2>/dev/null)" || return 0
+  for id in $(ask_ids); do
+    [ "$(ask_get "$id" session_id)" = "$STAGE_SID" ] && [ -f "$ASK_D/$id.answer.json" ] || continue
+    case "$(ask_get "$id" state)" in delivered|withdrawn) continue ;; esac
+    [ "$(jq -cS .payload "$ASK_D/$id.json" 2>/dev/null)" = "$req" ] && return 0
+  done
+  return 1
+}
+
+# clearance_stage <class> — #323 carrier B (team-lead.md §6 → Supervisor clearance). 0 = answered
+# here (allow, deny or the stop message), 1 = the existing path goes on (shadow, no answer, a
+# precedence that wins, any failure). Reads the hook's EV, TOOL, PAYLOAD, ROLE, ATTEMPT, ENTRY,
+# DEADLINE and out_refuse / out_perm_deny / STOP_MSG too.
+clearance_stage() {
+  local cls="$1" mode team who wl dl id v d what
+  . "$LIB/team-clearance.sh" 2>/dev/null || return 1
+  mode="$(clearance_mode claude "${TEAM_CLEARANCE_SEAL:-off}" "$MAIN")"
+  team="$(team_anchor_team "$MAIN" "$CLONE" 2>/dev/null | cut -f1)"; [ -n "$team" ] || team="$(jq -r '.team // ""' "$TD/team.json")"
+  what="$(clearance_what "$TMP.in")"
+  if [ "$mode" != enforce ]; then
+    clearance_log "$MAIN" shadow "$ROLE $STAGE_SID" "$what" "" "$(clearance_entry "$MAIN" would-clear "$cls" claude)"
+    return 1
+  fi
+  ask_lock || return 1
+  if stopped || [ "$(sj run)" != "$RUN" ] || prior_answer; then ask_unlock; return 1; fi
+  ask_unlock
+  clearance_supervisor_live "$MAIN" || return 1   # as carrier A: no request for an absent Supervisor
+  wl=$(( (DEADLINE - ENTRY) / 2 )); [ "$wl" -le 240 ] || wl=240
+  dl=$(( ENTRY + wl ))
+  who="$(jq -nc --arg p "$CLONE" --arg r "$([ -f "$TD/stage-hooks.settings.json" ] && echo "$TD/stage-hooks.settings.json")" \
+    --arg role "$ROLE" --arg s "$STAGE_SID" --arg t "$team" --arg run "$RUN" --arg a "$ATTEMPT" --arg k "$(sj ticket)" \
+    --argjson w "$wl" --arg aid "$(jq -r '.agent_id // ""' <<<"$PAYLOAD")" --arg aty "$(jq -r '.agent_type // ""' <<<"$PAYLOAD")" \
+    '{ctx: "stage", project: $p, rules: $r, role: $role, session_id: $s, team: $t, run: $run, attempt: $a,
+      ticket: $k, host: "claude", wait: $w, agent_id: $aid, agent_type: $aty}')" || return 1
+  id="$(clearance_open "$MAIN" "$TMP.in" "$who")" && [ -n "$id" ] || return 1
+  clearance_ring "$MAIN" "$id" "${team:-$ROLE}"
+  d="$(clearance_dir "$MAIN")"
+  while :; do
+    if stopped; then out_refuse "$STOP_MSG"; return 0; fi
+    if [ -f "$d/answers/$id.json" ]; then
+      [ "$(jq -r '.verdict // ""' "$d/answers/$id.json" 2>/dev/null)" != unsure ] || return 1
+      # The existing delivery's checks, under the stage's ask lock, before anything is consumed.
+      ask_lock || return 1
+      if stopped; then ask_unlock; out_refuse "$STOP_MSG"; return 0; fi
+      if [ "$(sj run)" != "$RUN" ] || [ "$(sj attempt)" != "$ATTEMPT" ] || [ "$(sj session_id)" != "$STAGE_SID" ] \
+          || prior_answer; then
+        ask_unlock; return 1
+      fi
+      if v="$(clearance_claim "$MAIN" "$id" "$TMP.in")"; then
+        [ "$v" != allow ] || echo "$(ask_utc) clearance $id — authority supervisor (cleared)" >> "$ASK_TD/runs/$ASK_RUN/answers.md"
+        ask_unlock
+        clearance_log "$MAIN" cleared "$ROLE $STAGE_SID" "$what" "$v" \
+          "$(clearance_entry "$MAIN" clearable "$cls" claude "$id" "supervisor (cleared)")"
+        if [ "$v" = allow ]; then
+          jq -n '{hookSpecificOutput: {hookEventName: "PermissionRequest", decision: {behavior: "allow"}}}'
+        else
+          out_perm_deny "the Supervisor denied this request ($id)"
+        fi
+        return 0
+      fi
+      ask_unlock
+    fi
+    [ "$(date +%s)" -lt "$dl" ] || return 1
+    sleep "${TEAM_CLEARANCE_POLL:-2}"
+  done
 }

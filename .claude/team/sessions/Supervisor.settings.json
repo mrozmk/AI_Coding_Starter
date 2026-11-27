@@ -1,5 +1,5 @@
 {
-  "_comment": "Role profile for the Supervisor: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads (cloud CLIs, local infra) go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/supervisor.md",
+  "_comment": "Role profile for the Supervisor: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads (cloud CLIs, local infra) go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/supervisor.md #323: PermissionRequest runs the Supervisor clearance hook (never self-clearing: the Supervisor's own clearable prompts stay the Operator's) and the PreToolUse write guard asks before an edit of the guard layer and denies one of the clearance ledger; the Supervisor answers clearance requests with team-clearance.sh answer and never runs grant (the Operator's).",
   "env": {
     "TEAM_SESSION_ROLE": "Supervisor"
   },
@@ -12,11 +12,14 @@
       "Bash(bash .claude/lib/team-mail.sh * ack *)",
       "Bash(bash .claude/lib/team-mail.sh * send *)",
       "Bash(bash .claude/lib/operator-record.sh *)",
-      "Bash(bash .claude/lib/team-lead.sh decision relay *)"
+      "Bash(bash .claude/lib/team-lead.sh decision relay *)",
+      "Bash(bash .claude/lib/team-clearance.sh answer *)",
+      "Bash(bash .claude/lib/team-clearance.sh pending)"
     ],
     "deny": [
       "Bash(bash .claude/lib/team-answer.sh*)",
-      "Bash(*notify.sh*)"
+      "Bash(*notify.sh*)",
+      "Bash(*team-clearance.sh grant*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -29,7 +32,8 @@
       "bash .claude/lib/notify.sh human_decision --summary x --answer Supervisor",
       ".claude/lib/notify.sh release --summary x",
       "bash -c '.claude/lib/notify.sh flush'",
-      "bash ~/.agent-comms/../notify.sh list"
+      "bash ~/.agent-comms/../notify.sh list",
+      "bash .claude/lib/team-clearance.sh grant"
     ],
     "skills": [],
     "allowed": [
@@ -41,7 +45,9 @@
       "bash .claude/lib/team-mail.sh --here recipients",
       "bash .claude/lib/team-mail.sh --here send --to Advisor --kind info --body x",
       "bash .claude/lib/operator-record.sh failure --summary x",
-      "bash .claude/lib/team-lead.sh decision relay alfa d-1 --text x"
+      "bash .claude/lib/team-lead.sh decision relay alfa d-1 --text x",
+      "bash .claude/lib/team-clearance.sh pending",
+      "bash .claude/lib/team-clearance.sh answer c-1-0123456789abcdef allow"
     ],
     "secrets": [
       "cat .env",
@@ -53,6 +59,33 @@
       "git push --force origin main",
       "rm -rf /",
       "bash .claude/team/sessions/operator-kit/install.sh --apply"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "onFailure": "block",
+            "timeout": 10,
+            "command": "bash \"{{MAIN}}/.claude/hooks/team-clearance-hook.sh\""
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Bash|WebFetch|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 300,
+            "command": "TEAM_CLEARANCE_SEAL={{SEAL}} TEAM_CLEARANCE_RULES={{RULES}} bash \"{{MAIN}}/.claude/hooks/team-clearance-hook.sh\""
+          }
+        ]
+      }
     ]
   }
 }
