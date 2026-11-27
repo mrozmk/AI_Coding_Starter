@@ -33,7 +33,7 @@ pass|advisor|Bash|-|#323 rules: Advisor git push deny does not cover gh issue vi
 # --- none: the human dialog through Claude Code's normal path ---
 none|advisor|Bash|-|#323 checker: rm x is none|{"command":"rm x"}
 none|advisor|Bash|-||{"command":"python3 script.py"}
-none|advisor|Bash|-|#323 pass: curl -o is not a pass|{"command":"curl -o f https://docs.python.org/3/"}
+none|advisor|Bash|-||{"command":"curl -o f https://docs.python.org/3/"}
 none|advisor|Bash|-||{"command":"gh issue view 1 > out.txt"}
 none|advisor|Bash|-||{"command":"gh issue view 1 | tee out"}
 none|advisor|Bash|-||{"command":"git pull"}
@@ -48,6 +48,7 @@ none|advisor|Bash|-||{"command":"curl -s https://docs.python.org/3/x?y=1; rm x"}
 none|advisor|Bash|-||{"command":"curl -s https://intranet-mirror.acme-docs.com/x?q=1"}
 none|advisor|Bash|@LOCK2@||{"command":"npm ci --ignore-scripts"}
 none|advisor|Bash|@PIP@||{"command":"pip install --require-hashes --only-binary=:all: --no-deps -r nested.txt"}
+none|advisor|Bash|@PIP@||{"command":"python3 -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements.txt"}
 none|advisor|Bash|-||{"command":"gh project item-edit --id I --project-id P --field-id F --text v"}
 none|advisor|Bash|-||{"command":"gh issue comment https://github.com/evil/other/issues/5 --body x"}
 none|advisor|Bash|@OTHER@||{"command":"gh issue comment 5 --body x"}
@@ -72,7 +73,7 @@ hard|stage|Edit|-|#323 classes: production-asked file in worktree is hard|{"file
 hard|advisor|Bash|-||{"command":"python3 -I -c 'import socket'"}
 hard|advisor|Bash|-||{"command":"python3 -I -c 'import subprocess; subprocess.run([\"ls\"])'"}
 hard|advisor|Bash|-||{"command":"python3 -I -c 'import ast; print(open(\".claude/hooks/x\").read())'"}
-hard|asks|WebFetch|-|#323 rules: project ask on WebFetch is hard|{"url":"https://docs.python.org/3/","prompt":"p"}
+hard|asks|WebFetch|-||{"url":"https://docs.python.org/3/","prompt":"p"}
 hard|advisor|Bash|-|#323 rules: matching ask is hard|{"command":"cat .env.local"}
 hard|advisor|Bash|-|#323 checker: Bash write into clearance state is hard|{"command":"echo x > .agents/team/clearance/answers/c-1-0.json"}
 hard|advisor|Edit|-||{"file_path":"@MAIN@/.claude/hooks/guard-push.sh","old_string":"a","new_string":"b"}

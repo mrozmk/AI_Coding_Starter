@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 # Local imports below: never write __pycache__ into the project (callers run python3 -I, not -B).
 sys.dont_write_bytecode = True
@@ -93,28 +94,30 @@ def load_classes():
     return data
 
 
-def _json(path):
-    try:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+def _lib_path():
+    """This checkout's .claude/lib on sys.path, for the lazy imports below. The imports stay
+    literal statements: deps_of reads them for the load closure (R1-6)."""
+    if LIB not in sys.path:
+        sys.path.insert(0, LIB)
 
 
 def _checker():
-    """team_prompt_check (the tier's module `c`) from this checkout's .claude/lib."""
-    if LIB not in sys.path:
-        sys.path.insert(0, LIB)
+    """team_prompt_check (the tier's module `c`)."""
+    _lib_path()
     import team_prompt_check
     return team_prompt_check
 
 
 def _classes_lib():
-    if LIB not in sys.path:
-        sys.path.insert(0, LIB)
+    _lib_path()
     import team_prompt_classes
     return team_prompt_classes
+
+
+def _touches():
+    _lib_path()
+    import touches
+    return touches
 
 
 # --- the list version: version + the policy digest of the trusted clearance code -----------------
@@ -129,7 +132,10 @@ def _local_dep(main, name, near):
 
 def deps_of(main, rel):
     """The .claude/ modules one trusted file loads: Python imports of a local module, shell
-    `.`/source lines of a sibling library."""
+    `.`/source statements of a sibling library given with a directory part, at a line start or
+    after `;`, `&`, `|`, `{`, `(` (so `[ -n "$X" ] || . "$D/lib.sh"` counts too), whatever
+    quoting the path carries (`. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"`). Not read: a source
+    after `then`/`do`/`!` or without a `/` (no trusted file uses those forms)."""
     full, near, out = os.path.join(main, rel), os.path.dirname(rel), []
     try:
         with open(full, encoding="utf-8") as fh:
@@ -145,7 +151,7 @@ def deps_of(main, rel):
                 if dep:
                     out.append(dep)
     elif rel.endswith(".sh"):
-        for m in re.finditer(r'(?m)^\s*(?:\.|source)\s+"?[^"\n]*/([A-Za-z0-9_.-]+\.sh)"?', text):
+        for m in re.finditer(r'(?m)(?:^|[;&|{(])\s*(?:\.|source)\s+[^;&|\n]*?/([A-Za-z0-9_.-]+\.sh)\b', text):
             dep = _local_dep(main, m.group(1), near)
             if dep:
                 out.append(dep)
@@ -288,6 +294,66 @@ def foreign_hook(sources, tool, known):
     return None
 
 
+# team-evidence.sh's plugin inventory (the TeamLead's ask provenance reads the same): every enabled
+# plugin id → team_evidence_plugins, every CLAUDE_CODE_PLUGIN_DIRS directory → team_evidence_tree.
+# Either names a cause for any hook a plugin brings for PreToolUse, PermissionRequest, PostToolUse or
+# UserPromptSubmit, and for anything it cannot resolve.
+PLUGIN_SH = r'''. "$1" || exit 3
+TEAM_EVIDENCE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/clearance-plugins.XXXXXX")" || exit 3
+rc=0
+if [ -n "$3" ]; then team_evidence_plugins "$2" "$3" > "$TEAM_EVIDENCE_TMP/out" || rc=1; fi
+if [ "$rc" = 0 ]; then
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    case "$d" in /*) ;; *) echo "plugin directory $d is not an absolute path" > "$TEAM_EVIDENCE_TMP/out"; rc=1; break ;; esac
+    [ -f "$d/.claude-plugin/plugin.json" ] || { echo "plugin directory $d has no .claude-plugin/plugin.json" > "$TEAM_EVIDENCE_TMP/out"; rc=1; break; }
+    team_evidence_tree "plugin directory $d" "$d" > "$TEAM_EVIDENCE_TMP/out" || { rc=1; break; }
+  done <<<"$4"
+fi
+[ "$rc" = 0 ] || head -n 1 "$TEAM_EVIDENCE_TMP/out"
+rm -rf "$TEAM_EVIDENCE_TMP"
+exit "$rc"'''
+
+
+def plugin_cause(sources, main, project):
+    """Why the session's plugins may carry a hook this checker does not reproduce (R3-1), or None:
+    an enabled plugin or a plugin directory whose inventory shows a guarded hook or cannot be
+    resolved. No enabled plugin and no plugin directory → None without running anything."""
+    ids, dirs = set(), []
+    envs = [("environment", {k: v for k, v in os.environ.items() if k.startswith("CLAUDE_CODE_PLUGIN_")})]
+    for name, data in sources:
+        ep = data.get("enabledPlugins")
+        if ep is not None and not isinstance(ep, dict):
+            return "%s enabledPlugins unreadable" % name
+        ids.update(k for k, v in (ep or {}).items() if v is not False and v is not None)
+        env = data.get("env")
+        if env is not None and not isinstance(env, dict):
+            return "%s env unreadable" % name
+        envs.append((name, env or {}))
+    for name, env in envs:
+        if env.get("CLAUDE_CODE_PLUGIN_CACHE_DIR") not in (None, ""):
+            return "%s sets CLAUDE_CODE_PLUGIN_CACHE_DIR" % name
+        pd = env.get("CLAUDE_CODE_PLUGIN_DIRS")
+        if pd is not None and not isinstance(pd, str):
+            return "%s CLAUDE_CODE_PLUGIN_DIRS unreadable" % name
+        dirs += [os.path.expanduser(d) for d in (pd or "").split(":") if d]
+    cfg = user_config_dir(main or project)
+    for root, _, files in os.walk(os.path.join(cfg, "plugins", "synced"), followlinks=True):
+        if any(f.lower() in ("hooks.json", "plugin.json") or f.lower().endswith(".md") for f in files):
+            return "account-synced plugin content cannot be inventoried"  # as team_evidence_ask_hooks_in
+    if not ids and not dirs:
+        return None
+    lib = os.path.join(main or project, ".claude", "lib", "team-evidence.sh")
+    try:
+        r = subprocess.run(["bash", "-c", PLUGIN_SH, "_", lib, cfg, "\n".join(sorted(ids)), "\n".join(sorted(set(dirs)))],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "the plugin inventory cannot run (%s)" % e.__class__.__name__
+    if r.returncode == 0:
+        return None
+    return (r.stdout.strip().splitlines() or ["the plugin inventory failed (rc %d)" % r.returncode])[0][:200]
+
+
 def path_rule_hit(pat, target, project):
     """A file rule's gitignore-style pattern against the resolved target (case-folded; `*` crosses
     `/`, erring toward the rule)."""
@@ -346,7 +412,7 @@ def protected(path, project, main, k):
     low = os.path.realpath(path).lower()
     if hd.guard_layer(os.path.realpath(path), project):
         return "settings or a role profile"
-    if fnmatch.fnmatchcase(low, "*/.claude/hooks/*") or low.endswith("/.claude/hooks"):
+    if fnmatch.fnmatchcase(low, hd.HOOKS) or low.endswith("/.claude/hooks"):
         return ".claude/hooks"
     if low.endswith("/.codex/hooks.json"):
         return ".codex/hooks.json"
@@ -361,7 +427,7 @@ def protected(path, project, main, k):
 def unresolved_protected(target):
     low = target.lower()
     base = os.path.basename(low)
-    return (fnmatch.fnmatchcase(base, "settings*.json") or base.endswith(".settings.json") or base == "hooks.json"
+    return (any(fnmatch.fnmatchcase(base, p) for p in hd.PROTECTED_BASE) or base == "hooks.json"
             or "/.claude/hooks/" in "/" + low or ".agents/team/clearance" in low or base.startswith("clearance"))
 
 
@@ -528,7 +594,7 @@ def one_segment(cmd):
     return segs[0]
 
 
-def url_long_ok(url, project, k):
+def url_long_ok(url, k):
     """Every #322 public-GET condition but the query ban and the 160-character cap; the address
     check runs for an allowlisted host too (R3-7)."""
     if not isinstance(url, str) or len(url) > int(k.get("url_cap") or 0) or "\\" in url \
@@ -543,10 +609,10 @@ def url_long_ok(url, project, k):
             and not cl.private_host(host) and cl.public_name(host) and cl.public_addresses(host))
 
 
-def public_get_long(tool, inp, cwd, project, k):
+def public_get_long(tool, inp, cwd, k):
     if tool == "WebFetch":
         url = inp.get("url")
-        return ("clearable", [], (urlsplit(url).hostname or "").lower()) if url_long_ok(url, project, k) else None
+        return ("clearable", [], (urlsplit(url).hostname or "").lower()) if url_long_ok(url, k) else None
     cmd = inp.get("command") or ""
     if lp.for_bodies(cmd, wd.LOOP_WORD) is not None or not redirections_ok(cmd):
         return None
@@ -577,7 +643,7 @@ def public_get_long(tool, inp, cwd, project, k):
             urls.append(a)
             i += 1
     if len(urls) != 1 or len(outs) > 1 or re.search(r"[{}\[\]]", urls[0]) or cl.curl_config_present() \
-            or not url_long_ok(urls[0], project, k):
+            or not url_long_ok(urls[0], k):
         return None
     for seg in segs[1:]:
         if not quiet([w.value for w in seg], seg, set(k.get("filters") or [])):
@@ -586,14 +652,16 @@ def public_get_long(tool, inp, cwd, project, k):
     return "clearable", pins, (urlsplit(urls[0]).hostname or "").lower()
 
 
-def lockfile_install(tool, inp, cwd, project, k):
+def lockfile_install(tool, inp, cwd, k):
     if tool != "Bash":
         return None
     seg = one_segment(inp.get("command") or "")
     if seg is None:
         return None
     vals = [w.value for w in seg]
-    verb, args = hd.pip_form(vals[0], vals[1:])
+    # The executables only, never `python -m pip`: a non-isolated interpreter resolves the module
+    # from the cwd, so a repository-local pip.py would run (spec 2b names the bare form).
+    verb, args = vals[0], vals[1:]
     if verb not in ("npm", "pip", "pip3"):
         return None
     if any(cl.REGISTRY_OPTS.match(a) for a in args):
@@ -644,7 +712,7 @@ def lockfile_install(tool, inp, cwd, project, k):
 
 
 def gh_config(main):
-    prof = _json(os.path.join(main, ".claude", "project-profile.json"))
+    prof = hd._json(os.path.join(main, ".claude", "project-profile.json"))
     for block in ((prof.get("teams") or {}).get("github") if isinstance(prof.get("teams"), dict) else None,
                   prof.get("github")):
         if isinstance(block, dict) and block.get("repo"):
@@ -665,7 +733,7 @@ def cwd_repo_own(cwd, own):
     return True
 
 
-def gh_own_repo_write(tool, inp, cwd, project, k, main):
+def gh_own_repo_write(tool, inp, cwd, k, main):
     if tool != "Bash" or os.environ.get("GH_REPO") or os.environ.get("GH_HOST"):
         return None
     seg = one_segment(inp.get("command") or "")
@@ -673,7 +741,7 @@ def gh_own_repo_write(tool, inp, cwd, project, k, main):
         return None
     vals = [w.value for w in seg]
     kind = tuple(vals[1:3])
-    if vals[:1] != ["gh"] or [list(kind)] not in [[list(x)] for x in k.get("gh_kinds") or []] or kind not in GH_SPEC:
+    if vals[:1] != ["gh"] or list(kind) not in (k.get("gh_kinds") or []) or kind not in GH_SPEC:
         return None
     vopts, bopts, npos = GH_SPEC[kind]
     if kind[0] != "project":
@@ -740,7 +808,7 @@ def gh_own_repo_write(tool, inp, cwd, project, k, main):
 def starter_binding(project, main, target):
     """'' when <target> lies in the stage's own registered starter worktree; 'named' when it lies in
     a directory merely named like a starter worktree; 'other' otherwise (#323 R1-3)."""
-    st = (_json(os.path.join(main, ".claude", "project-profile.json")).get("teams") or {})
+    st = (hd._json(os.path.join(main, ".claude", "project-profile.json")).get("teams") or {})
     root = st.get("starter_root") if isinstance(st, dict) else None
     if not isinstance(root, str) or not root:
         return "other"
@@ -752,8 +820,8 @@ def starter_binding(project, main, target):
         return "other"
     tpc = _classes_lib()
     team = tpc.anchor_team(project, main)
-    a = _json(os.path.join(main, ".agents", "team", "anchors", team + ".json")) if team else {}
-    s = _json(os.path.join(project, ".agents", "team", "session.json"))
+    a = hd._json(os.path.join(main, ".agents", "team", "anchors", team + ".json")) if team else {}
+    s = hd._json(os.path.join(project, ".agents", "team", "session.json"))
     try:
         with open(os.path.join(project, ".agents", "team", "run"), encoding="utf-8") as fh:
             run = fh.read().strip()
@@ -771,15 +839,14 @@ def starter_binding(project, main, target):
     return "" if hd.inside(low, want) else "named"
 
 
-def starter_worktree_edit(tool, inp, cwd, project, k, main, ctx, rest):
-    if tool not in FILE_TOOLS or ctx != "stage":
-        return None
+def starter_worktree_edit(inp, cwd, project, main, why):
+    """A stage file edit the tier refused as outside the clone (<why>, the caller's check)."""
     target = file_target(inp, cwd)
-    if not target or not rest or rest[0] != "operator" or not str(rest[1]).startswith("refuse (outside clone)"):
+    if not target:
         return None
     where = starter_binding(project, main, target)
     if where:
-        return None if where == "named" else ("hard", str(rest[1]))
+        return None if where == "named" else ("hard", why)
     return "clearable", [digest(target)], target
 
 
@@ -942,6 +1009,9 @@ def _clear(tool, inp, cwd, project, ctx, main, rules_file, launch_rules):
     hook = foreign_hook(sources, tool, set(k.get("reproduced_hooks") or []))
     if hook:
         raise NoDecision("a PreToolUse hook this checker does not reproduce: " + hook)
+    why = plugin_cause(sources, main, project)
+    if why:
+        raise NoDecision("plugin hooks not reproduced: " + why)
     # 5. pass: an egress read, no rule, no other cause.
     if kind == "pass" and tuple(rest) == ("lead", None):
         if tool == "WebFetch" or egress_read_pass(cmd, project):
@@ -949,13 +1019,13 @@ def _clear(tool, inp, cwd, project, ctx, main, rules_file, launch_rules):
         return result("none", reason="no egress read (the classifier's pass covers no local effect)")
     # 6. the classes.
     if tool in FILE_TOOLS:
-        found = [("starter-worktree-edit", starter_worktree_edit(tool, inp, cwd, project, k, main, ctx, rest))]
+        found = [("starter-worktree-edit", starter_worktree_edit(inp, cwd, project, main, str(rest[1])))] if worktree else []
     elif kind != "ask" or tuple(rest) != ("lead", None):
         return result("none", reason="no class (kind %s)" % kind)
     else:
-        found = [("public-get-long", public_get_long(tool, inp, cwd, project, k)),
-                 ("lockfile-install", lockfile_install(tool, inp, cwd, project, k)),
-                 ("gh-own-repo-write", gh_own_repo_write(tool, inp, cwd, project, k, main)),
+        found = [("public-get-long", public_get_long(tool, inp, cwd, k)),
+                 ("lockfile-install", lockfile_install(tool, inp, cwd, k)),
+                 ("gh-own-repo-write", gh_own_repo_write(tool, inp, cwd, k, main)),
                  ("inline-code-no-io", inline_code_no_io(tool, inp, k))]
     hard = [(n, f) for n, f in found if f and f[0] == "hard"]
     if hard:
@@ -998,18 +1068,13 @@ def _cut(text, cap):
 def render(path, now):
     """One open request for the Supervisor (team-clearance.sh pending): the script's fields only,
     masked by touches.mask_obj; an edit's change and a body file's start, cut at the class file's caps."""
-    if LIB not in sys.path:
-        sys.path.insert(0, LIB)
-    import touches
+    touches = _touches()
     k = load_classes()
     with open(path, encoding="utf-8") as fh:
         r = json.load(fh)
     p = r.get("payload") or {}
     ti = touches.mask_obj(p.get("tool_input") or {})
-    try:
-        left = int(cl_epoch(r.get("expires_at")) - now)
-    except (TypeError, ValueError):
-        left = 0
+    left = int((touches._epoch(r.get("expires_at")) or now) - now)
     who = " ".join(x for x in (r.get("role"), r.get("team"), r.get("run")) if x)
     out = ["%s — class %s · %s · dest %s · from %s (session %s%s) · %ds left" % (
         r.get("id"), r.get("class_id"), p.get("tool_name"), r.get("dest") or "-", who or "?",
@@ -1038,12 +1103,6 @@ def render(path, now):
     print("\n".join(out))
 
 
-def cl_epoch(at):
-    import calendar
-    import time
-    return calendar.timegm(time.strptime(str(at), "%Y-%m-%dT%H:%M:%SZ"))
-
-
 # --- CLI -----------------------------------------------------------------------------------------
 
 USAGE = ("usage: guard_team_egress_clear.py classify --input-json <f> --project <p> --ctx "
@@ -1051,7 +1110,7 @@ USAGE = ("usage: guard_team_egress_clear.py classify --input-json <f> --project 
          "       guard_team_egress_clear.py digest --main <m>\n"
          "       guard_team_egress_clear.py protected --path <p> --project <p> --main <m>\n"
          "       guard_team_egress_clear.py render --request <f> [--now <epoch>]\n"
-         "       guard_team_egress_clear.py rules-digest --project <p> [--rules <f>]")
+         "       guard_team_egress_clear.py rules-digest --project <p> [--rules <f>] [--main <m>]")
 
 
 def _opts(argv, names):
@@ -1099,7 +1158,7 @@ def main(argv):
                 print("error: %s" % e, file=sys.stderr)
                 return 1
             return 0
-        if cmd not in ("classify", "hash"):
+        if cmd != "classify":
             raise ValueError(cmd)
         o = _opts(rest, ("--input-json", "--project", "--ctx", "--main", "--rules", "--launch-rules", "--binding"))
         if not all(x in o for x in ("--input-json", "--project", "--ctx", "--main")) \

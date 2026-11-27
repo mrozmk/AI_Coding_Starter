@@ -273,9 +273,9 @@ lead_close_refused() {  # lead_close_refused <why> [ended]
 # its own deadline 15 s earlier), {{SEAL}} the sha256 of the main checkout's clearance switch
 # record at this launch, or off (#323). → 1 when the template cannot be rendered.
 stage_hooks_materialise() {
-  local seal=off
-  [ ! -f "$root/.agents/team/clearance.json" ] || seal="$(shasum -a 256 < "$root/.agents/team/clearance.json" | cut -d' ' -f1)"
-  jq --arg m "$root" --argjson t "${TEAM_ASK_TIMEOUT_SECS:-715}" --arg s "${seal:-off}" 'del(._comment)
+  local seal
+  . "$root/.claude/lib/team-clearance.sh" && seal="$(clearance_seal "$root")" || seal=off
+  jq --arg m "$root" --argjson t "${TEAM_ASK_TIMEOUT_SECS:-715}" --arg s "$seal" 'del(._comment)
     | .hooks |= map_values(map(.hooks |= map(
         (if (.command | test("TEAM_ASK_TIMEOUT=")) then .timeout = $t
            | .command |= gsub("\\{\\{TIMEOUT\\}\\}"; ($t | tostring)) else . end)

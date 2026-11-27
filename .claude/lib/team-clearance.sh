@@ -36,9 +36,21 @@ CLEARANCE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 clearance_file() { printf '%s/.agents/team/clearance.json' "$1"; }
 clearance_dir() { printf '%s/.agents/team/clearance' "$1"; }
 clearance_checker() { printf '%s/.claude/hooks/lib/guard_team_egress_clear.py' "$1"; }
-clearance_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 clearance_sha() { shasum -a 256 < "$1" 2>/dev/null | cut -d' ' -f1; }
-clearance_epoch() { jq -rn --arg t "$1" '$t | fromdateiso8601' 2>/dev/null; }
+# clearance_seal <main> → the sha256 of the switch record, or off: what a launch seals into its
+# hook command ({{SEAL}}) and what clearance_mode compares against.
+clearance_seal() {
+  local f s=""; f="$(clearance_file "$1")"
+  [ ! -f "$f" ] || s="$(clearance_sha "$f")"
+  echo "${s:-off}"
+}
+# clearance_fill_rules <main> <project> <profile> → the profile with {{RULES}} in every hook
+# command replaced by the digest of that launch's rules (R2-8), or unknown when it cannot be computed.
+clearance_fill_rules() {
+  local d; d="$(python3 -I "$(clearance_checker "$1")" rules-digest --project "$2" --rules "$3" --main "$1" 2>/dev/null)" || d=""
+  jq --arg d "${d:-unknown}" '.hooks |= map_values(map(.hooks |= map(if (.command | type) == "string"
+    then .command |= gsub("\\{\\{RULES\\}\\}"; $d) else . end)))' "$3"
+}
 
 # clearance_parse <message> → "<hosts>\t<hours>"; rc 1 unless the WHOLE message, trimmed, is the
 # switch phrase (a host codex is refused with the recorded reason on stderr).
@@ -59,14 +71,6 @@ clearance_parse() {
   printf '%s\t%s\n' "$(printf '%s\n' ${hosts//,/ } | sort -u | paste -sd, -)" "$hours"
 }
 
-# clearance_instruction <message> → 0 when it is an instruction about the switch at all.
-clearance_instruction() {
-  local lt
-  lt="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"; lt="${lt#"${lt%%[![:space:]]*}"}"
-  case "$lt" in clearance|clearance[[:space:]]*|"revoke clearance"*) return 0 ;; esac
-  return 1
-}
-
 clearance_libs() {
   command -v mandate_history >/dev/null 2>&1 || . "$CLEARANCE_LIB/team-mandate.sh" 2>/dev/null || return 3
   command -v team_role_transcript >/dev/null 2>&1 || { . "$CLEARANCE_LIB/team-lib.sh" && . "$CLEARANCE_LIB/team-lead-lib.sh"; } >/dev/null 2>&1 || return 3
@@ -82,7 +86,7 @@ clearance_list_version() { python3 -I "$(clearance_checker "$1")" digest --main 
 clearance_derive() {
   local rows last m p sid
   clearance_libs || { echo "team-lib.sh, team-lead-lib.sh, team-evidence.sh or team-mandate.sh missing" >&2; return 1; }
-  rows="$(mandate_history "$1" "" clearance clearance_instruction)" || return 1
+  rows="$(mandate_history "$1" "" clearance)" || return 1
   sid="$(jq -r '.session_id // empty' "$1/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"
   last="$(tail -n 1 <<<"$rows")"
   [ -n "$last" ] && [ -n "$sid" ] || { echo "no clearance message in the Supervisor window" >&2; return 1; }
@@ -113,7 +117,7 @@ clearance_verified() {
 clearance_mode() {
   local f="$(clearance_file "$3")" v
   if [ "$1" = claude ] && [ -n "$2" ] && [ "$2" != off ] && [ -f "$f" ] && [ ! -L "$f" ] \
-      && [ "$(clearance_sha "$f")" = "$2" ] && v="$(clearance_verified "$3" 2>/dev/null)" \
+      && [ "$(clearance_seal "$3")" = "$2" ] && v="$(clearance_verified "$3" 2>/dev/null)" \
       && jq -e --arg h "$1" '.hosts | index($h) != null' <<<"$v" >/dev/null 2>&1; then
     echo enforce
   else
@@ -188,7 +192,7 @@ clearance_request() {
   clearance_lock "$m" || return 1
   n="$(ls "$d/requests" 2>/dev/null | sed -n 's/^c-\([0-9]*\)-.*\.json$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); id="c-$n-$(jq -r '.hash[0:16]' <<<"$3")"
-  now="$(clearance_utc)"; exp="$(jq -rn --arg t "$now" --argjson w "$(jq -r '.wait // 285' <<<"$3")" '($t | fromdateiso8601) + $w | todateiso8601')"
+  now="$(team_utc)"; exp="$(jq -rn --arg t "$now" --argjson w "$(jq -r '.wait // 285' <<<"$3")" '($t | fromdateiso8601) + $w | todateiso8601')"
   ( umask 077
     jq -n --arg id "$id" --slurpfile p "$2" --argjson x "$3" --arg now "$now" --arg exp "$exp" '
       {id: $id, payload: $p[0], class_id: $x.class, pins: $x.pins, dest: $x.dest, request_hash: $x.hash,
@@ -230,30 +234,40 @@ clearance_evidence() {
             and ((.is_error // false) | not))] | length > 0' "$t" 2>/dev/null | grep -qx true
 }
 
+# clearance_rederive <main> <id> <payload file> <request json> → rc 0 when the payload, classified
+# now on the current tree with the request's binding, is still that request's clearable class and
+# hash and the id is bound to that hash; else rc 1 and the reason on stdout (claim and answer).
+clearance_rederive() {
+  local id="$2" r="$4" out res
+  out="$(clearance_classify "$1" "$3" "$r" "$(jq -c .binding <<<"$r")")"
+  res="$(sed -n 's/^result: //p' <<<"$out")"
+  [ "$res" = clearable ] \
+    || { echo "$id re-derives to $res ($(sed -n 's/^reason: //p' <<<"$out")) — only a clearable class is answered"; return 1; }
+  [ "$(sed -n 's/^class: //p' <<<"$out")" = "$(jq -r .class_id <<<"$r")" ] || { echo "$id re-derives to another class"; return 1; }
+  [ "$(sed -n 's/^hash: //p' <<<"$out")" = "$(jq -r .request_hash <<<"$r")" ] && [ "${id##*-}" = "$(jq -r '.request_hash[0:16]' <<<"$r")" ] \
+    || { echo "$id: the request changed (a pin, the payload or the binding)"; return 1; }
+}
+
 # clearance_claim <main> <id> <live payload file> → the answered verdict, once (rc 0); rc 1 for
 # anything else. Under the lock: the request and its answer, unused and unexpired, the switch and
 # the list still the ones it was asked and answered under, the live payload reclassified on the
 # current tree to the same class and hash, the Supervisor's own `answer` call in its transcript;
 # then `used/<id>.json` by a link that never overwrites (single use, R2-7).
 clearance_claim() {
-  local m="$1" id="$2" d r a v out now sw
+  local m="$1" id="$2" d r a v now sw
   d="$(clearance_dir "$m")"
   [[ "$id" =~ ^c-[0-9]+-[0-9a-f]{16}$ ]] || return 1
   r="$(cat "$d/requests/$id.json" 2>/dev/null)" && a="$(cat "$d/answers/$id.json" 2>/dev/null)" || return 1
   v="$(jq -r '.verdict // ""' <<<"$a")"
   case "$v" in allow|deny) ;; *) return 1 ;; esac
   now="$(date +%s)"
-  [ "$now" -lt "$(clearance_epoch "$(jq -r .expires_at <<<"$r")")" ] || return 1
+  [ "$now" -lt "$(team_epoch "$(jq -r .expires_at <<<"$r")")" ] || return 1
   [ "$(jq -r .id <<<"$a")" = "$id" ] && [ "$(jq -r .request_hash <<<"$a")" = "$(jq -r .request_hash <<<"$r")" ] || return 1
   sw="$(clearance_verified "$m" 2>/dev/null)" || return 1
   [ "$(jq -r .id <<<"$sw")" = "$(jq -r .switch_id <<<"$r")" ] && [ "$(jq -r .id <<<"$sw")" = "$(jq -r .switch_id <<<"$a")" ] \
     && [ "$(jq -r .list_version <<<"$sw")" = "$(jq -r .list_version <<<"$r")" ] \
     && [ "$(jq -r .list_version <<<"$sw")" = "$(jq -r .list_version <<<"$a")" ] || return 1
-  out="$(clearance_classify "$m" "$3" "$r" "$(jq -c .binding <<<"$r")")"
-  [ "$(sed -n 's/^result: //p' <<<"$out")" = clearable ] \
-    && [ "$(sed -n 's/^class: //p' <<<"$out")" = "$(jq -r .class_id <<<"$r")" ] \
-    && [ "$(sed -n 's/^hash: //p' <<<"$out")" = "$(jq -r .request_hash <<<"$r")" ] \
-    && [ "${id##*-}" = "$(jq -r '.request_hash[0:16]' <<<"$r")" ] || return 1
+  clearance_rederive "$m" "$id" "$3" "$r" >/dev/null || return 1
   clearance_evidence "$m" "$id" "$v" "$(jq -r .created_at <<<"$r")" || return 1
   clearance_lock "$m" || return 1
   if [ -e "$d/used/$id.json" ] || ! ln "$d/answers/$id.json" "$d/used/$id.json" 2>/dev/null; then
@@ -263,13 +277,13 @@ clearance_claim() {
   echo "$v"
 }
 
-# clearance_wait <main> <id> <deadline epoch> <live payload file> [<stop fn>] → allow | deny (a
-# claimed answer, rc 0), unsure (rc 1), none (no claimable answer by the deadline, rc 1), stopped
-# (rc 2). An answer whose transcript evidence has not arrived yet keeps the wait going.
+# clearance_wait <main> <id> <deadline epoch> <live payload file> → allow | deny (a claimed
+# answer, rc 0), unsure (rc 1), none (no claimable answer by the deadline, rc 1). An answer whose
+# transcript evidence has not arrived yet keeps the wait going. (Carrier B runs its own loop: its
+# precedence re-check sits under the stage's ask lock, before the claim.)
 clearance_wait() {
   local d v; d="$(clearance_dir "$1")"
   while :; do
-    if [ -n "${5:-}" ] && "$5"; then echo stopped; return 2; fi
     if [ -f "$d/answers/$2.json" ]; then
       [ "$(jq -r '.verdict // ""' "$d/answers/$2.json" 2>/dev/null)" != unsure ] || { echo unsure; return 1; }
       if v="$(clearance_claim "$1" "$2" "$4")"; then echo "$v"; return 0; fi
@@ -277,6 +291,31 @@ clearance_wait() {
     [ "$(date +%s)" -lt "$3" ] || { echo none; return 1; }
     sleep "${TEAM_CLEARANCE_POLL:-2}"
   done
+}
+
+# clearance_what <payload file> → the touch line's `what`: `<tool>: <first line of the command,
+# URL or path>`, cut at 160 characters (both carriers).
+clearance_what() {
+  jq -r '"\(.tool_name // ""): " + ((.tool_input.command // .tool_input.url // .tool_input.file_path
+    // .tool_input.notebook_path // "") | tostring | split("\n")[0] | .[0:160])' "$1" 2>/dev/null
+}
+
+# clearance_supervisor_live <main> → 0 when a Supervisor session is registered and alive (no
+# request is filed for an absent one: the normal path goes on at once).
+clearance_supervisor_live() {
+  [ -f "$1/.agents/team/registry/Supervisor.json" ] \
+    && bash "$CLEARANCE_LIB/session-host.sh" alive Supervisor --main "$1" >/dev/null 2>&1
+}
+
+# clearance_entry <main> <result> <class> <host> [<id>] [<authority>] → the touch line's
+# `clearance` object: result, class, the current list version and host, plus the id and its
+# request hash when one is given, plus the authority (both carriers).
+clearance_entry() {
+  local lv rh=""; lv="$(clearance_list_version "$1" || echo unknown)"
+  [ -z "${5:-}" ] || rh="$(jq -r '.request_hash // ""' "$(clearance_dir "$1")/requests/$5.json" 2>/dev/null)"
+  jq -nc --arg r "$2" --arg c "$3" --arg v "${lv:-unknown}" --arg h "$4" --arg id "${5:-}" --arg rh "$rh" --arg a "${6:-}" \
+    '{result: $r, class: $c, list_version: $v, host: $h} + (if $id == "" then {} else {id: $id, request_hash: $rh} end)
+      + (if $a == "" then {} else {authority: $a} end)'
 }
 
 # clearance_log <main> <kind> <who> <what> <answer> <clearance json> — one touch-log line
@@ -293,7 +332,7 @@ usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 [ $# -ge 1 ] || usage
 MAIN="$(git rev-parse --show-toplevel 2>/dev/null)" || die 2 "not inside a git checkout"
-[ ! -f "$MAIN/.agents/team/team.json" ] || die 2 "team clone — the clearance ledger lives in the main checkout"
+[ ! -f "$MAIN/.agents/team/team.json" ] || die 1 "team clone — the clearance ledger lives in the main checkout"
 clearance_libs || die 4 "team-lib.sh, team-lead-lib.sh, team-evidence.sh or team-mandate.sh missing"
 F="$(clearance_file "$MAIN")"; D="$(clearance_dir "$MAIN")"
 NEED="the Operator types, as a whole message in the Supervisor window: clearance enforce <host>[,<host>] for <N>h|<N>d (hosts: $CLEARANCE_HOSTS; at most $(( CLEARANCE_MAX_HOURS / 24 )) days)"
@@ -314,7 +353,7 @@ case "$cmd" in
         || die 1 "no switch written — the message predates the first shadow line of list version $lv ($first): the Operator types the switch again"
     done
     ( umask 077; mkdir -p "$(dirname "$F")"
-      jq --arg lv "$lv" --arg at "$(clearance_utc)" '{id, words, hosts, granted_at, expires_at, list_version: $lv, recorded_at: $at}' \
+      jq --arg lv "$lv" --arg at "$(team_utc)" '{id, words, hosts, granted_at, expires_at, list_version: $lv, recorded_at: $at}' \
         <<<"$d" > "$F.tmp.$$" && mv "$F.tmp.$$" "$F" )
     jq -r '"clearance \(.id): enforce \(.hosts | join(",")) until \(.expires_at) (list \(.list_version))\nwords: \(.words)"' "$F" ;;
   show)
@@ -337,7 +376,7 @@ case "$cmd" in
       [ -f "$f" ] || continue
       id="$(basename "$f" .json)"
       [ ! -e "$D/answers/$id.json" ] && [ ! -e "$D/used/$id.json" ] || continue
-      [ "$now" -lt "$(clearance_epoch "$(jq -r .expires_at "$f")")" ] || continue
+      [ "$now" -lt "$(team_epoch "$(jq -r .expires_at "$f")")" ] || continue
       python3 -I "$(clearance_checker "$MAIN")" render --request "$f" --now "$now" || echo "$id: unreadable request"
       any=1
     done
@@ -351,22 +390,18 @@ case "$cmd" in
     [ "$(cd "$PWD" && pwd -P)" = "$(cd "$MAIN" && pwd -P)" ] || die 1 "answer from the main checkout's root"
     r="$(cat "$D/requests/$id.json" 2>/dev/null)" || die 1 "no request $id"
     [ ! -e "$D/answers/$id.json" ] && [ ! -e "$D/used/$id.json" ] || die 1 "$id is answered already"
-    [ "$(date +%s)" -lt "$(clearance_epoch "$(jq -r .expires_at <<<"$r")")" ] || die 1 "$id has expired"
+    [ "$(date +%s)" -lt "$(team_epoch "$(jq -r .expires_at <<<"$r")")" ] || die 1 "$id has expired"
     sw="$(clearance_verified "$MAIN" 2>&1)" || die 1 "no switch in force — $sw"
     [ "$(jq -r .id <<<"$sw")" = "$(jq -r .switch_id <<<"$r")" ] && [ "$(jq -r .list_version <<<"$sw")" = "$(jq -r .list_version <<<"$r")" ] \
       || die 1 "$id was asked under another switch or list version"
     jq -c .payload <<<"$r" > "$D/.answer-$$.json"
-    out="$(clearance_classify "$MAIN" "$D/.answer-$$.json" "$r" "$(jq -c .binding <<<"$r")")"; rm -f "$D/.answer-$$.json"
-    [ "$(sed -n 's/^result: //p' <<<"$out")" = clearable ] \
-      || die 1 "$id re-derives to $(sed -n 's/^result: //p' <<<"$out") ($(sed -n 's/^reason: //p' <<<"$out")) — only a clearable class is answered"
-    [ "$(sed -n 's/^class: //p' <<<"$out")" = "$(jq -r .class_id <<<"$r")" ] || die 1 "$id re-derives to another class"
-    [ "$(sed -n 's/^hash: //p' <<<"$out")" = "$(jq -r .request_hash <<<"$r")" ] && [ "${id##*-}" = "$(jq -r '.request_hash[0:16]' <<<"$r")" ] \
-      || die 1 "$id: the request changed (a pin, the payload or the binding)"
+    why="$(clearance_rederive "$MAIN" "$id" "$D/.answer-$$.json" "$r")" && rc=0 || rc=$?; rm -f "$D/.answer-$$.json"
+    [ "$rc" = 0 ] || die 1 "$why"
     clearance_lock "$MAIN" || die 4 "clearance lock"
     [ ! -e "$D/answers/$id.json" ] && [ ! -e "$D/used/$id.json" ] || { clearance_unlock "$MAIN"; die 1 "$id is answered already"; }
     ( umask 077
       jq -n --arg id "$id" --arg h "$(jq -r .request_hash <<<"$r")" --arg v "$verdict" --arg lv "$(jq -r .list_version <<<"$sw")" \
-        --arg s "$(jq -r .id <<<"$sw")" --arg at "$(clearance_utc)" \
+        --arg s "$(jq -r .id <<<"$sw")" --arg at "$(team_utc)" \
         --arg sid "$(jq -r '.session_id // ""' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)" \
         '{id: $id, request_hash: $h, verdict: $v, list_version: $lv, switch_id: $s, answered_at: $at, session_id: $sid}' \
         > "$D/answers/.$id.tmp" && ln "$D/answers/.$id.tmp" "$D/answers/$id.json"; rm -f "$D/answers/.$id.tmp" ) \

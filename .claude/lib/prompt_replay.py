@@ -35,8 +35,6 @@ SEVERITY = {o: i for i, o in enumerate(OUTCOMES)}
 EFFECT_COLUMNS = ("pass", "lead", "native-prompt", "operator", "deny", "not-replayable")
 EFFECT_SEVERITY = {o: i for i, o in enumerate(EFFECT_COLUMNS[:-1])}
 CLEAR_COLUMNS = ("pass", "lead", "supervisor-clearable", "own", "native-prompt", "operator", "deny", "not-replayable")
-CLEAR_CTX = {"stage": "stage", "teamlead": "teamlead", "supervisor": "supervisor"}
-TEMPLATE = {"advisor": "Advisor", "teamlead": "TeamLead", "supervisor": "Supervisor"}
 ACCEPTED = {"i-3273149c8b7b"}  # Operator decision d-5 in #322
 STUB_ADDRESS = "93.184.216.34"
 GIT_PUSH = re.compile(r"(?:^|[\s;&|(])git\b[^;&|\n]*\bpush\b")
@@ -106,7 +104,7 @@ class Evaluator:
         out = {}
         with open(os.path.join(self.root, ".claude", "settings.json"), encoding="utf-8") as fh:
             base = json.load(fh).get("permissions") or {}
-        for ctx, name in TEMPLATE.items():
+        for ctx, name in CTX_ROLE.items():
             p = os.path.join(self.root, ".claude", "team", "sessions", name + ".settings.json")
             try:
                 with open(p, encoding="utf-8") as fh:
@@ -123,8 +121,9 @@ class Evaluator:
         project = self.project_of(ctx, fixture)
         main = self.fx["main"] if ctx == "stage" else project
         self._env(ctx, project)
-        r = self.clear.clear_class(tool, ti, cwd or project, project, CLEAR_CTX.get(ctx, "advisor"), main,
-                                   None if ctx == "stage" else self.profiles.get(ctx if ctx in TEMPLATE else "advisor"))
+        cctx = ctx if ctx in ("stage", "teamlead", "supervisor") else "advisor"
+        r = self.clear.clear_class(tool, ti, cwd or project, project, cctx, main,
+                                   None if ctx == "stage" else self.profiles.get(ctx if ctx in CTX_ROLE else "advisor"))
         out["clearance"], out["clearance_class"] = r["result"], r["class_id"]
         out["clearance_reason"] = self.norm(str(r["reason"]))[:200]
         if r["result"] == "clearable":
@@ -178,7 +177,9 @@ class Evaluator:
         return fx
 
     def _env(self, ctx, project):
-        for k in ("TEAM_RUN_TEAM", "TEAM_SESSION_ROLE", "TEAM_RUN_ROLE", "HARNESS_MAIN"):
+        # The replaying session's plugin directories are no part of the replayed policy (#323).
+        for k in ("TEAM_RUN_TEAM", "TEAM_SESSION_ROLE", "TEAM_RUN_ROLE", "HARNESS_MAIN",
+                  "CLAUDE_CODE_PLUGIN_DIRS", "CLAUDE_CODE_PLUGIN_CACHE_DIR"):
             os.environ.pop(k, None)
         os.environ["CLAUDE_PROJECT_DIR"] = project
         if ctx == "stage":
@@ -363,8 +364,7 @@ class Evaluator:
             out["effect_outcome"] = eo
         # #323: touched-layer jobs only (the replay layer carries no labels the acceptance reads).
         if self.clear is not None and out.get("effect_outcome") in ("operator", "native-prompt") \
-                and "#" not in str(job.get("key")) and ctx != "solo" and tool in ("Bash", "WebFetch", "Edit", "Write",
-                                                                                     "MultiEdit", "NotebookEdit"):
+                and "#" not in str(job.get("key")) and ctx != "solo" and tool in self.clear.TOOLS:
             self.clearance(out, ctx, tool, ti, cwd, job.get("fixture"))
         out["guard"] = self.norm(out["guard"])
         out["decision"] = [out["guard"] or "", out["tier"], out["class"], out["cause"]]

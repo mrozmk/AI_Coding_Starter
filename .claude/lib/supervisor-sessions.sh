@@ -94,9 +94,9 @@ materialize() {
   mkdir -p "$d" && chmod 700 "$d"
   [ -f "$loc" ] || loc=/dev/null
   out="$d/$r.settings.json"
-  [ ! -f "$root/.agents/team/clearance.json" ] || seal="$(shasum -a 256 < "$root/.agents/team/clearance.json" | cut -d' ' -f1)"
+  . "$root/.claude/lib/team-clearance.sh" && seal="$(clearance_seal "$root")" || seal=off
   ( umask 077
-    jq -s --arg c "/$c*" --argjson kh "$kh" --arg r "$r" --arg m "$root" --arg s "${seal:-off}" '
+    jq -s --arg c "/$c*" --argjson kh "$kh" --arg r "$r" --arg m "$root" --arg s "$seal" '
       def subst: if type == "object" and (.command | type) == "string"
         then .command |= (gsub("\\{\\{MAIN\\}\\}"; $m) | gsub("\\{\\{SEAL\\}\\}"; $s)) else . end;
       (.[2] // {}) as $l | [.[0], .[1], $l] as $all
@@ -112,10 +112,7 @@ materialize() {
   # The launch rules' digest goes into the hook command (#323 R2-8): a profile replaced after the
   # launch, or a changed user or managed rule, gives the clearance hook no decision.
   if jq -e '[.hooks // {} | .[][] | .hooks[]? | .command // "" | test("\\{\\{RULES\\}\\}")] | any' "$out" >/dev/null 2>&1; then
-    rd="$(python3 -I "$root/.claude/hooks/lib/guard_team_egress_clear.py" rules-digest --project "$root" --rules "$out" --main "$root" 2>/dev/null)" || rd=unknown
-    ( umask 077
-      jq --arg d "${rd:-unknown}" '.hooks |= map_values(map(.hooks |= map(if (.command | type) == "string"
-        then .command |= gsub("\\{\\{RULES\\}\\}"; $d) else . end)))' "$out" | ss_put "$out" )
+    ( umask 077; clearance_fill_rules "$root" "$root" "$out" | ss_put "$out" )
   fi
   jq -r --arg r "$r" '"profile \($r): \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"

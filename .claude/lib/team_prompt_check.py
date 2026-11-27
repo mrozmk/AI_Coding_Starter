@@ -2,7 +2,7 @@
 
 Usage: team_prompt_check.py <clone> --input-json <file> [--main <main checkout>]   (the stage
          hook: {tool_name, tool_input, cwd} → `tier: class <name>|lead|operator — <cause>`, `retry: …`,
-         `batch: …`, `clearance: pass|hard|none|<class id>` (#323); 2 = unreadable)
+         `batch: …`, `clearance: pass|hard|none|undecided|clearable <class id>` (#323); 2 = unreadable)
        team_prompt_check.py [<root>] [--settings <file>]... [--block | --strict [--transcript <f>]
          [--classes [--report] [--main <main checkout>]]] < pane   (display, the class tests)
 Exit 0 = may be approved (no egress, nothing in the prompt matches an ask/deny rule of <root>'s settings or

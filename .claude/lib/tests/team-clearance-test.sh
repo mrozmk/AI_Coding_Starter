@@ -144,6 +144,11 @@ if want checker || want classes || want pass || want rules; then
     ok '[ "$CKR" = "$exp" ]' "#323 checker: $exp $ctx $tool $short (got ${CKR:-none: rc $CKRC $(head -c 200 "$T/ck.err")}; $(sed -n 's/^reason: //p' "$T/ck.out"))"
     [ -z "$label" ] || ok '[ "$CKR" = "$exp" ]' "$label"
   done < "$FX/inputs.txt"
+  # AC-8 and AC-7 by name (the plan's proofs name these cases in this file).
+  CK advisor Bash - '{"command":"curl -o f https://docs.python.org/3/"}'
+  ok '[ "$CKR" = none ]' "#323 pass: curl -o is not a pass"
+  CK asks WebFetch - '{"url":"https://docs.python.org/3/","prompt":"p"}'
+  ok '[ "$CKR" = hard ]' "#323 rules: project ask on WebFetch is hard"
 fi
 CLEAR="$MAIN/.claude/hooks/lib/guard_team_egress_clear.py"
 if want checker; then
@@ -165,9 +170,14 @@ if want checker; then
   cp "$MAIN/.claude/hooks/lib/clearance-classes.json" "$T/classes.keep"
   jq '.trusted_code -= [".claude/lib/team_transcript.py"]' "$T/classes.keep" > "$MAIN/.claude/hooks/lib/clearance-classes.json"
   python3 -I "$CLEAR" digest --main "$MAIN" > "$T/d2" 2>&1; d2rc=$?
+  # team-lib.sh loads it as `[ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"`.
+  jq '.trusted_code -= [".claude/lib/session-host-lib.sh"]' "$T/classes.keep" > "$MAIN/.claude/hooks/lib/clearance-classes.json"
+  python3 -I "$CLEAR" digest --main "$MAIN" > "$T/d3" 2>&1; d3rc=$?
   cp "$T/classes.keep" "$MAIN/.claude/hooks/lib/clearance-classes.json"
   ok '[ "$drc" = 0 ] && [[ "$d1" =~ ^1-[0-9a-f]{16}$ ]] && [ "$d2rc" = 1 ] && grep -q "team_transcript.py" "$T/d2"' \
     "#323 checker: an imported module missing from trusted_code fails closed ($d1; $(cat "$T/d2"))"
+  ok '[ "$d3rc" = 1 ] && grep -q "session-host-lib.sh" "$T/d3"' \
+    "#323 checker: a library sourced after || with a quoted dirname path fails closed ($(cat "$T/d3"))"
   # R2-8 / R3-1: a launch rule digest that differs, a missing profile, a foreign guard → no decision.
   rd="$(python3 -I "$CLEAR" rules-digest --project "$MAIN" --rules "$T/Advisor.settings.json")"
   CK advisor Bash - '{"command":"gh issue view 1"}' --launch-rules "$rd"; same="$CKR"
@@ -182,6 +192,18 @@ if want checker; then
   printf '{"permissions": {"ask": ["Bash(gh issue view*)"]}}\n' > "$T/cc/settings.json"
   CK advisor Bash - '{"command":"gh issue view 1"}'; us="$CKR"; rm -f "$T/cc/settings.json"
   ok '[ "$us" = hard ]' "#323 checker: an ask only in the user profile is hard ($us; $(sed -n 's/^reason: //p' "$T/ck.out"))"
+  # R3-1: hooks an enabled plugin brings — team-evidence.sh's inventory decides; unknown is no decision.
+  PG="$T/plug"; mkdir -p "$PG/mk/.claude-plugin" "$PG/quiet/.claude-plugin" "$PG/asker/.claude-plugin" "$PG/asker/hooks" "$T/cc/plugins"
+  printf '{"plugins": [{"name": "quiet"}, {"name": "asker"}]}\n' > "$PG/mk/.claude-plugin/marketplace.json"
+  printf '{"name": "quiet"}\n' > "$PG/quiet/.claude-plugin/plugin.json"; printf '{"name": "asker"}\n' > "$PG/asker/.claude-plugin/plugin.json"
+  printf '{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "ask.sh"}]}]}}\n' > "$PG/asker/hooks/hooks.json"
+  jq -n --arg m "$PG/mk" '{mk: {installLocation: $m}}' > "$T/cc/plugins/known_marketplaces.json"
+  jq -n --arg q "$PG/quiet" --arg a "$PG/asker" '{plugins: {"quiet@mk": [{installPath: $q}], "asker@mk": [{installPath: $a}]}}' > "$T/cc/plugins/installed_plugins.json"
+  plug() { printf '{"enabledPlugins": {"%s": true}}\n' "$1" > "$T/cc/settings.json"; CK advisor Bash - '{"command":"gh issue view 1"}'; rm -f "$T/cc/settings.json"; }
+  plug quiet@mk; pq="$CKR"; plug asker@mk; pa="$CKR"; pa_why="$(sed -n 's/^reason: //p' "$T/ck.out")"; plug ghost@mk; pg="$CKR"
+  ok '[ "$pa" = none ] && grep -q "plugin hooks not reproduced" <<<"$pa_why"' "#323 checker: a plugin with an asking PreToolUse hook gives no decision ($pa; $pa_why)"
+  ok '[ "$pq" = pass ]' "#323 checker: a hook-free plugin leaves the decision unchanged ($pq)"
+  ok '[ "$pg" = none ]' "#323 checker: an unresolvable plugin gives no decision ($pg)"
   CK advisor Bash - '{"command":"gh issue comment 5 --body x"}' --binding '{"session_id":"s","role":"Advisor"}'
   h1="$(sed -n 's/^hash: //p' "$T/ck.out")"
   CK advisor Bash - '{"command":"gh issue comment 5 --body x"}' --binding '{"session_id":"t","role":"Advisor"}'
@@ -474,11 +496,20 @@ if want stage; then
     "#323 stage: enforce allow is supervisor (cleared) ($(cat "$T/s1.out" "$T/s1.err" | head -c 300))"
   ok 'ls "$MAIN"/.agents/team/inbox/Supervisor/new/*-beta-clearance.md >/dev/null 2>&1 && grep -q "^Supervisor inbox: clearance beta" "$RINGS"' \
     "#323 stage: doorbell reaches the Supervisor inbox (from the clone cwd)"
+  echo deny > "$T/sup-verdict"; n0="$(grep -c 'authority supervisor (cleared)' "$RD/answers.md")"
+  sp Edit "$(jq -nc --arg f "$WT/README.md" '{file_path: $f, old_string: "starter", new_string: "starter (denied)"}')"; STO=90 SH s1d
+  ok '[ "$SHOUT" = deny ] && grep -q "Supervisor denied" "$T/s1d.out" && [ "$(grep -c "authority supervisor (cleared)" "$RD/answers.md")" = "$n0" ]' \
+    "#323 stage: a Supervisor deny writes no cleared answers.md line ($(cat "$T/s1d.out" | head -c 200))"
   echo none > "$T/sup-verdict"; a0="$(asks)"
   sp Edit "$(jq -nc --arg f "$WT/README.md" '{file_path: $f, old_string: "starter", new_string: "starter (unanswered)"}')"; SH s2
   ok '[ "$SHOUT" = deny ] && [ "$(asks)" = $((a0 + 1)) ] && jq -e ".tier == \"operator\"" "$AD/a-$((a0 + 1)).json" >/dev/null && grep -q "No Operator answer" "$T/s2.out"' \
     "#323 stage: no answer keeps the existing path (ask filed, tier operator)"
   kill "$SUPLOOP" 2>/dev/null; wait "$SUPLOOP" 2>/dev/null; SUPLOOP=""
+  rm -f "$MAIN/.sup-alive"; r0="$(reqs)"; a0="$(asks)"
+  sp Edit "$(jq -nc --arg f "$WT/README.md" '{file_path: $f, old_string: "starter", new_string: "starter (no supervisor)"}')"; SH s2b
+  ok '[ "$(reqs)" = "$r0" ] && [ "$(asks)" = $((a0 + 1)) ]' \
+    "#323 stage: no live Supervisor files no clearance request (reqs ${r0} to $(reqs), asks ${a0} to $(asks))"
+  touch "$MAIN/.sup-alive"
   WTE3="$(jq -nc --arg f "$WT/README.md" '{file_path: $f, old_string: "starter", new_string: "starter (shadow)"}')"
   CL pause; s0="$(shadows)"; r0="$(reqs)"; a0="$(asks)"; sp Edit "$WTE3"; SH s3
   ok '[ "$(shadows)" = $((s0 + 1)) ] && [ "$(lastshadow)" = would-clear ] && [ "$(asks)" = $((a0 + 1)) ] && [ "$(reqs)" = "$r0" ]' \
@@ -529,6 +560,15 @@ if want T3; then
   L "$A" --allow --authority delegated --decision "$DDIR/$D1.md" --why "Supervisor (delegated)"; wait "$HP"
   ok '[ "$TMRC" = 0 ] && [ "$o1" = 0 ] && grep -qx "delegate: supervisor" "$DDIR/$D1.md" && grep -q "^$D1 pending \[delegated to the Supervisor\]" <<<"$lst" && [ "$s1" = 0 ] && [ "$(j "$T/t1.out" .hookSpecificOutput.decision.behavior)" = allow ]' \
     "#323 T3: ask-kind egress delegable — open, mandate routing, delegated answer, delivery ($(head -c 200 "$T/tm.out") | $(head -c 200 "$T/sd.out") | $(head -c 200 "$T/l.out"))"
+  # A guard the checker does not reproduce leaves no egress-only proof: `clearance: undecided`.
+  CSL="$CLONE/.claude/settings.local.json"; [ ! -f "$CSL" ] || cp "$CSL" "$T/csl.keep"
+  printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 -I /x/permission_probe.py hook"}]}]}}' > "$CSL"
+  jq -c '{tool_name, tool_input, cwd}' "$T/sp-t1.json" > "$T/t1-in.json"
+  python3 -I "$MAIN/.claude/lib/team_prompt_check.py" "$CLONE" --input-json "$T/t1-in.json" --main "$MAIN" > "$T/t1-check.out" 2>&1
+  if [ -f "$T/csl.keep" ]; then mv "$T/csl.keep" "$CSL"; else rm -f "$CSL"; fi
+  eo() { (cd "$MAIN" && . .claude/lib/team-mandate.sh && mandate_egress_only "$1"); }
+  ok 'grep -qx "clearance: undecided" "$T/t1-check.out" && ! eo "$(cat "$T/t1-check.out")" && ! eo "$(printf "batch: eligible\nclearance: hard")" && eo "$(printf "batch: eligible\nclearance: none")" && eo "$(printf "batch: eligible\nclearance: clearable public-get-long")" && ! eo "$(printf "batch: no\nclearance: none")"' \
+    "#323 T3: a guard the checker does not reproduce is not delegable ($(tr '\n' ' ' < "$T/t1-check.out" | head -c 300))"
   sp Bash '{"command":"gh pr merge 3"}'; cp "$T/sp.json" "$T/sp-t2.json"
   (cd "$CLONE" && env CLAUDE_PROJECT_DIR="$CLONE" TEAM_ASK_TIMEOUT=60 bash "$MAIN/.claude/hooks/team-ask-hook.sh" < "$T/sp-t2.json" > "$T/t2.out" 2> "$T/t2.err") & HP=$!
   A="a-$(( $(asks) + 1 ))"; i=0; while [ ! -e "$AD/$A.json" ] && [ "$i" -lt 100 ]; do sleep 0.2; i=$((i + 1)); done

@@ -423,7 +423,7 @@ def input_tier(c, root, main, extra, path):
     """team_prompt_check.py --input-json: the tier line of one structured permission
     ({tool_name, tool_input, cwd}), a second line `retry: <key>|none` (retry_key, operator tier
     only), a third `batch: eligible|no` (tier_full: an egress-only operator tier, #322) and a fourth
-    `clearance: pass|hard|none|<class id>` (input_clearance, operator tier only; #323), or None when
+    `clearance: pass|hard|none|undecided|clearable <class id>` (input_clearance, operator tier only; #323), or None when
     the file cannot be read."""
     parts = input_tier_parts(c, root, main, extra, path)
     if parts is None:
@@ -439,8 +439,8 @@ def input_tier(c, root, main, extra, path):
 def input_clearance(root, main, path):
     """#323 carrier B: the clearance checker (guard_team_egress_clear.clear_class, ctx stage, the
     clone's stage-hooks settings as the launch profile) on this structured request → pass | hard |
-    none | the class id; hard when the checker is missing or fails. Imported lazily: lines 1-3 never
-    depend on it."""
+    none | undecided (the checker may not decide: R3-1/R2-8) | `clearable <class id>`; hard when the
+    checker is missing or fails. Imported lazily: lines 1-3 never depend on it."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -449,7 +449,10 @@ def input_clearance(root, main, path):
         r = guard_team_egress_clear.clear_class(data.get("tool_name"), data.get("tool_input") or {},
                                                 data.get("cwd") or root, root, "stage", main,
                                                 rules if os.path.isfile(rules) else None)
-        return r["class_id"] if r["result"] == "clearable" else r["result"]
+        if r["result"] == "clearable":
+            return "clearable " + r["class_id"]
+        # No decision (a guard the checker does not reproduce, changed rules) is no egress-only proof.
+        return "undecided" if r["result"] == "none" and str(r["reason"]).startswith("no decision") else r["result"]
     except Exception:  # noqa: BLE001 — never a clearance from a failure
         return "hard"
 

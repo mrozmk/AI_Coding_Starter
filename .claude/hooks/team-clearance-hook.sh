@@ -95,14 +95,10 @@ out="$(clearance_classify "$MAIN" "$TMPF" "$WHO")" || exit 0
 res="$(sed -n 's/^result: //p' <<<"$out")"; cls="$(sed -n 's/^class: //p' <<<"$out")"
 [ -n "$res" ] || exit 0
 MODE="$(clearance_mode "$HOST" "$SEAL" "$MAIN")"
-WHAT="$TOOL: $(jq -r '.tool_input.command // .tool_input.url // .tool_input.file_path // .tool_input.notebook_path // ""' "$TMPF" | head -n 1 | cut -c1-160)"
+WHAT="$(clearance_what "$TMPF")"
 logline() {  # logline <kind> <result> [<id>] [<answer>]
-  local lv; lv="$(clearance_list_version "$MAIN" || echo unknown)"
-  clearance_log "$MAIN" "$1" "${ROLE:-session} $SID" "$WHAT" "${4:-}" "$(jq -nc --arg r "$2" --arg c "$cls" --arg v "$lv" \
-    --arg h "$HOST" --arg id "${3:-}" --arg rh "$(jq -r '.request_hash // ""' "$(clearance_dir "$MAIN")/requests/${3:-none}.json" 2>/dev/null)" \
-    --arg a "$([ "$1" = cleared ] && echo "supervisor (cleared)")" \
-    '{result: $r, class: $c, list_version: $v, host: $h} + (if $id == "" then {} else {id: $id, request_hash: $rh} end)
-      + (if $a == "" then {} else {authority: $a} end)')"
+  clearance_log "$MAIN" "$1" "${ROLE:-session} $SID" "$WHAT" "${4:-}" \
+    "$(clearance_entry "$MAIN" "$2" "$cls" "$HOST" "${3:-}" "$([ "$1" = cleared ] && echo "supervisor (cleared)")")"
 }
 shadow_of() { case "$res" in pass) echo would-pass ;; clearable) [ "$CTX" = supervisor ] && echo own || echo would-clear ;; *) echo "$res" ;; esac; }
 if [ "$MODE" != enforce ]; then
@@ -115,8 +111,7 @@ case "$res" in
   *) exit 0 ;;
 esac
 if [ "$CTX" = supervisor ]; then logline shadow own; exit 0; fi
-[ -f "$MAIN/.agents/team/registry/Supervisor.json" ] || exit 0
-bash "$LIB/session-host.sh" alive Supervisor --main "$MAIN" >/dev/null 2>&1 || exit 0
+clearance_supervisor_live "$MAIN" || exit 0
 id="$(clearance_open "$MAIN" "$TMPF" "$WHO")" && [ -n "$id" ] || exit 0
 clearance_ring "$MAIN" "$id" "$([ -n "$TEAM" ] && echo "$TEAM" || echo "${ROLE:-adhoc-session}")"
 v="$(clearance_wait "$MAIN" "$id" $(( ENTRY + WAIT )) "$TMPF")"

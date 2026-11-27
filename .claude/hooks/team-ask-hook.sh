@@ -9,7 +9,7 @@
 #   plain-text stop) · PreToolUse Edit|Write|MultiEdit|NotebookEdit → the asks/ and decisions/
 #   write guard (#322: also settings and role profiles, and .claude/hooks outside the clone and its
 #   run's starter worktree; #323: also the clearance ledger). #323 carrier B (clearance_stage,
-#   team-ask-batch.sh): a Supervisor-clearable operator-tier permission goes to the Supervisor first.
+#   team-ask-batch.sh): a clearable operator-tier permission → the Supervisor; allow = supervisor (cleared).
 # The ask branches fail open (exit 0, no output: the normal prompt shows); the write guard fails
 # closed (exit 2, registered with onFailure: block). TEAM_ASK_TIMEOUT = the registration's timeout;
 # the hook answers by its own deadline 15 s before it.
@@ -487,8 +487,8 @@ case "$EV:$TOOL" in
         && batch_claim; then
       exit 0
     fi
-    CLEARANCE="$(sed -n 's/^clearance: //p' <<<"$out")"  # #323 carrier B: a class id has a hyphen
-    if [ "$tier" = operator ] && [[ "$CLEARANCE" =~ ^[a-z]+(-[a-z]+)+$ ]] && ! stopped && clearance_stage "$CLEARANCE"; then
+    CLEARANCE="$(sed -n 's/^clearance: //p' <<<"$out")"  # #323 carrier B: `clearable <class id>`
+    if [ "$tier" = operator ] && [ "${CLEARANCE%% *}" = clearable ] && ! stopped && clearance_stage "${CLEARANCE#clearable }"; then
       exit 0
     fi
     handle permission "$(cat "$TMP.in")" "$tier" "$cause" ;;

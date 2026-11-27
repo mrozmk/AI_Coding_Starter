@@ -515,7 +515,7 @@ Each entry answers once. `team-lead.sh decision revoke <team> d-<n> --why "<line
 Supervisor) ends the remaining entries.
 
 **Supervisor clearance — carrier B (#323).** After the batch match found nothing, an operator-tier
-permission whose checker line `clearance:` names a Supervisor-clearable class (public-get-long,
+permission whose checker line reads `clearance: clearable <class>` — a Supervisor-clearable class (public-get-long,
 lockfile-install, gh-own-repo-write, starter-worktree-edit, inline-code-no-io —
 [security-egress.md](security-egress.md) → Supervisor clearance) goes to the Supervisor first, and
 only when no earlier ask of this session for this very request has an answer waiting (that answer
@@ -826,8 +826,9 @@ decision in plain text and the Operator types the reply.
   **Class** (`mandate_ask_class`): only a lead-tier ask, by the decision's `touch_reason`
   (`no-rule`, `lead-unsure`): a question, a plan, or a permission the main checkout's checker, run
   then on the request, tiers `lead` — or (#323 T3) tiers `operator — egress: …` with `batch:
-  eligible` (the egress is its only cause) and a `clearance:` line that is not `hard`: an
-  `ask`-kind egress is delegable, a hard egress class never. For such an ask the lead's
+  eligible` (the egress is its only cause) and a `clearance:` line of `pass`, `none` or
+  `clearable <class>` (never `hard`, never `undecided` — a guard or plugin hook the checker does
+  not reproduce): an `ask`-kind egress is delegable, a hard egress class never. For such an ask the lead's
   `decision open … --reason no-rule|lead-unsure` is accepted only when the main checkout's checker
   verifies it at open (exit 2 otherwise: "an operator-tier ask stays human-only unless its only cause
   is a non-hard egress"); without a reason an operator-tier ask keeps `human-only`, and an explicit
