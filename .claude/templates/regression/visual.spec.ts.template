@@ -1,0 +1,20 @@
+// Regression visual spec — copied by /setup:regression (Visual stage) to `visual.spec` (never over an
+// existing file). Placeholders:
+//   <fixtures-relative>            the path from this file to the regression fixtures (the extended,
+//                                  guarded test — never '@playwright/test'), e.g. '../fixtures'
+//   <guard-module-relative>        the path from this file's directory to .claude/lib/regression/guard.mjs
+//   <visual-spec-module-relative>  the same for .claude/lib/regression/visual-spec.mjs
+// The tests are declared HERE, not in the synced helper: `testInfo.file` is the file that declares a
+// test, and the guarded fixture refuses a test whose file is not the run's selected spec. One test per
+// target (route or story); the run manifest lists the targets, renderTarget renders and records them.
+import { test, expect } from '<fixtures-relative>';
+import { loadRunManifest } from '<guard-module-relative>';
+import { visualTargets, renderTarget } from '<visual-spec-module-relative>';
+
+const manifest = loadRunManifest();
+
+for (const t of visualTargets(manifest)) {
+  test(`${t.id} — ${t.title}`, async ({ page, browser }, testInfo) => {
+    await renderTarget({ page, browser }, testInfo, t, expect, manifest);
+  });
+}

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "catalog": {
+    "path": ".agents/regression/scenarios",
+    "areas": { "CART": "Cart", "PDP": "Product page" },
+    "id_pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{3}$",
+    "smoke": ["P0"]
+  },
+  "runner": {
+    "config": "e2e/playwright.config.ts",
+    "spec_dir": "e2e/regression",
+    "devices": { "desktop": "desktop-chrome", "mobile": "mobile-safari" },
+    "commands": {
+      "smoke": "node fake-runner.mjs green attest-all 0",
+      "full": "node fake-runner.mjs green attest-all 0"
+    },
+    "report": "e2e/.results/report.json",
+    "test_data": {
+      "check": "e2e/test-data/adapter.sh check",
+      "provision": "e2e/test-data/adapter.sh provision",
+      "reset": "e2e/test-data/adapter.sh reset",
+      "session": "e2e/test-data/adapter.sh session"
+    }
+  },
+  "visual": {
+    "config": "e2e/visual/visual.config.ts",
+    "spec": "e2e/visual/visual.spec.ts",
+    "command": "node fake-visual-runner.mjs same",
+    "report": "e2e/.results/visual-report.json",
+    "baselines": "e2e/visual-baselines",
+    "policy": "warn",
+    "routes": [
+      { "id": "home", "path": "/", "title": "Home page", "devices": ["desktop", "mobile"] },
+      { "id": "cart", "path": "/cart", "title": "Cart", "devices": ["desktop"] }
+    ]
+  },
+  "default_env": "test",
+  "environments": {
+    "test": {
+      "host": "https://test.shop.example.com",
+      "kind": "test",
+      "writes": "allowed",
+      "workers": 2,
+      "means": ["account:shopper", "payment:sandbox"]
+    },
+    "prod": {
+      "host": "https://shop.example.com",
+      "writes": "declared",
+      "means": ["account:shopper"],
+      "guard": {
+        "operations": {
+          "sign-in": { "method": "POST", "url": "^https://shop\\.example\\.com/account/login$" },
+          "price-call": { "method": "GET", "url": "^https://shop\\.example\\.com/api/price", "cost": 1, "backend_calls": 4 },
+          "price-unbounded": { "method": "GET", "url": "^https://shop\\.example\\.com/api/stock", "cost": 1 }
+        },
+        "rpc": [{ "url": "/graphql$", "mutating": "\\bmutation\\b" }],
+        "budget": 50
+      }
+    }
+  }
+}

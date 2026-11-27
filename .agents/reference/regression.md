@@ -21,7 +21,7 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 | **Deterministic run** | The only judge: a configured command plus a JSON report. | Against a deployed environment, by hand. |
 | **Author** | Writes a spec per READY scenario without one. | Against the environment, by hand. |
 | **Heal** | Repairs a red spec behind a mechanical never-weaken check. | Against the environment, after a red run. |
-| **Visual** | Screenshot baselines, part of the baseline and the full run. | Against the environment. |
+| **Visual** | Screenshot baselines per environment, compared in `run full` and `visual compare`; written only by `visual accept` (§13). | Against the environment. |
 | **Explore** | Optional, never a gate. | Against the environment. |
 
 ## 3. Invariants
@@ -56,7 +56,9 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 | `/regression-tests author` | A spec per READY scenario without one; the `Spec` field written back. | (not yet shipped) |
 | `/regression-tests run [smoke\|full] [--env <name>]` | A per-machine run record for one environment and one build (§12). | yes |
 | `/regression-tests status` | The catalog status matrix and the newest run record per environment. | yes |
-| `/regression-tests heal`, `visual` | Repairs, baselines. | (not yet shipped) |
+| `/regression-tests heal` | Repairs. | (not yet shipped) |
+| `/regression-tests visual compare \| update` | The visual lane on its own; `update` offers new baselines that only a human's `Accept baselines` writes (§13). | yes |
+| `/setup:regression`, Visual stage | The `visual` section; the visual config and spec from the templates. | yes |
 | `/release` | The release gate: a green full record from a test environment for the exact build. | (not yet shipped) |
 
 ## 5. The config switch
@@ -78,6 +80,15 @@ the repo root), `environments.<name>` (`host`: an `http(s)://` URL without crede
 `pacing`, `guard`, `consent`, `build_sha_url` of §10; unknown keys are accepted for forward
 compatibility), and the optional top-level `default_env` (it may name only a `kind: test`
 environment).
+
+The optional `visual` section (§13) turns the visual lane on: `config`, `spec`, `command`, `report`,
+`baselines` (required, repo-relative), `policy` (`warn` default | `block`), `tolerance` (`threshold`
+0.2, `max_diff_pixels` 0), `max_mask_ratio` (0.25), `timezone` (`UTC`), `mask` (`[]`), `routes`
+(`id`, `path`, `title`, `devices` default both, `mask`, `full_page`, `wait_for`) and `storybook`
+(`<env>: {url, ready, error?, exclude_tags?, build_sha_url?}` — allowed only on a `kind: test`
+environment, its host on that environment's `guard.hosts`). With it, environment keys and runner
+project names must be disk-safe (`[A-Za-z0-9-]`, unique case-insensitively) and no runner command
+may set `--output`/`-o`.
 
 ## 6. Scenario block
 
@@ -169,14 +180,19 @@ node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--stat
   exit 0 valid (or not adopted) · 1 validation errors · 2 usage / unreadable or invalid config
 node .claude/lib/regression/setup.mjs catalog  [--root <dir>] --areas CODE=Name,… [--path <dir>] [--smoke P0,…]
 node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file, relative to --root>
+node .claude/lib/regression/setup.mjs visual   [--root <dir>] --fragment <json file, relative to --root>
 node .claude/lib/regression/setup.mjs check    [--root <dir>]
 node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
   exit 0 ok / nothing missing · 1 something missing / refused write · 2 usage / invalid config
-node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full] [--json] [--root <dir>]
+node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full|visual] [--action compare|update] [--json] [--root <dir>]
   exit 0 ok (or not adopted) · 2 usage / config / invalid catalog / no target
 node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]
-  exit 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established ·
-  3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
+node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]
+  exit 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established /
+  visual not configured / widened tolerance · 3 refused (visual update: acceptance required) ·
+  4 INCOMPLETE · 5 BLOCKED/ENV
+node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]
+  exit 0 written · 2 usage / config · 3 refused
 node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]
   exit 0
 ```
@@ -196,7 +212,7 @@ node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>
   written = scenarios not `DROPPED`; automated = written scenarios whose state is `verified`.
 - `setup.mjs` is the only writer of `regression.json`: `catalog` never overwrites an existing file;
   `baseline` adds each absent section of `runner` / `environments` and never alters an existing
-  key; `check` is static (never runs an adapter command, never reaches the network) and lists, one
+  key; `visual` adds an absent `visual` section the same way (baseline established first); `check` is static (never runs an adapter command, never reaches the network) and lists, one
   line per gap: config, catalog, the runner section and its files, environments and their hosts,
   the `test_data` program files (`<path> …` — an executable file — or `<interpreter> <script> …` with
   `node`, `bash`, `sh`, `python3`, `npx`), the `.mcp.json` pin.
@@ -367,6 +383,10 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
    consent, a nonce), the stale report is deleted, the configured command runs in its own process
    group with `REGRESSION_RUN`, `REGRESSION_ENV`, `REGRESSION_ENV_KIND`, `REGRESSION_BASE_URL`; the
    build SHA is read again. Zero selected cases skip the runner (`RED`, `zero executed cases`).
+   With `visual` configured, `run full` runs the visual compare pass (§13) after the functional one
+   — unless that pass stopped or was interrupted — inside the same locks and directory, and the
+   closing build read follows the visual pass. Every run with `visual` configured first refuses
+   overlapping baselines (§13) and digests the baselines tree at every runner boundary.
 6. **Verdict** from the report and `guard.jsonl` only, by precedence **BLOCKED/ENV > RED >
    INCOMPLETE > GREEN**:
    - `BLOCKED/ENV` — a guard stop; on production a missing case or session attestation.
@@ -385,7 +405,9 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
    head_sha` (informational) `, build_sha, build_sha_after, build_sha_source, runner_exit,
    report_errors, digests, devices, command, versions{node, runner}, confirmed, cases[{id, project,
    result, duration_ms}], orphans, outside_selection, not_run_policy, no_device, guard{attested,
-   blocked, budget, stop}, counts, verdict, reasons, exit`. No model output and no runner free
+   blocked, budget, stop}, counts, visual, verdict, reasons, exit` — `visual` is the §13 block,
+   `null` when the lane did not run (`run smoke`), `{integrity: [...]}` when it did not run but
+   the baselines changed. No model output and no runner free
    text: statuses, ids, titles, durations, digests, SHAs, URLs reduced to origin + path.
    `.agents/regression/runs/` is **per machine** and ignores itself (its `.gitignore` holds `*`);
    it is never committed and never synced.
@@ -393,5 +415,85 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
 
 Exit codes: `0` GREEN · `1` RED · `2` usage / config / invalid catalog / baseline not established ·
 `3` refused (team clone, lock held, not guard-integrated, confirmation required or invalid) · `4`
-INCOMPLETE · `5` BLOCKED/ENV. `status` prints the newest record per environment (`env verdict
-build_sha ended_at run_id`, or `no run recorded on this machine`), exit 0.
+INCOMPLETE · `5` BLOCKED/ENV. `status` prints the newest record per environment and mode
+(`smoke`, `full`, `visual` — `env mode verdict build_sha ended_at run_id`, or `<env> no run recorded
+on this machine`), exit 0: a green visual record never hides a red full run.
+
+## 13. The visual lane
+
+Screenshots of configured routes and, on a `kind: test` environment, Storybook stories, compared
+against **that environment's own accepted baselines** under the renderer that produced them.
+Comparison across environments is not claimed. Recipe: `.claude/skills/regression/references/visual.md`.
+
+**Sources.** One interface (`visual.mjs` `SOURCES`, `enumerate(ctx)` → `{state, targets, skipped,
+index_digest}`): `routes` (the `visual.routes`, expanded by `policy.mjs` `visualPlan` — the confirmed
+production cases are exactly the manifest's) and `storybook` (`<url>/index.json` read through
+`guardedFetch`; v4+ `entries` or v3 `stories`; stories only; `exclude_tags` dropped; ids outside
+`[a-z0-9-]` skipped). An unreachable or unknown index, or zero eligible stories, is a `failed`
+source: no targets, and its baselines are never orphans or removals. Targets are `route:<id>` /
+`story:<id>`, the image `<source>--<id>.png`, rendered on every runner project of their devices; a
+device without a runner project is `not run — no device` and keeps its baselines.
+
+**Layout.** `<baselines>/<env>/<project>/<file>` plus `<baselines>/<env>/index.json` (schema 1:
+`tolerance`, `renderers{project: fingerprint}`, `images{"<project>/<file>": {sha256, run_id,
+build_sha, stability, masked_ratio, renderer}}`). Per pass the run directory holds
+`visual/<pass>/{manifest.json, output/}` plus `expected/` (compare — a **copy** of the baselines)
+or the shared `visual/capture/candidates/` (capture, stability); evidence `visual.jsonl`; offer
+`visual/offer.json`. The visual config collects exactly the configured spec; the manifest owns the
+update mode (`all` on capture only, else `none`), repeats, output directory, snapshot path,
+workers and retries — the config refuses those flags in `visual.command`.
+
+**Evidence.** The worker (`visual-spec.mjs` `renderTarget`) writes one renderer line per worker and
+project and exactly one outcome line per target × project × repeat: `{pass, id, project, file,
+repeat, retry, test, outcome, diff_pixels, masked_ratio, reason, diff}`, `outcome` ∈ `same |
+differs | missing | captured | error`. `differs` needs comparison evidence in the matcher's
+diagnostic block (pixel count or size mismatch); any other matcher failure, a non-2xx navigation, a
+story not ready / showing its error / rendering nothing, a mask over `max_mask_ratio` (the union of
+the masked boxes) and an unstable render are `error`. The classifier joins every outcome to the
+report entry and to the guard `installed` event **of the same pass** by test id.
+
+**Verdict, in this order, under both policies first:** the §12 guard verdict over every pass — a
+stop or, on production, a missing attestation → `BLOCKED/ENV`; a guard-aborted request in a visual
+test or a blocked request outside a test → `RED`. Then the policy: differences (`differs`,
+`missing`, `orphan`) → a `warning:` under `warn`, `RED` under `block`; an incomplete pass (errors,
+`not-comparable`, no outcome, a failed source, a missing report, a non-zero runner exit with no
+difference, a test-environment attestation gap) → a warning under `warn`, `INCOMPLETE` under
+`block`. **Integrity reasons are `INCOMPLETE` under both:** a baseline whose sha256 differs from the
+index (that target is an `error`, never `differs`), a PNG not in the index, an index key outside
+the tree, a symlink, an interrupted accept, `baselines changed during the run (<pass>)`. A
+standalone `visual compare` that compared nothing is `INCOMPLETE`; a build unknown or changed is
+`INCOMPLETE`.
+
+**Renderer.** A fingerprint per project: browser and version, Playwright, platform, OS major, arch,
+a digest of the OS font listing, `host | container`. An image whose stored renderer differs from
+this run's is `not-comparable`. Each project prints `visual portability: <project>: <baselines'
+renderer> — this run same | differs in <fields>`.
+
+**Disjointness.** Before any token, lock, report deletion or runner: the baselines (resolved,
+nearest existing ancestor) must not overlap `runner.report`, `visual.report`, the functional
+Playwright `outputDir` (the `test-results` defaults beside the config and the nearest
+`package.json`, any literal `outputDir`; `runnerOptions(…).outputDir` or a variable bound to
+`runnerOptions(…)` in the same file is the run directory; any other non-literal is refused) or the
+runs directory —
+else exit 3. The tolerance may never be wider than the accepted index's (or the defaults): exit 2.
+
+**Update, offer, accept.** `visual update` runs a capture pass (`updateSnapshots: all` into the
+candidates) and a stability pass (three read-only comparisons against the candidates, zero
+retries). A candidate is offered only when it was captured, passed and attested, the three repeats
+were each `same`, passed and attested, its bytes did not change after capture, the build was read
+known and unchanged before and after, the guard found nothing, no integrity reason exists and —
+for a story — the Storybook `build_sha_url` read the same build before and after. The offer
+(`new | changed | unchanged | remove | unstable | error`) is printed line by line with a single-use
+token (`acceptance-required:`, 30 minutes, `.agents/regression/runs/.confirm/visual-<env>.json`)
+bound to the run, the offered index, the candidate hashes and the baselines tree; exit 3.
+`visual accept --run <id> --token <t>` takes the checkout lock, recomputes the digest, stages the
+next tree beside `<env>` (`.<env>.staging-<run>`), verifies it byte by byte, then swaps by two
+renames (`<env>` → `.<env>.previous-<run>`, staging → `<env>`). It sends no request and renders
+nothing. An interruption leaves a sibling the next run reports with its recovery.
+
+**The human gate.** `/regression-tests` passes the token to `visual accept` only after an `Accept
+baselines` answer in the same turn — conversational, like the production confirmation. The writer
+cannot prove a human answered; what holds is: compare reads a copy, only `visual accept` writes
+under `visual.baselines` and only with a token `visual update` issued, the tree is digested at
+every runner boundary, and the index's sha256 per file turns a hand-copied PNG into an integrity
+reason. No command widens a tolerance: a human edits `index.json` in a reviewed commit.

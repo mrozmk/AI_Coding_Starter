@@ -419,6 +419,15 @@ test('attributes a context created inside a test to that test', async () => {
   assert.equal(events(m, 'blocked').at(-1).test, null, 'outside an active test');
 });
 
+test('installGuard records the visual pass on the installed event', async () => {
+  const visual = { ...manifest({ kind: 'test' }), visual: { pass: 'stability' } };
+  await installGuard(fakeContext(), visual, { testInfo: { testId: 'v-1', title: 'route:home — Home', project: { name: 'desktop-chrome' } } });
+  assert.deepEqual(events(visual, 'installed').map((e) => [e.test, e.id, e.project, e.pass]), [['v-1', 'route:home', 'desktop-chrome', 'stability']]);
+  const functional = manifest({ kind: 'test' });
+  await installGuard(fakeContext(), functional, { testInfo: { testId: 'f-1', title: 'CART-001 — Open', project: { name: 'desktop-chrome' } } });
+  assert.equal(events(functional, 'installed')[0].pass, null, 'a functional pass records null');
+});
+
 // ---------------------------------------------------------------------------------------------
 // Locks (owner protocol)
 

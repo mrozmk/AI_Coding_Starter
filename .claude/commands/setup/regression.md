@@ -1,6 +1,6 @@
 ---
 description: Switch regression on in this project — the catalog stage writes .claude/regression.json, the baseline stage adds the runner and environments and copies the runner templates; --check lists what the foundation still lacks
-argument-hint: "[--check]"
+argument-hint: "[--check | --visual]"
 allowed-tools: Bash(node .claude/lib/regression/setup.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(jq:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Read, Write, Edit
 ---
 
@@ -11,7 +11,8 @@ allowed-tools: Bash(node .claude/lib/regression/setup.mjs:*), Bash(node .claude/
 Runs in the project's repo root. Contract: [.agents/reference/regression.md](../../../.agents/reference/regression.md)
 (the switch, the scenario block, the scripts); adapter contract:
 [.agents/reference/regression-test-data.md](../../../.agents/reference/regression-test-data.md).
-`--check` → run only Step 0's `setup.mjs check`, print its lines, stop.
+`--check` → run only Step 0's `setup.mjs check`, print its lines, stop. `--visual` → jump to the
+Visual stage.
 
 ## Guardrails (absolute)
 
@@ -85,6 +86,32 @@ jq 'keys' .claude/regression.json
 5. The test-data adapter (`check | provision | reset | session`) is project code: point at
    `regression-test-data.md` for what each `test_data` command must do; `check` lists the ones whose
    program file is still missing.
+
+## Visual stage
+
+Optional; precondition: the baseline is established (`setup.mjs visual` refuses otherwise). Recipe:
+`.claude/skills/regression/references/visual.md`; contract: regression.md §13.
+
+1. Ask (one `AskUserQuestion`): the routes (id `[a-z0-9-]`, path, title, devices), the selectors of
+   volatile regions to mask (prices, promotions, stock, banners — with a reason each; never `html`,
+   `body`, `:root`, `*`), and the asset CDN hosts the pages load. Those hosts belong in
+   `environments.<n>.guard.hosts` — `setup.mjs` never alters an existing environment, so name the
+   exact lines for the user to add by hand.
+2. Copy `visual.config.ts.template` → `<e2e>/visual/visual.config.ts` and `visual.spec.ts.template`
+   → `<e2e>/visual/visual.spec.ts`, **only when the target is absent**, and fill their placeholders
+   (the module paths are relative to the copied file's directory: `<e2e>/visual/…` →
+   `../../.claude/lib/regression/guard.mjs`; `<fixtures-relative>` → `../fixtures`).
+3. Build the `{ "visual": … }` fragment (shape: `.claude/regression.json.example`, `policy: "warn"`
+   unless the user chose `block`; `storybook` only for a `kind: test` environment) and write it with
+   the Write tool to the session scratchpad, then:
+
+   ```bash
+   node .claude/lib/regression/setup.mjs visual --fragment <scratchpad>/visual-fragment.json
+   node .claude/lib/regression/setup.mjs check
+   ```
+
+4. Next step for the user: `/regression-tests visual update` → review the candidates → `Accept
+   baselines` → `/commit`.
 
 ## Report
 
