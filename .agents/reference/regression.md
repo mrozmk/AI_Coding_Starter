@@ -521,7 +521,8 @@ with its `/regression-tests author --area <codes>` line.
   disqualifies every case of it; exit 1 with an identified failed case is explained, so a passing
   sibling goes on. `verify.json`: the passes, and per scenario `spec_sha256`, `inputs_sha256`
   (the lint closure), `block_sha256` (its catalog text), `projects`, `qualified`, `passes_ok`,
-  `reason`, `context` (the failed results' attachments); `guard` aggregates every pass's nonce.
+  `reason`, `context` (the failed results' attachments, copied to `<run dir>/context-<n>/` before the
+  next pass's runner cleans its output); `guard` aggregates every pass's nonce.
 - **The critic** (`@regression-critic`): per `Expected` clause the assertion that would fail if the
   clause were false, or an accepted `// regression-unobservable:` line; at most two rounds, each
   re-verified, at most four verify rounds in total. `--from-qa` adds the provenance pass

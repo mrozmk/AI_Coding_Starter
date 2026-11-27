@@ -24,7 +24,7 @@ The template is `.claude/templates/regression/spec-header.ts.template`.
 
 ## Locators
 
-Role › test id › label (› placeholder, for an input without a label): `getByRole`, `getByTestId`,
+Locator order: role › test id › label (› placeholder, for an input without a label): `getByRole`, `getByTestId`,
 `getByLabel`, `getByPlaceholder`. No CSS selector (`.locator('…')`, `$(…)`, `$$(…)`, `$eval`), no
 XPath (`xpath=`). An accessible name that is UI copy is resolved through the app's i18n catalogue —
 a lookup helper reading the locale file — never a hard-coded translated string.

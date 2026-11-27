@@ -39,6 +39,8 @@ function fakeDocument(pageUrl, facts = {}) {
 /**
  * A fake page over `site` (`{<path[?query][#hash]>: {status, final?, facts?, aria?, error?, blocked?}}`).
  * On production it records the guard's `navigation` event and keeps the first URL (a collapsed redirect).
+ * An entry with `sameDocument: true` is a hash-only change as Playwright reports it: no request (no
+ * guard event), `goto` returns null, the page lands on the client-side route (`final`, else the URL).
  */
 function fakePage(site, manifest) {
   const ledger = createLedger(manifest.run_dir, { nonce: manifest.nonce });
@@ -53,12 +55,17 @@ function fakePage(site, manifest) {
       if (s.error) throw new Error(s.error);
       if (s.blocked) ledger.record({ kind: 'blocked', reason: s.blocked, method: 'GET', url, op: null, test: TEST_ID });
       const finalUrl = new URL(s.final ?? `${u.pathname}${u.search}${u.hash}`, url).href;
+      if (s.sameDocument) { cur = { url: finalUrl, s }; return null; }
       if (production) ledger.record({ kind: 'navigation', url, final: reduceUrl(finalUrl), status: s.status, hops: s.final ? 2 : 1, test: TEST_ID });
       cur = { url: production ? url : finalUrl, s };
       return { status: () => s.status };
     },
     url: () => cur.url,
-    async evaluate(fn) { return fn(fakeDocument(cur.url, cur.s.facts)); },
+    async evaluate(fn) {
+      // `blockedLate`: the page's own request the guard blocks while the walk reads the facts.
+      if (cur.s.blockedLate) ledger.record({ kind: 'blocked', reason: cur.s.blockedLate, method: 'GET', url: cur.url, op: null, test: TEST_ID });
+      return fn(fakeDocument(cur.url, cur.s.facts));
+    },
     locator: () => ({ ariaSnapshot: async () => cur.s.aria ?? '' }),
     async waitForLoadState() {},
   };
@@ -230,6 +237,31 @@ test('walkGroup tells two hash routes with the same pathname apart', async () =>
   const w = await walk(site, { routes: [{ route: '#/cart', source: 's', sample: '/#/cart' }, { route: '#/account', source: 's', sample: '/#/account' }] });
   assert.equal(w.byRoute('#/cart').outcome, 'ok');
   assert.deepEqual([w.byRoute('#/account').outcome, w.byRoute('#/account').reason], ['redirected', 'redirected to /#/login']);
+});
+
+test('walkGroup identifies hash routes on production from the page when the change is same-document', async () => {
+  const site = { '/#/': { status: 200 }, '/#/cart': { status: 200, sameDocument: true }, '/#/account': { status: 200, sameDocument: true, final: '/#/login' } };
+  const routes = ['#/', '#/cart', '#/account'].map((r) => ({ route: r, source: 's', sample: `/${r}` }));
+  const w = await walk(site, { kind: 'production', routes });
+  assert.deepEqual(routes.map((r) => w.byRoute(r.route).outcome), ['ok', 'ok', 'redirected'], w.text);
+  assert.equal(w.byRoute('#/account').reason, 'redirected to /#/login');
+});
+
+test('walkGroup fails a route whose request the guard blocks while the facts are read', async () => {
+  const site = { '/promo': { status: 200, blockedLate: 'foreign host' } };
+  const w = await walk(site, { routes: [{ route: '/promo', source: 's', sample: '/promo' }] });
+  assert.deepEqual([w.byRoute('/promo').outcome, w.byRoute('/promo').reason], ['failed', 'guard: foreign host']);
+});
+
+test('sanitizeAria cuts every link url at its query or fragment', () => {
+  const yaml = ['- link "Skip":', '  - /url: "#main"', '- link "Docs":', '  - /url: guide#install', '- link "Page 2":', '  - /url: ?page', '- link "Home":', '  - /url: /'].join('\n');
+  assert.equal(sanitizeAria(yaml), ['- link "Skip":', '  - /url: ""', '- link "Docs":', '  - /url: guide', '- link "Page 2":', '  - /url: ', '- link "Home":', '  - /url: /'].join('\n'));
+});
+
+test('sanitize drops the query of a relative href in the aria snapshot and in free text', () => {
+  assert.equal(sanitize('- link "Next":\n  - /url: ?page=2&token=abc'), '- link "Next":\n  - /url: ');
+  assert.equal(sanitize('see search?q=secret and p/1?session=x'), 'see search and p/1');
+  assert.equal(sanitize('[href="?token=abc"] stays a question? yes'), '[href=""] stays a question? yes');
 });
 
 test('walkGroup never writes a form value or a query string', async () => {

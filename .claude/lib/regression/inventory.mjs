@@ -15,27 +15,19 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { validateRouteList, betterOutcome } from './walk.mjs';
-import { loadConfig, catalogSettings, isObject } from './config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog, blockTexts, parseSpec, sourceTokens, statusOf } from './catalog.mjs';
-import { acquireLock, ensureRunsDir, checkoutLockName } from './run.mjs';
+import { loadConfig, isObject } from './config.mjs';
+import { loadCatalog, parseCatalog, validateCatalog, blockTexts, specOf, awaitsSpec, areaOf, isLiveBlocked, sourceTokens, statusOf, posix } from './catalog.mjs';
+import { sha256 } from './policy.mjs';
+import { withCheckoutLock, newRunDir } from './run.mjs';
+import { writeAtomic } from '../backlog-check.mjs';
 
 export const ROUTES_PATH = '.agents/regression/routes.json';
-const sha256 = (data) => createHash('sha256').update(data).digest('hex');
-const posix = (p) => p.split(path.sep).join('/');
 
 class Refusal extends Error {}
 class UsageError extends Error {}
 const refuse = (msg) => { throw new Refusal(msg); };
-
-/** Write a text file atomically: a temp sibling, then rename over the target. */
-export function writeAtomicText(file, text) {
-  const tmp = `${file}.tmp-${process.pid}-${randomBytes(3).toString('hex')}`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
-}
 
 const readJsonFile = (file, what) => {
   let text;
@@ -58,18 +50,14 @@ function loadAdopted(root) {
 }
 
 const usesWord = (b, word) => sourceTokens(b.fields.Source?.value ?? '').some((t) => t.kind === 'word' && t.id === word);
-const isLiveBlocked = (b) => { const [, s, ref] = statusOf(b); return s === 'BLOCKED' && /^live: \S/.test((ref ?? '').trim()); };
 
 // ---------------------------------------------------------------------------------------------
 // stage · check-staged · check
 
 function cmdStage(root) {
-  const runs = ensureRunsDir(root);
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  for (;;) {
-    const dir = path.join(runs, `inventory-${stamp}-${randomBytes(2).toString('hex')}`);
-    try { fs.mkdirSync(dir); console.log(`stage: ${posix(path.relative(root, dir))}`); return 0; } catch (err) { if (err.code !== 'EEXIST') throw err; }
-  }
+  const { dir } = newRunDir(root, 'inventory');
+  console.log(`stage: ${posix(path.relative(root, dir))}`);
+  return 0;
 }
 
 function cmdCheckStaged(root, file) {
@@ -86,7 +74,7 @@ function cmdCheck(root) {
   if (!fs.existsSync(file)) { console.log('no route list'); return 1; }
   const doc = readJsonFile(file, ROUTES_PATH);
   const gaps = validateRouteList(doc);
-  const blocks = parseCatalog(root, catalogFiles(root, catalogSettings(cfg)));
+  const { blocks } = loadCatalog(root, cfg);
   const byId = new Map(blocks.map((b) => [b.id, b]));
   for (const e of Array.isArray(doc.routes) ? doc.routes : []) {
     if (!isObject(e)) continue;
@@ -118,11 +106,10 @@ function parseText(dir, text) {
 /** The whole apply; throws Refusal. Returns the lines to print. */
 function applyInventory(root, { stage, walk, dryRun, expect }) {
   const cfg = loadAdopted(root);
-  const settings = catalogSettings(cfg);
   const stageDir = path.resolve(root, stage);
   const walkDir = path.resolve(root, walk);
 
-  // 1. Inputs, and the reviewed digest before anything else.
+  // Inputs, and the reviewed digest before anything else.
   const stagedFile = path.join(stageDir, 'routes.staged.json');
   const stagedBytes = (() => { try { return fs.readFileSync(stagedFile); } catch { return refuse(`staged route list absent — ${posix(path.relative(root, stagedFile))}`); } })();
   if (!fs.existsSync(path.join(stageDir, 'proposal.md')) || !fs.existsSync(path.join(stageDir, 'proposal.json'))) refuse('proposal.md or proposal.json absent in the stage');
@@ -144,7 +131,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   const committedErrors = validateRouteList(committed);
   if (committedErrors.length) refuse(`${ROUTES_PATH} invalid — ${committedErrors.join('; ')}`);
 
-  // 2. Bind the walk.
+  // Bind the walk.
   if (record.verdict !== 'COMPLETE') refuse(`walk ${record.run_id ?? '?'} is not COMPLETE (${record.verdict ?? 'no verdict'})`);
   if (record.routes_digest !== sha256(stagedBytes)) refuse(`walk ${record.run_id ?? '?'} was run on other staged routes`);
   for (const g of record.groups ?? []) {
@@ -154,7 +141,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     }
   }
 
-  // 3. Best outcome per staged route over the groups.
+  // Best outcome per staged route over the groups.
   const best = new Map();
   for (const r of staged.routes) {
     let top = null;
@@ -165,8 +152,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   }
 
   // The current catalog and the proposal's blocks.
-  const files = catalogFiles(root, settings);
-  const current = parseCatalog(root, files);
+  const { settings, files, blocks: current } = loadCatalog(root, cfg);
   const currentTexts = blockTexts(root, files);
   const byId = new Map(current.map((b) => [b.id, b]));
   const parsed = parseText(stageDir, proposalMd);
@@ -174,9 +160,9 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   const newBlocks = [];
   const skipped = [];
   const lines = [];
-  // 6 (first half). New blocks: area, Spec, and the never-rewrite rule.
+  // New blocks: area, Spec, and the never-rewrite rule.
   for (const b of proposed) {
-    const area = b.id.split('-')[0];
+    const area = areaOf(b.id);
     const old = byId.get(b.id);
     const text = parsed.texts.get(b.id)?.text;
     if (old) {
@@ -185,13 +171,13 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
       refuse(`rewrites existing block ${b.id}`);
     }
     if (!Object.keys(settings.areas).includes(area)) refuse(`unknown area code ${area} in ${b.id} — configured: ${Object.keys(settings.areas).join(', ')}`);
-    if (parseSpec(b.fields.Spec?.value ?? '—', b.id) !== null) refuse(`new block ${b.id} has a Spec — every inventoried block starts with Spec: —`);
+    if (specOf(b) !== null) refuse(`new block ${b.id} has a Spec — every inventoried block starts with Spec: —`);
     newBlocks.push({ block: b, text });
   }
   const newIds = new Set(newBlocks.map((n) => n.block.id));
   const merged = new Map([...byId, ...newBlocks.map((n) => [n.block.id, n.block])]);
 
-  // 4. The final mapping, in memory.
+  // The final mapping, in memory.
   const committedBy = new Map(committed.routes.map((e) => [e.route, e]));
   const finalMap = new Map();
   const reached = new Set();
@@ -213,7 +199,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   }
   for (const id of newIds) if (!reached.has(id)) refuse(`unattached block ${id}`);
 
-  // 5. Every id of the final mapping against the route's observed outcome.
+  // Every id of the final mapping against the route's observed outcome.
   for (const r of staged.routes) {
     const obs = best.get(r.route);
     const { ids, retained } = finalMap.get(r.route);
@@ -239,11 +225,11 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     }
   }
 
-  // 7. Build the target files' new text and validate the merged catalog.
+  // Build the target files' new text and validate the merged catalog.
   const targets = new Map(); // rel path → text
   for (const { block, text } of newBlocks) {
-    const area = block.id.split('-')[0];
-    const holder = files.find((f) => current.some((c) => c.file === f && c.id.split('-')[0] === area));
+    const area = areaOf(block.id);
+    const holder = files.find((f) => current.some((c) => c.file === f && areaOf(c.id) === area));
     const rel = holder ?? posix(path.join(settings.path, `${area.toLowerCase()}.md`));
     if (!targets.has(rel)) {
       const abs = path.resolve(root, rel);
@@ -266,7 +252,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     const errors = validateCatalog(mergedBlocks, settings);
     if (errors.length) refuse(`the merged catalog is invalid — ${errors.map((e) => `${back.get(e.file) ?? e.file}:${e.line}: ${e.message}`).join('; ')}`);
 
-    // 8. Merge the route list.
+    // Merge the route list.
     const redacted = new Set(record.redacted_samples ?? []);
     let added = 0;
     let updated = 0;
@@ -291,7 +277,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     }
     const routesText = `${JSON.stringify({ schema: 1, routes }, null, 2)}\n`;
 
-    // 9. Publish.
+    // Publish.
     for (const { block } of newBlocks) lines.push(`${dryRun ? 'would apply' : 'applied'}: ${block.id}`);
     for (const id of skipped) lines.push(`skipped: ${id} (already applied)`);
     lines.push(`routes: ${added} added, ${updated} updated`);
@@ -299,10 +285,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     for (const [rel, tmp] of temps) fs.renameSync(tmp, path.resolve(root, rel));
     temps.clear();
     const before = fs.existsSync(routesFile) ? fs.readFileSync(routesFile, 'utf8') : null;
-    if (before !== routesText) {
-      fs.mkdirSync(path.dirname(routesFile), { recursive: true });
-      writeAtomicText(routesFile, routesText);
-    }
+    if (before !== routesText) writeAtomic(routesFile, routesText);
     lines.push(`proposal: ${digest}`);
     return lines;
   } finally {
@@ -313,30 +296,27 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
 function cmdApply(root, args) {
   if (!args.stage || !args.walk) throw new UsageError('apply needs --stage <dir> and --walk <run dir>');
   if (Boolean(args.dryRun) === Boolean(args.expect)) throw new UsageError('apply needs exactly one of --dry-run and --expect-proposal <digest>');
-  const lock = acquireLock(checkoutLockName(root), { pid: process.pid, pgid: null, run_id: 'inventory-apply' });
-  if (lock.error) { console.log(`refused: checkout lock held — ${lock.error}`); return 1; }
   try {
-    for (const l of applyInventory(root, args)) console.log(l);
+    const r = withCheckoutLock(root, 'inventory-apply', () => applyInventory(root, args));
+    if (r.error) { console.log(`refused: checkout lock held — ${r.error}`); return 1; }
+    for (const l of r.value) console.log(l);
     return 0;
   } catch (err) {
     if (!(err instanceof Refusal)) throw err;
     console.log(`refused: ${err.message}`);
     return 1;
-  } finally {
-    try { lock.lock.release(); } catch { /* the lock holds its token */ }
   }
 }
 
 // ---------------------------------------------------------------------------------------------
 // split
 
-/** `{parts: [{codes, n}]}` — READY scenarios whose Spec is literally `—`, areas whole, largest first. */
+/** `{parts: [{codes, n}]}` — READY scenarios without a spec, areas whole, largest first. */
 export function splitBaseline(blocks) {
   const perArea = new Map();
   for (const b of blocks) {
-    if (statusOf(b)[1] !== 'READY') continue;
-    if ((b.fields.Spec?.value ?? '').trim() !== '—') continue;
-    const area = b.id.split('-')[0];
+    if (!awaitsSpec(b)) continue;
+    const area = areaOf(b.id);
     perArea.set(area, (perArea.get(area) ?? 0) + 1);
   }
   const total = [...perArea.values()].reduce((s, n) => s + n, 0);
@@ -353,7 +333,7 @@ export function splitBaseline(blocks) {
 
 function cmdSplit(root) {
   const cfg = loadAdopted(root);
-  const blocks = parseCatalog(root, catalogFiles(root, catalogSettings(cfg)));
+  const { blocks } = loadCatalog(root, cfg);
   const { parts } = splitBaseline(blocks);
   if (!parts.length) { console.log('no baseline work — every READY scenario has a spec'); return 0; }
   parts.forEach((p, i) => {

@@ -912,6 +912,19 @@ test('verify: a scenario that fails pass 1 is dropped from later passes and prin
   assert.equal(runnerCalls(root), 1);
 });
 
+test('verify: a failed case keeps a copy of its attachment in the run directory', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  fs.mkdirSync(path.join(root, 'test-results/x'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'test-results/x/error-context.md'), 'the page at the failure\n');
+  useRunner(root, 'verify-failed attest-pass 1', 'full');
+  const r = await cli(['verify', PAIR8, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  const kept = /^context: (\.agents\/regression\/runs\/\S+\/context-1\/test-results\/x\/error-context\.md)$/m.exec(r.stdout);
+  assert.ok(kept, r.out);
+  assert.equal(fs.readFileSync(path.join(root, kept[1]), 'utf8'), 'the page at the failure\n');
+  assert.deepEqual(verifyOf(root, r).scenarios[0].context, [kept[1]]);
+});
+
 test('verify: production confirmation covers the three passes', async () => {
   const root = withAuthoringFiles(copyRoot());
   useRunner(root, 'verify-green attest-pass 0', 'full');

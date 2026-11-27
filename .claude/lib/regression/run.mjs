@@ -24,7 +24,8 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey } from './config.mjs';
+import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey, specDir } from './config.mjs';
+import { accountOf } from './catalog.mjs';
 import { buildPlan, buildWalkPlan, buildVerifyPlan, confirmationText, MODES } from './policy.mjs';
 import { validateRouteList } from './walk.mjs';
 import { ownerLock, LockError, createLedger, groupAlive, scenarioId } from './guard.mjs';
@@ -174,6 +175,13 @@ export function checkoutLockName(root) {
   let realRoot = root;
   try { realRoot = fs.realpathSync(root); } catch { /* keep root */ }
   return `checkout-${h16(realRoot)}`;
+}
+
+/** `{value: fn()}` under the checkout lock (released afterwards), or `{error}` when it is held. */
+export function withCheckoutLock(root, runId, fn) {
+  const lock = acquireLock(checkoutLockName(root), { pid: process.pid, pgid: null, run_id: runId });
+  if (lock.error) return { error: lock.error };
+  try { return { value: fn() }; } finally { try { lock.lock.release(); } catch { /* the lock holds its token */ } }
 }
 
 export const lockDir = () => process.env.REGRESSION_LOCK_DIR || path.join(os.homedir(), '.agent-ops/locks/regression');
@@ -359,7 +367,8 @@ export function decideVerdict({ kind, cls, guard, runnerExit, signal, plan, buil
 // ---------------------------------------------------------------------------------------------
 // run
 
-function newRunDir(root, envName) {
+/** A fresh `<runs>/<prefix>-<UTC stamp>-<hex>` directory (prefix: the environment, or `inventory`). */
+export function newRunDir(root, envName) {
   const runs = ensureRunsDir(root);
   const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   for (;;) {
@@ -402,14 +411,10 @@ function printPlanSummary(plan) {
 }
 
 /**
- * Production, before any lock or traffic: refuse a runner that is not guard-integrated, then the
- * two-phase confirmation. `{confirmed: true}` to go on, `{exit: 3}` to stop (a fresh token printed).
+ * Production, before any lock or traffic: the two-phase confirmation, with the plan's own summary
+ * and confirmation text. `{confirmed: true}` to go on, `{exit: 3}` to stop (a fresh token printed).
  */
-function confirmProduction(root, plan, findings, token) {
-  if (findings.length) {
-    for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
-    return { exit: 3 };
-  }
+function confirmProduction(root, plan, token) {
   const why = token ? consumeToken(root, plan, token) : null;
   if (token && !why) return { confirmed: true };
   if (why) console.error(`confirmation invalid: ${why}`);
@@ -462,16 +467,16 @@ async function prepare(args, buildFn, { strictIntegration }) {
   }
 
   const findings = checkIntegration(root, cfg, plan);
-  let confirmed = false;
-  if (plan.kind === 'production') {
-    const c = confirmProduction(root, plan, findings, args.confirm);
-    if (c.exit !== undefined) return { exit: c.exit };
-    confirmed = true;
-  } else if (strictIntegration && findings.length) {
+  if (findings.length && (plan.kind === 'production' || strictIntegration)) {
     for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
     return { exit: 3 };
-  } else {
-    for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
+  }
+  for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
+  let confirmed = false;
+  if (plan.kind === 'production') {
+    const c = confirmProduction(root, plan, args.confirm);
+    if (c.exit !== undefined) return { exit: c.exit };
+    confirmed = true;
   }
 
   const owner = { pid: process.pid, pgid: null, run_id: `${plan.env}-pending` };
@@ -524,26 +529,12 @@ async function cmdRun(args) {
     const startedAt = new Date().toISOString();
     const nonce = randomBytes(8).toString('hex');
     const command = cfg.runner.commands[plan.mode];
-    const reportFile = path.resolve(root, cfg.runner.report);
     const manifestFile = path.join(dir, 'manifest.json');
-    const manifest = {
-      run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
-      workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
-      selection: plan.cases, policy: plan.policy.guard, run_dir: dir, accounts: [], root,
-    };
-    fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+    fs.writeFileSync(manifestFile, `${JSON.stringify(manifestOf(root, plan, dir, runId, nonce, plan.cases), null, 2)}\n`);
     printPlanSummary(plan);
 
     const before = await fetchBuildSha(root, cfg, plan.env, plan.policy);
-    let runner = { code: null, signal: null };
-    let report = null;
-    if (plan.cases.length) {
-      fs.rmSync(reportFile, { force: true });
-      runner = await runRunner(root, command, {
-        ...process.env, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
-      }, locks);
-      try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
-    }
+    const { runner, report } = plan.cases.length ? await runOnce(root, cfg, plan, command, manifestFile, locks) : { runner: { code: null, signal: null }, report: null };
     const after = plan.cases.length ? await fetchBuildSha(root, cfg, plan.env, plan.policy) : before;
 
     const settings = catalogSettings(cfg);
@@ -567,10 +558,10 @@ async function cmdRun(args) {
 }
 
 /** One runner call of a lane: a fresh report, the manifest, the guard environment. `{runner, report}`. */
-async function runOnce(root, cfg, plan, manifestFile, locks, extraEnv = {}) {
+async function runOnce(root, cfg, plan, command, manifestFile, locks, extraEnv = {}) {
   const reportFile = path.resolve(root, cfg.runner.report);
   fs.rmSync(reportFile, { force: true });
-  const runner = await runRunner(root, cfg.runner.commands.full, {
+  const runner = await runRunner(root, command, {
     ...process.env, ...extraEnv, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
   }, locks);
   let report = null;
@@ -602,7 +593,7 @@ async function cmdWalk(args) {
   const errors = validateRouteList(doc, { staged: true });
   if (errors.length) { for (const e of errors) console.error(`walk: ${e}`); return 2; }
   const p = await prepare(args, (r, cfg, env) => {
-    const stub = path.resolve(r, String(cfg.runner?.spec_dir ?? '').replace(/\/+$/, ''), '_walk.spec.ts');
+    const stub = path.resolve(r, specDir(cfg), '_walk.spec.ts');
     if (!fs.existsSync(stub)) return { error: 'walk stub missing — /setup:regression --inventory installs it' };
     return { ...buildWalkPlan(r, cfg, env, doc, routesFile), summaryFn: printWalkSummary };
   }, { strictIntegration: true });
@@ -615,7 +606,7 @@ async function cmdWalk(args) {
     const manifestFile = path.join(dir, 'manifest.json');
     fs.writeFileSync(manifestFile, `${JSON.stringify(manifestOf(root, plan, dir, runId, nonce, plan.cases, { walk: plan.walk }), null, 2)}\n`);
     printWalkSummary(plan);
-    const { runner, report } = plan.cases.length ? await runOnce(root, cfg, plan, manifestFile, locks) : { runner: { code: null, signal: null }, report: null };
+    const { runner, report } = plan.cases.length ? await runOnce(root, cfg, plan, cfg.runner.commands.full, manifestFile, locks) : { runner: { code: null, signal: null }, report: null };
     const cls = classifyReport(report, plan, { idPattern: '^WALK[0-9]+$', catalogIds: new Set(plan.cases.map((c) => c.id)), root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
     const guard = readGuard(dir, nonce, casesRan(cls));
 
@@ -677,12 +668,22 @@ async function cmdWalk(args) {
 // ---------------------------------------------------------------------------------------------
 // verify
 
+/** A failed case's attachment copied to `<run dir>/context-<n>/<its path>`; its repo path, or `rel` when the file is gone. */
+function keepAttachment(root, dir, n, rel) {
+  const src = path.resolve(root, rel);
+  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) return rel;
+  const dest = path.join(dir, `context-${n}`, rel.replace(/^(\.\.\/)+/, ''));
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  return posix(path.relative(root, dest));
+}
+
 /** Why one case does not qualify in a pass, or null. */
 function caseProblem(c, scenario, guard, events) {
   if (c.result !== 'passed') return `${c.result} in pass`;
   if (c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0) return 'a retry in pass';
   if (guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`)) return 'no guard attestation in pass';
-  const account = scenario.needs.find((k) => k.startsWith('account:'))?.slice('account:'.length);
+  const account = accountOf(scenario.needs);
   if (!account) return null;
   const tests = events.filter((e) => e.kind === 'installed' && e.id === c.id && e.project === c.project).map((e) => e.test);
   const starts = events.filter((e) => e.kind === 'session-start' && e.account === account);
@@ -722,7 +723,7 @@ async function cmdVerify(args) {
       const nonce = randomBytes(8).toString('hex');
       const manifestFile = path.join(dir, `manifest-${n}.json`);
       fs.writeFileSync(manifestFile, `${JSON.stringify(manifestOf(root, plan, dir, runId, nonce, selection, { pass: n }), null, 2)}\n`);
-      const { runner, report, reportFile } = await runOnce(root, cfg, plan, manifestFile, locks, { REGRESSION_PASS: String(n) });
+      const { runner, report, reportFile } = await runOnce(root, cfg, plan, cfg.runner.commands.full, manifestFile, locks, { REGRESSION_PASS: String(n) });
       if (fs.existsSync(reportFile)) fs.copyFileSync(reportFile, path.join(dir, `report-${n}.json`));
       const cls = classifyReport(report, { cases: selection }, { idPattern: catalogSettings(cfg).id_pattern, catalogIds, root, configDir });
       const guard = readGuard(dir, nonce, casesRan(cls));
@@ -749,7 +750,8 @@ async function cmdVerify(args) {
         if (cs.length !== s.projects.length) problems.push(`pass ${n}: ${s.projects.length - cs.length} case(s) not reported`);
         if (problems.length) {
           s.reason = problems[0];
-          s.context = [...new Set(cs.filter((c) => c.result === 'failed').flatMap((c) => c.attachments))];
+          // The next pass's runner cleans its output directory: keep a copy in the run directory.
+          s.context = [...new Set(cs.filter((c) => c.result === 'failed').flatMap((c) => c.attachments))].map((a) => keepAttachment(root, dir, n, a));
         } else s.passes_ok.push(n);
       }
     }

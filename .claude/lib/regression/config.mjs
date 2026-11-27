@@ -21,7 +21,7 @@ const RUNNER_COMMANDS = ['smoke', 'full'];
 export const TEST_DATA_COMMANDS = ['check', 'provision', 'reset', 'session'];
 
 export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
+export const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
 export const docKey = (k) => k.startsWith('_');
 
 /** An http(s) URL with a host, no credentials and no whitespace. */
@@ -59,7 +59,7 @@ export function isLoopbackHost(hostname) {
 
 const urlHost = (s) => { try { return new URL(s).hostname; } catch { return ''; } };
 const compiles = (s) => { try { new RegExp(s); return true; } catch { return false; } };
-const isRegex = (v) => isFilled(v) && compiles(v);
+export const isRegex = (v) => isFilled(v) && compiles(v);
 const nonNeg = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const positive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
@@ -310,6 +310,9 @@ export function loadConfig(root, configPath = CONFIG_PATH) {
   }
   return { adopted: true, config, errors: validateConfig(config) };
 }
+
+/** `runner.spec_dir` without a trailing `/`. */
+export const specDir = (cfg) => String(cfg.runner?.spec_dir ?? '').replace(/\/+$/, '');
 
 /** The `catalog` section merged over the defaults. */
 export function catalogSettings(cfg) {

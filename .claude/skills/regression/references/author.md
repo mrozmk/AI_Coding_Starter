@@ -69,7 +69,7 @@ the file's last section. `select --from-qa` joins the record's rows onto the cat
 whose `Source` cites a criterion with the same fingerprint as a fresh `PASS` row, or — only when
 exactly one evidence-bearing `PASS` row exists — the record's ticket.
 
-**Never invent a step the QA run did not perform.** The spec's interactions come from the recorded
+**A spec must never invent a step the QA run did not perform.** The spec's interactions come from the recorded
 sequence; a step the row does not spell out — locator, action, assertion — is not reconstructed.
 A test assembled from a plausible reconstruction asserts what the author thinks happened, and a
 green run of it proves nothing.

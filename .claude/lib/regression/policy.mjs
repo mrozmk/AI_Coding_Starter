@@ -12,16 +12,46 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
-  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey,
+  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, isObject, docKey, specDir,
 } from './config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf, blockTexts } from './catalog.mjs';
-import { lintSpec, stripComments } from './speclint.mjs';
+import { loadCatalog, validateCatalog, needsKeys, specOf, statusOf, blockTexts } from './catalog.mjs';
+import { lintSpec, stripComments, RETRY_NEEDLES } from './speclint.mjs';
 import { redactedSamples } from './walk.mjs';
 
 export const MODES = ['smoke', 'full'];
 const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
+/** The green passes a candidate spec needs before it may be claimed. */
+export const VERIFY_PASSES = 3;
 
-const sha256 = (data) => createHash('sha256').update(data).digest('hex');
+export const sha256 = (data) => createHash('sha256').update(data).digest('hex');
+
+/** The evidence key verify records and claim re-checks: the spec, its scanned closure, its block. */
+export function evidenceKey(root, spec, inputFiles, blockText) {
+  return {
+    spec_sha256: sha256(fs.readFileSync(path.resolve(root, spec))),
+    inputs_sha256: digestFiles(root, inputFiles),
+    block_sha256: sha256(blockText),
+  };
+}
+
+const EVIDENCE_PARTS = { spec_sha256: 'spec', inputs_sha256: 'inputs', block_sha256: 'block' };
+/** The first part (`spec` | `inputs` | `block`) where `recorded` differs from `current`, or null. */
+export function changedPart(recorded, current) {
+  const k = Object.keys(EVIDENCE_PARTS).find((p) => recorded?.[p] !== current[p]);
+  return k ? EVIDENCE_PARTS[k] : null;
+}
+
+/**
+ * The runner projects of a viewport (`desktop`, `mobile`, `both`): `[{device, project}]`, `project`
+ * null when `runner.devices` names no project for that device.
+ */
+export function viewportProjects(cfg, viewport) {
+  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
+  return (VIEWPORT_DEVICES[viewport] ?? []).map((device) => {
+    const project = devices[device];
+    return { device, project: typeof project === 'string' && project !== '' ? project : null };
+  });
+}
 
 /** sha256 over `path\0bytes\0` of each repo-relative file, sorted by path. */
 export function digestFiles(root, files) {
@@ -72,20 +102,14 @@ export function exclusionReason(scenario, policy, envName) {
  */
 export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CONFIG_PATH } = {}) {
   if (!MODES.includes(mode)) return { error: `unknown mode ${mode} — expected ${MODES.join('|')}` };
-  const entry = isObject(cfg?.environments) ? cfg.environments[envName] : undefined;
-  if (!isObject(entry) || docKey(envName)) return { error: `unknown environment ${envName}` };
-  const base = resolveEnvBaseUrl(root, cfg, envName);
-  if (base.error) return { error: base.error };
-  const policy = envPolicy(entry);
-  if (!policy.guard.hosts.length) policy.guard.hosts = [new URL(base.url).hostname];
+  const t = targetOf(root, cfg, envName);
+  if (t.error) return { error: t.error };
+  const { policy, budget } = t;
 
-  const settings = catalogSettings(cfg);
-  const files = catalogFiles(root, settings);
-  const blocks = parseCatalog(root, files);
+  const { settings, files, blocks } = loadCatalog(root, cfg);
   const catalogErrors = validateCatalog(blocks, settings);
   if (catalogErrors.length) return { catalog_errors: catalogErrors };
 
-  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
   const cases = [];
   const excluded = [];
   const noDevice = [];
@@ -96,28 +120,23 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
     const [, status] = statusOf(b);
     if (status === 'BLOCKED') { counted.blocked += 1; continue; }
     if (status === 'DROPPED') { counted.dropped += 1; continue; }
-    const spec = parseSpec(b.fields.Spec?.value ?? '—', b.id);
+    const spec = specOf(b);
     if (!spec || spec.error) { counted.ready_without_spec += 1; continue; }
     if (mode === 'smoke' && !smoke.has(b.fields.Priority?.value)) continue;
     const scenario = { id: b.id, title: b.title, spec: spec.path, effect: b.fields.Effect?.value ?? 'read', needs: needsKeys(b.fields.Needs?.value) };
     const reason = exclusionReason(scenario, policy, envName);
     if (reason) { excluded.push({ id: b.id, reason }); continue; }
-    for (const device of VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []) {
-      const project = devices[device];
-      if (typeof project !== 'string' || project === '') noDevice.push({ id: b.id, device });
+    for (const { device, project } of viewportProjects(cfg, b.fields.Viewport?.value)) {
+      if (project === null) noDevice.push({ id: b.id, device });
       else cases.push({ ...scenario, project });
     }
   }
 
-  const operations = Object.fromEntries(Object.entries(policy.guard.operations)
-    .filter(([, o]) => o.cost !== undefined)
-    .map(([k, o]) => [k, { cost: o.cost, backend_calls: o.backend_calls ?? null }]));
-  const budget = { ceiling: policy.guard.budget, operations, worst_case_backend_calls: worstCaseBackendCalls(policy.guard.budget, operations) };
   const configFile = path.resolve(root, configPath);
   const digests = { config: sha256(fs.readFileSync(configFile)), catalog: digestFiles(root, files) };
-  digests.plan = digestJson({ env: envName, base_url: base.url, mode, config: digests.config, catalog: digests.catalog, cases, budget });
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode, config: digests.config, catalog: digests.catalog, cases, budget });
   return {
-    env: envName, kind: policy.kind, base_url: base.url, mode,
+    env: envName, kind: policy.kind, base_url: t.base_url, mode,
     cases, scenarios: [...new Set(cases.map((c) => c.id))].length,
     excluded, no_device: noDevice, counted, budget, digests, policy,
     catalog_ids: blocks.map((b) => b.id),
@@ -165,16 +184,16 @@ function targetOf(root, cfg, envName) {
  * a declared means of the environment excluded by policy. `{error}` on a target or device problem.
  */
 export function buildWalkPlan(root, cfg, envName, routesDoc, routesFile, { configPath = CONFIG_PATH } = {}) {
+  const stub = `${specDir(cfg)}/_walk.spec.ts`;
   const t = targetOf(root, cfg, envName);
   if (t.error) return { error: t.error };
-  const project = isObject(cfg.runner?.devices) ? cfg.runner.devices.desktop : undefined;
-  if (typeof project !== 'string' || project === '') return { error: 'no desktop device project — the walk runs on desktop' };
+  const [{ project }] = viewportProjects(cfg, 'desktop');
+  if (project === null) return { error: 'no desktop device project — the walk runs on desktop' };
   const routes = routesDoc.routes;
   const accounts = [...new Set(routes.map((r) => r.account ?? null))].sort((a, b) => (a === null ? -1 : b === null ? 1 : a < b ? -1 : 1));
   const groups = [];
   const excluded = [];
   const cases = [];
-  const specDir = String(cfg.runner.spec_dir).replace(/\/+$/, '');
   accounts.forEach((account, i) => {
     const key = `WALK${i + 1}`;
     const keys = routes.filter((r) => (r.account ?? null) === account).map((r) => r.route);
@@ -186,11 +205,10 @@ export function buildWalkPlan(root, cfg, envName, routesDoc, routesFile, { confi
       return;
     }
     groups.push({ ...g, excluded: null });
-    cases.push({ id: key, title: `${key} — ${account ?? 'anonymous'}`, project, spec: `${specDir}/_walk.spec.ts`, effect: 'read', needs: account ? [`account:${account}`] : [] });
+    cases.push({ id: key, title: `${key} — ${account ?? 'anonymous'}`, project, spec: stub, effect: 'read', needs: account ? [`account:${account}`] : [] });
   });
   const submits = routes.flatMap((r) => (r.submit ?? []).map((s) => ({ route: r.route, form: s.form, action: s.action, inputs: Object.keys(s.inputs ?? {}) })));
-  const settings = catalogSettings(cfg);
-  const files = catalogFiles(root, settings);
+  const { files } = loadCatalog(root, cfg);
   const digests = {
     config: sha256(fs.readFileSync(path.resolve(root, configPath))),
     catalog: digestFiles(root, files),
@@ -227,56 +245,48 @@ export function retriesProblem(root, cfg) {
 export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG_PATH } = {}) {
   const t = targetOf(root, cfg, envName);
   if (t.error) return { error: t.error };
-  const settings = catalogSettings(cfg);
-  const files = catalogFiles(root, settings);
-  const blocks = parseCatalog(root, files);
+  const { settings, files, blocks } = loadCatalog(root, cfg);
   const catalogErrors = validateCatalog(blocks, settings);
   if (catalogErrors.length) return { catalog_errors: catalogErrors };
   const texts = blockTexts(root, files);
-  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
   const refused = [];
   const cases = [];
   const scenarios = [];
   const retries = retriesProblem(root, cfg);
   for (const { id, spec } of pairs) {
     const b = blocks.find((x) => x.id === id);
+    const needs = b ? needsKeys(b.fields.Needs?.value) : [];
+    const devices = b ? viewportProjects(cfg, b.fields.Viewport?.value) : [];
+    let lint = null;
     const why = (() => {
       if (!b) return 'not in the catalog';
       const [, status] = statusOf(b);
       if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
-      if (parseSpec(b.fields.Spec?.value ?? '—', id) !== null) return 'already has a spec';
-      const needs = needsKeys(b.fields.Needs?.value);
+      if (specOf(b) !== null) return 'already has a spec';
       const dataAccounts = [...String(b.fields.Data?.value ?? '').matchAll(/\baccount:([a-z0-9][a-z0-9_-]*)/g)].map((m) => m[1]);
       const missing = dataAccounts.find((k) => !needs.includes(`account:${k}`));
       if (missing) return `account ${missing} in Data but not in Needs`;
       const reason = exclusionReason({ id, needs, effect: b.fields.Effect?.value ?? 'read' }, t.policy, envName);
       if (reason) return reason;
-      for (const d of VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []) if (typeof devices[d] !== 'string' || devices[d] === '') return `no device ${d}`;
+      const noDevice = devices.find((d) => d.project === null);
+      if (noDevice) return `no device ${noDevice.device}`;
       if (!fs.existsSync(path.resolve(root, spec))) return `spec file absent — ${spec}`;
       if (retries) return retries;
-      const lint = lintSpec(root, cfg, spec, id);
-      const r = lint.violations.find((v) => /retries|describe\.configure/.test(v.rule));
-      if (r) return 'retries are not 0 — spec';
+      lint = lintSpec(root, cfg, spec, id);
+      if (lint.violations.some((v) => RETRY_NEEDLES.includes(v.needle))) return 'retries are not 0 — spec';
       if (lint.violations.length) return `lint: ${lint.violations[0].rule}`;
       return null;
     })();
     if (why) { refused.push({ id, reason: why }); continue; }
-    const lint = lintSpec(root, cfg, spec, id);
-    const projects = (VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []).map((d) => devices[d]);
-    const needs = needsKeys(b.fields.Needs?.value);
+    const projects = devices.map((d) => d.project);
     for (const project of projects) cases.push({ id, title: b.title, project, spec, effect: b.fields.Effect?.value ?? 'read', needs });
-    scenarios.push({
-      id, spec, projects, needs,
-      spec_sha256: sha256(fs.readFileSync(path.resolve(root, spec))),
-      inputs_sha256: digestFiles(root, lint.files),
-      block_sha256: sha256(texts.get(id).text),
-    });
+    scenarios.push({ id, spec, projects, needs, ...evidenceKey(root, spec, lint.files, texts.get(id).text) });
   }
   const digests = { config: sha256(fs.readFileSync(path.resolve(root, configPath))), catalog: digestFiles(root, files) };
-  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'verify', config: digests.config, catalog: digests.catalog, cases, scenarios, budget: t.budget, repeats: 3 });
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'verify', config: digests.config, catalog: digests.catalog, cases, scenarios, budget: t.budget, repeats: VERIFY_PASSES });
   return {
     env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'verify',
-    cases, scenarios_list: scenarios, scenarios: scenarios.length, refused, excluded: [], no_device: [], repeats: 3,
+    cases, scenarios_list: scenarios, scenarios: scenarios.length, refused, excluded: [], no_device: [], repeats: VERIFY_PASSES,
     budget: t.budget, digests, policy: t.policy, catalog_ids: blocks.map((x) => x.id),
     textFn: verifyConfirmationText,
   };

@@ -11,13 +11,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { reduceUrl, createLedger } from './guard.mjs';
-import { NEED_KEY } from './config.mjs';
+import { NEED_KEY, isObject, isFilled, isRegex } from './config.mjs';
 
 const REDACTED = '‹redacted›';
 const VALUE_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
-const compiles = (s) => { try { new RegExp(s); return true; } catch { return false; } };
 
 const compileRedact = (list) => (list ?? []).map((r) => (r instanceof RegExp ? new RegExp(r.source, 'g') : new RegExp(r, 'g')));
 const applyRedact = (text, res) => res.reduce((t, r) => t.replace(new RegExp(r.source, 'g'), REDACTED), text);
@@ -25,21 +22,35 @@ const applyRedact = (text, res) => res.reduce((t, r) => t.replace(new RegExp(r.s
 // ---------------------------------------------------------------------------------------------
 // Sanitizing — everything persisted passes here
 
-/** Free text: absolute URLs reduced (no query, no fragment), a path's query and fragment dropped, redact matches replaced. */
+/**
+ * Free text: absolute URLs reduced (no query, no fragment), a path's query and fragment dropped, a
+ * relative href's `?key=value` query dropped (`?page=2`, `search?q=x`), redact matches replaced.
+ */
 export function sanitize(text, redactRes = []) {
   if (text === null || text === undefined) return text;
   const res = compileRedact(redactRes);
   const s = String(text)
     .replace(/https?:\/\/[^\s"'<>]+/g, (u) => reduceUrl(u))
-    .replace(/(^|[\s"'(=])(\/[^\s"'<>?#]*)[?#][^\s"'<>)]*/g, (m, pre, p) => `${pre}${p}`);
+    .replace(/(^|[\s"'(=])(\/[^\s"'<>?#]*)[?#][^\s"'<>)]*/g, (m, pre, p) => `${pre}${p}`)
+    .replace(/(^|[\s"'(=:])([^\s"'<>?#]*)\?[^\s"'<>)=?#]+=[^\s"'<>)]*/g, (m, pre, p) => `${pre}${p}`);
   return applyRedact(s, res);
 }
 
-/** An ARIA snapshot with the value part of every text-entry line removed (`- textbox "Email": a@b` → `- textbox "Email"`), then sanitized. */
+/**
+ * An ARIA snapshot with the value part of every text-entry line removed (`- textbox "Email": a@b` →
+ * `- textbox "Email"`) and every link's `/url:` value cut at its query or fragment (relative,
+ * `#main` or `page#x` alike), then sanitized.
+ */
 export function sanitizeAria(yaml, redactRes = []) {
   if (typeof yaml !== 'string') return '';
   const re = new RegExp(`^(\\s*- (?:${VALUE_ROLES.join('|')})(?: "(?:[^"\\\\]|\\\\.)*")?(?: \\[[^\\]]*\\])*)\\s*:.*$`, 'gm');
-  return sanitize(yaml.replace(re, '$1'), redactRes);
+  const urls = /^(\s*- \/url: )(.*)$/gm;
+  const cut = (m, pre, v) => {
+    const quoted = /^"(.*)"$/.exec(v);
+    const bare = (quoted ? quoted[1] : v).split(/[?#]/)[0];
+    return `${pre}${quoted ? `"${bare}"` : bare}`;
+  };
+  return sanitize(yaml.replace(re, '$1').replace(urls, cut), redactRes);
 }
 
 /**
@@ -78,7 +89,7 @@ export function validateRouteList(doc, { staged = false } = {}) {
       if (typeof e.sample !== 'string' || !e.sample.startsWith('/')) errors.push(`${at}: sample must be a path starting with /`);
       else if (!staged && e.sample.includes('?')) errors.push(`${at}: a committed sample carries no query string`);
     }
-    if ('match' in e && !(isFilled(e.match) && compiles(e.match))) errors.push(`${at}: match must be a regex that compiles`);
+    if ('match' in e && !isRegex(e.match)) errors.push(`${at}: match must be a regex that compiles`);
     if ('account' in e && !(typeof e.account === 'string' && NEED_KEY.test(e.account))) errors.push(`${at}: account must match ${NEED_KEY.source}`);
     if ('submit' in e) {
       if (!Array.isArray(e.submit)) errors.push(`${at}: submit must be an array`);
@@ -210,22 +221,27 @@ export async function walkGroup({ page, manifest, group, testInfo }) {
     const blockedBefore = blockedNow().length;
     let status = null;
     let error = null;
+    let resp = null;
     try {
-      const resp = await page.goto(url);
+      resp = await page.goto(url);
       status = resp && typeof resp.status === 'function' ? resp.status() : null;
       if (typeof page.waitForLoadState === 'function') await page.waitForLoadState();
     } catch (err) { error = err; }
-    const blocked = blockedNow().slice(blockedBefore);
     let facts = { title: '', hash: '', headings: [], links: [], forms: [] };
     let aria = '';
     if (!error) {
       try { facts = await page.evaluate(extractFacts); } catch { /* keep the empty facts */ }
       try { aria = await page.locator('body').ariaSnapshot({ timeout: 5000 }); } catch { aria = ''; }
     }
+    // Read after the facts: a request the page makes while they are collected is still this visit's.
+    const blocked = blockedNow().slice(blockedBefore);
     let observed = null;
     if (production) {
       const nav = ledger.events().slice(mark).find((e) => e.kind === 'navigation' && e.test === testId);
       if (nav) observed = `${identity(nav.final).split('#')[0]}${facts.hash}`;
+      // A hash-only change is a same-document navigation: no request, so no guard hop and no
+      // collapsed redirect to hide — `page.goto` returns null and the page's own URL is the truth.
+      else if (!error && resp === null) observed = identity(page.url());
     } else {
       observed = identity(page.url());
     }

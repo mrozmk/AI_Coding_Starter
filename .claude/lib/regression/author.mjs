@@ -15,18 +15,15 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, catalogSettings, envPolicy, resolveTarget, isObject } from './config.mjs';
-import { blockTexts, parseCatalog, validateCatalog, catalogFiles, parseSpec, sourceTokens, statusOf, needsKeys } from './catalog.mjs';
-import { exclusionReason, digestFiles } from './policy.mjs';
-import { acquireLock, checkoutLockName, ensureRunsDir, RUNS_DIR } from './run.mjs';
+import { loadConfig, envPolicy, resolveTarget, isObject, specDir } from './config.mjs';
+import { blockTexts, loadCatalog, parseCatalog, validateCatalog, specOf, awaitsSpec, areaOf, sourceTokens, statusOf, needsKeys, posix } from './catalog.mjs';
+import { exclusionReason, viewportProjects, evidenceKey, changedPart, VERIFY_PASSES } from './policy.mjs';
+import { withCheckoutLock, ensureRunsDir, RUNS_DIR } from './run.mjs';
 import { lintSpec } from './speclint.mjs';
-import { writeAtomicText } from './inventory.mjs';
+import { writeAtomic, parseTables } from '../backlog-check.mjs';
 
-const sha256 = (b) => createHash('sha256').update(b).digest('hex');
-const posix = (p) => p.split(path.sep).join('/');
-const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
+const PASS_NUMBERS = Array.from({ length: VERIFY_PASSES }, (_, i) => i + 1);
 const RECORD_MARKER = /^qa-verify:v1 record /;
 const ROW = /^- (\S+) \[([0-9a-f]{6})\] — ([^—]+?) — /;
 
@@ -43,25 +40,20 @@ function loadAdopted(root) {
 
 /** `<runner.spec_dir>/<area lowercased>/<id lowercased>.spec.ts` — one spec file per scenario. */
 export function specPathFor(cfg, id) {
-  return posix(path.join(String(cfg.runner.spec_dir).replace(/\/+$/, ''), id.split('-')[0].toLowerCase(), `${id.toLowerCase()}.spec.ts`));
+  return posix(path.join(specDir(cfg), areaOf(id).toLowerCase(), `${id.toLowerCase()}.spec.ts`));
 }
-
-const catalogOf = (root, cfg) => {
-  const files = catalogFiles(root, catalogSettings(cfg));
-  return { files, blocks: parseCatalog(root, files) };
-};
 
 /** Why `b` may not get a spec on this target, or null. `policy` null skips the environment check. */
 function selectProblem(root, cfg, b, policy, envName) {
   const [, status] = statusOf(b);
   if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
-  if (parseSpec(b.fields.Spec?.value ?? '—', b.id) !== null) return 'already has a spec';
+  if (specOf(b) !== null) return 'already has a spec';
   if (policy) {
     const reason = exclusionReason({ id: b.id, needs: needsKeys(b.fields.Needs?.value), effect: b.fields.Effect?.value ?? 'read' }, policy, envName);
     if (reason) return reason;
   }
-  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
-  for (const d of VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []) if (typeof devices[d] !== 'string' || devices[d] === '') return `no device ${d}`;
+  const noDevice = viewportProjects(cfg, b.fields.Viewport?.value).find((d) => d.project === null);
+  if (noDevice) return `no device ${noDevice.device}`;
   const target = specPathFor(cfg, b.id);
   if (fs.existsSync(path.resolve(root, target))) return `target exists — ${target}`;
   return null;
@@ -72,30 +64,17 @@ function selectProblem(root, cfg, b, policy, envName) {
 
 const normId = (s) => String(s).replace(/-/g, '').toUpperCase();
 
-/** The tables of a markdown text: `[{header: [names], rows: [[cells]]}]`. */
-function tablesOf(lines) {
-  const tables = [];
-  let cur = null;
-  for (const l of lines) {
-    if (!/^\s*\|/.test(l)) { cur = null; continue; }
-    const cells = l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-    if (cells.every((c) => /^:?-{2,}:?$/.test(c))) continue;
-    if (!cur) { cur = { header: cells.map((c) => c.toLowerCase().replace(/[`*]/g, '')), rows: [] }; tables.push(cur); continue; }
-    cur.rows.push(cells);
-  }
-  return tables;
-}
-
 /** The interaction evidence of a fresh PASS row: `{driver: 'script'|'mcp'|'row', files}` or null. */
 function evidenceFor(root, tables, acId) {
   for (const t of tables) {
-    const idCol = t.header.findIndex((h) => ['ac', 'ac_id', 'id'].includes(h));
-    const agentCol = t.header.findIndex((h) => h === 'agent' || h === 'notes');
-    const artCol = t.header.findIndex((h) => h === 'artifacts');
-    if (idCol < 0 || artCol < 0 || agentCol < 0) continue;
+    const col = (...names) => t.header.find((h) => names.includes(h.toLowerCase()));
+    const idCol = col('ac', 'ac_id', 'id');
+    const agentCol = col('agent', 'notes');
+    const artCol = col('artifacts');
+    if (!idCol || !artCol || !agentCol) continue;
     const row = t.rows.find((r) => normId(r[idCol]) === normId(acId));
     if (!row) continue;
-    const text = row.join(' | ');
+    const text = t.header.map((h) => row[h]).join(' | ');
     const files = [...String(row[artCol] ?? '').matchAll(/[\w./-]+\.(?:mcp\.md|mjs|js|ts|png|jpg|json|md)/g)].map((m) => m[0])
       .filter((f) => fs.existsSync(path.resolve(root, f)));
     const driver = /driver:\s*(script|mcp)\b/.exec(text)?.[1];
@@ -133,7 +112,7 @@ export function readQaFile(root, file) {
     }
   }
   const recordAt = lines.findIndex((l) => /^## QA verification/.test(l));
-  const tables = tablesOf(recordAt >= 0 ? lines.slice(0, recordAt) : lines);
+  const tables = parseTables((recordAt >= 0 ? lines.slice(0, recordAt) : lines).join('\n'));
   return { ticket, rows, tables };
 }
 
@@ -148,11 +127,13 @@ export function joinQa(root, blocks, qa) {
   const withEvidence = [...evidence].filter(([, e]) => e).map(([r]) => r);
   const cited = new Set();
   for (const b of blocks) {
-    if (statusOf(b)[1] !== 'READY' || parseSpec(b.fields.Spec?.value ?? '—', b.id) !== null) continue;
+    if (!awaitsSpec(b)) continue;
     const tokens = sourceTokens(b.fields.Source?.value ?? '');
     const crit = tokens.filter((t) => t.kind === 'criterion');
-    const hits = crit.map((t) => qa.rows.find((r) => normId(r.id) === normId(t.id) && r.fp === t.fp)).filter(Boolean);
-    for (const h of hits) cited.add(h);
+    // A criterion may carry a `CITED` row plus its observed row (same id and fp): the observation decides.
+    const groups = crit.map((t) => qa.rows.filter((r) => normId(r.id) === normId(t.id) && r.fp === t.fp)).filter((g) => g.length);
+    const hits = groups.map((g) => g.find((r) => r.kind === 'fail') ?? g.find((r) => !/^CITED\b/.test(r.disposition)) ?? g[0]);
+    for (const r of groups.flat()) cited.add(r);
     if (hits.length) {
       const h = hits[0];
       if (hits.some((x) => x.kind === 'fail')) { out.lines.push(`not promoted: ${b.id} — ${hits.find((x) => x.kind === 'fail').id} FAIL`); continue; }
@@ -189,8 +170,8 @@ function cmdSelect(root, args) {
     return 2;
   }
   const policy = envPolicy(cfg.environments[target.name]);
-  const { blocks } = catalogOf(root, cfg);
-  const errors = validateCatalog(blocks, catalogSettings(cfg));
+  const { settings, blocks } = loadCatalog(root, cfg);
+  const errors = validateCatalog(blocks, settings);
   if (errors.length) { for (const e of errors) console.error(`${e.file}:${e.line}: ${e.message}`); return 2; }
   const result = { eligible: [], refused: [], lines: [] };
   const consider = (b, qa) => {
@@ -205,10 +186,10 @@ function cmdSelect(root, args) {
     for (const r of j.orphanRows) result.lines.push(`no scenario: ${r.id}`);
   } else {
     let picked;
-    if (args.pending) picked = blocks.filter((b) => statusOf(b)[1] === 'READY' && parseSpec(b.fields.Spec?.value ?? '—', b.id) === null);
+    if (args.pending) picked = blocks.filter(awaitsSpec);
     else if (args.area) {
       const codes = new Set(args.area.split(',').map((c) => c.trim()).filter(Boolean));
-      picked = blocks.filter((b) => codes.has(b.id.split('-')[0]) && statusOf(b)[1] === 'READY' && parseSpec(b.fields.Spec?.value ?? '—', b.id) === null);
+      picked = blocks.filter((b) => codes.has(areaOf(b.id)) && awaitsSpec(b));
     } else {
       picked = [];
       for (const id of args.ids) {
@@ -241,12 +222,12 @@ function cmdSuggest(root, args) {
   if (!cfg || !isObject(cfg.runner)) return 0;
   let qa;
   try { qa = readQaFile(root, args.fromQa); } catch (err) { if (err instanceof Refusal) return 0; throw err; }
-  const { blocks } = catalogOf(root, cfg);
+  const { blocks } = loadCatalog(root, cfg);
   const j = joinQa(root, blocks, qa);
   const eligible = j.joined.filter((x) => !selectProblem(root, cfg, x.block, null, null)).map((x) => x.block.id);
   if (eligible.length) { console.log(`suggest: /regression-tests author --from-qa ${args.fromQa} (${eligible.join(', ')})`); return 0; }
   const rowIds = new Set(qa.rows.map((r) => normId(r.id)));
-  const citing = blocks.filter((b) => statusOf(b)[1] === 'READY' && parseSpec(b.fields.Spec?.value ?? '—', b.id) === null
+  const citing = blocks.filter((b) => awaitsSpec(b)
     && sourceTokens(b.fields.Source?.value ?? '').some((t) => (t.kind === 'tracker' && t.id === qa.ticket) || (t.kind === 'criterion' && rowIds.has(normId(t.id)))));
   if (citing.length) console.log(`suggest: /regression-tests author ${citing.map((b) => b.id).join(' ')}`);
   return 0;
@@ -261,7 +242,7 @@ const readDrafts = (runDir) => { try { return JSON.parse(fs.readFileSync(draftsF
 function cmdDraft(root, args) {
   const cfg = loadAdopted(root);
   if (!cfg) throw new UsageError('regression not adopted');
-  const { blocks } = catalogOf(root, cfg);
+  const { blocks } = loadCatalog(root, cfg);
   const b = blocks.find((x) => x.id === args.id);
   if (!b) refuse(`${args.id} — not in the catalog`);
   ensureRunsDir(root);
@@ -276,7 +257,7 @@ function cmdDraft(root, args) {
   }
   const doc = readDrafts(runDir);
   doc.drafts.push({ id: args.id, spec, run: posix(path.relative(root, runDir)), created_at: new Date().toISOString(), ...(args.qa ? { qa: args.qa } : {}) });
-  writeAtomicText(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
+  writeAtomic(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
   console.log(`draft: ${args.id} ${spec}`);
   return 0;
 }
@@ -291,9 +272,9 @@ function registrations(root, spec) {
 
 /** Run `fn` under the checkout lock; a held lock refuses. */
 function underCheckoutLock(root, owner, fn) {
-  const lock = acquireLock(checkoutLockName(root), { pid: process.pid, pgid: null, run_id: owner });
-  if (lock.error) refuse(`checkout lock held — ${lock.error}`);
-  try { return fn(); } finally { try { lock.lock.release(); } catch { /* the lock holds its token */ } }
+  const r = withCheckoutLock(root, owner, fn);
+  if (r.error) refuse(`checkout lock held — ${r.error}`);
+  return r.value;
 }
 
 const readJson = (file, what) => {
@@ -301,17 +282,17 @@ const readJson = (file, what) => {
 };
 
 /**
- * The text with the `**Spec:** —` of the block whose heading is on 1-based `headingLine` replaced by
- * `value` — only inside that block's span (the field may share a line with Source); null when absent.
+ * The text with the empty `**Spec:**` value (`—`, `-` or nothing — what the catalog reads as no
+ * spec) on 1-based `specLine` — the line the catalog parser found the block's Spec field on —
+ * replaced by `value`, whether the field ends the line or another field follows it; null when absent.
  */
-function withSpec(text, headingLine, value) {
+function withSpec(text, specLine, value) {
   const lines = text.split('\n');
-  for (let i = headingLine; i < lines.length; i += 1) {
-    if (/^#{1,3}\s/.test(lines[i])) break;
-    const m = /\*\*Spec:\*\*\s*—\s*$/.exec(lines[i]);
-    if (m) { lines[i] = lines[i].slice(0, m.index) + `**Spec:** ${value}`; return lines.join('\n'); }
-  }
-  return null;
+  const i = specLine - 1;
+  const m = i >= 0 && i < lines.length ? /\*\*Spec:\*\*\s*(?:—|-)?\s*?(?=\s*$| · \*\*[A-Za-z]+:\*\*)/.exec(lines[i]) : null;
+  if (!m) return null;
+  lines[i] = `${lines[i].slice(0, m.index)}**Spec:** ${value}${lines[i].slice(m.index + m[0].length).replace(/^\s*$/, '')}`;
+  return lines.join('\n');
 }
 
 function cmdClaim(root, args) {
@@ -319,62 +300,60 @@ function cmdClaim(root, args) {
   if (!cfg) throw new UsageError('regression not adopted');
   return underCheckoutLock(root, `claim-${args.id}`, () => {
     const id = args.id;
-    const settings = catalogSettings(cfg);
-    // 1–2. The verify record and its own evidence.
+    // The verify record and its own evidence.
     const rec = readJson(path.join(path.resolve(root, args.verify), 'verify.json'), 'verify.json');
     if (rec.schema !== 1) refuse(`${id} — verify.json is not schema 1`);
     const entry = (rec.scenarios ?? []).find((s) => s.id === id);
     if (!entry) refuse(`${id} — not in verify.json`);
     if (entry.spec !== args.spec) refuse(`${id} — verify.json verified ${entry.spec}, not ${args.spec}`);
-    if (entry.qualified !== true || JSON.stringify(entry.passes_ok) !== '[1,2,3]') refuse(`${id} — not three green passes (passes_ok ${JSON.stringify(entry.passes_ok ?? [])})`);
+    if (entry.qualified !== true || JSON.stringify(entry.passes_ok) !== JSON.stringify(PASS_NUMBERS)) refuse(`${id} — not three green passes (passes_ok ${JSON.stringify(entry.passes_ok ?? [])})`);
     const passes = rec.passes ?? [];
-    if (passes.length !== 3 || new Set(passes.map((p) => p.nonce)).size !== 3) refuse(`${id} — verify.json does not hold three passes with distinct nonces`);
-    const { files, blocks } = catalogOf(root, cfg);
+    if (passes.length !== VERIFY_PASSES || new Set(passes.map((p) => p.nonce)).size !== VERIFY_PASSES) refuse(`${id} — verify.json does not hold three passes with distinct nonces`);
+    const { settings, files, blocks } = loadCatalog(root, cfg);
     const b = blocks.find((x) => x.id === id);
     if (!b) refuse(`${id} — not in the catalog`);
-    const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
-    const projects = (VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []).map((d) => devices[d]);
+    const projects = viewportProjects(cfg, b.fields.Viewport?.value).map((d) => d.project);
     if (JSON.stringify([...(entry.projects ?? [])].sort()) !== JSON.stringify([...projects].sort())) refuse(`${id} — verified projects ${JSON.stringify(entry.projects)} are not the scenario's ${JSON.stringify(projects)}`);
     for (const p of passes) {
       for (const project of projects) {
         if (!(p.cases ?? []).some((c) => c.id === id && c.project === project && c.result === 'passed' && c.attempts === 1)) refuse(`${id} — pass ${p.n} has no single passed attempt on ${project}`);
       }
     }
-    // 3–4. The digests against the current files, and the lint.
-    if (parseSpec(b.fields.Spec?.value ?? '—', id) !== null) refuse(`${id} — already has a spec`);
+    // The digests against the current files, and the lint.
+    if (specOf(b) !== null) refuse(`${id} — already has a spec`);
     const specAbs = path.resolve(root, args.spec);
     if (!fs.existsSync(specAbs)) refuse(`${id} — spec file absent — ${args.spec}`);
     const lint = lintSpec(root, cfg, args.spec, id);
-    const current = {
-      spec_sha256: sha256(fs.readFileSync(specAbs)),
-      inputs_sha256: digestFiles(root, lint.files),
-      block_sha256: sha256(blockTexts(root, files).get(id).text),
-    };
-    for (const k of Object.keys(current)) if (entry[k] !== current[k]) refuse(`${id} — ${k.replace('_sha256', '')} changed since the verify`);
+    const current = evidenceKey(root, args.spec, lint.files, blockTexts(root, files).get(id).text);
+    const changed = changedPart(entry, current);
+    if (changed) refuse(`${id} — ${changed} changed since the verify`);
     if (lint.violations.length) refuse(`${id} — lint: ${lint.violations[0].file}:${lint.violations[0].line}: ${lint.violations[0].rule}`);
-    // 5. The critic verdict (and the provenance verdict of a --from-qa draft) on the same digests.
+    // The critic verdict (and the provenance verdict of a --from-qa draft) on the same digests.
     const critic = readJson(path.resolve(root, args.critic), 'critic verdict');
     if (critic.id !== id || critic.verdict !== 'pass') refuse(`${id} — no critic pass`);
-    for (const k of Object.keys(current)) if (critic[k] !== current[k]) refuse(`${id} — the critic verdict predates a change (${k.replace('_sha256', '')})`);
+    const criticStale = changedPart(critic, current);
+    if (criticStale) refuse(`${id} — the critic verdict predates a change (${criticStale})`);
     const fromQa = registrations(root, args.spec).some((d) => d.qa);
     if (fromQa || args.provenance) {
       if (!args.provenance) refuse(`${id} — a --from-qa draft needs a provenance pass (--provenance)`);
       const prov = readJson(path.resolve(root, args.provenance), 'provenance verdict');
       if (prov.mode !== 'provenance' || prov.verdict !== 'pass' || (prov.id !== undefined && prov.id !== id)) refuse(`${id} — no provenance pass`);
-      for (const k of Object.keys(current)) if (prov[k] !== current[k]) refuse(`${id} — the provenance verdict predates a change (${k.replace('_sha256', '')})`);
+      const provStale = changedPart(prov, current);
+      if (provStale) refuse(`${id} — the provenance verdict predates a change (${provStale})`);
       const missing = (prov.actions ?? []).filter((a) => a.qa_step === null || a.qa_step === undefined);
       if (missing.length) refuse(`${id} — ${missing.length} action(s) with no recorded QA step (line ${missing[0].line})`);
     }
-    // 6–7. Write the Spec back inside the block's own span, validate, rename.
-    const title = /\btest\(\s*(['"`])(.*?)\1/.exec(fs.readFileSync(specAbs, 'utf8'))?.[2];
+    // Write the Spec back on its own field line, validate, check the field now names the spec, rename.
     const file = path.resolve(root, b.file);
-    const next = withSpec(fs.readFileSync(file, 'utf8').replace(/\r/g, ''), b.line, `${args.spec} › ${title}`);
+    const next = withSpec(fs.readFileSync(file, 'utf8').replace(/\r/g, ''), b.fields.Spec?.line ?? 0, `${args.spec} › ${lint.title}`);
     if (next === null) refuse(`${id} — no **Spec:** — in its block`);
     const tmp = `${file}.tmp-${process.pid}`;
     try {
       fs.writeFileSync(tmp, next);
-      const errors = validateCatalog(parseCatalog(root, files.map((f) => (path.resolve(root, f) === file ? tmp : f))), settings);
+      const reparsed = parseCatalog(root, files.map((f) => (path.resolve(root, f) === file ? tmp : f)));
+      const errors = validateCatalog(reparsed, settings);
       if (errors.length) refuse(`${id} — the catalog would be invalid: ${errors[0].line}: ${errors[0].message}`);
+      if (specOf(reparsed.find((x) => x.id === id) ?? { fields: {}, id })?.path !== args.spec) refuse(`${id} — the written Spec field does not name ${args.spec}`);
       fs.renameSync(tmp, file);
     } finally { fs.rmSync(tmp, { force: true }); }
     console.log(`claimed: ${id} — ${args.spec}`);
@@ -389,10 +368,10 @@ function cmdReject(root, args) {
     const runDir = path.resolve(root, args.run);
     const draft = readDrafts(runDir).drafts.find((d) => d.id === args.id);
     if (!draft) refuse(`${args.id} — no draft registered in ${posix(path.relative(root, draftsFile(runDir)))}`);
-    const { blocks } = catalogOf(root, cfg);
+    const { blocks } = loadCatalog(root, cfg);
     const b = blocks.find((x) => x.id === args.id);
-    if (b && parseSpec(b.fields.Spec?.value ?? '—', b.id) !== null) refuse(`${args.id} — already claimed (Spec: ${b.fields.Spec.value})`);
-    if (blocks.some((x) => parseSpec(x.fields.Spec?.value ?? '—', x.id)?.path === draft.spec)) refuse(`${args.id} — ${draft.spec} is referenced by the catalog`);
+    if (b && specOf(b) !== null) refuse(`${args.id} — already claimed (Spec: ${b.fields.Spec.value})`);
+    if (blocks.some((x) => specOf(x)?.path === draft.spec)) refuse(`${args.id} — ${draft.spec} is referenced by the catalog`);
     const src = path.resolve(root, draft.spec);
     if (!fs.existsSync(src)) { console.log(`rejected: ${args.id} — already gone`); return 0; }
     const dest = path.join(runDir, 'rejected', path.basename(draft.spec));

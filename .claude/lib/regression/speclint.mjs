@@ -8,15 +8,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { catalogFiles, parseCatalog, needsKeys, oneLine, HEADER } from './catalog.mjs';
-import { catalogSettings } from './config.mjs';
+import { loadCatalog, needsKeys, accountOf, oneLine, posix, HEADER } from './catalog.mjs';
 
 export const GUARD_MODULE = /\.claude\/lib\/regression\/guard\.mjs$/;
 // Calls that install a route of the spec's own: a page or context route a spec adds is matched
 // before the guard's context route, and `continue()` there sends the request unguarded.
 export const OWN_ROUTE_CALLS = ['.route(', 'routeFromHAR', '.routeWebSocket('];
-
-const posix = (p) => p.split(path.sep).join('/');
 
 /**
  * The text with `//` and `/* *\/` comments removed, string literals kept whole: a `/*` inside a
@@ -85,9 +82,11 @@ function specifiersOf(code) {
 // Every scanned module but the fixtures one: nothing reaches the network or the process but the guard.
 const NETWORK_CALLS = ['fetch(', 'require(', 'import(', 'XMLHttpRequest', 'WebSocket(', 'newContext(', 'launch(', 'connect(', 'process.env'];
 // The spec only: waits, locators, skip markers and retries the spec rules forbid.
+/** The needles that set retries in a spec — verify reports them as `retries are not 0 — spec`. */
+export const RETRY_NEEDLES = ['describe.configure(', 'retries'];
 const SPEC_CALLS = [
   'waitForTimeout(', 'setTimeout(', ".locator('", '.locator("', '.locator(`', '$(', '$$(', '$eval(', 'xpath=',
-  'test.skip', 'test.fixme', 'test.fail', 'test.only', '.skip(', 'describe.configure(', 'retries',
+  'test.skip', 'test.fixme', 'test.fail', 'test.only', '.skip(', ...RETRY_NEEDLES,
 ];
 
 /** `[{line, needle}]` of every occurrence of each needle in `code`. */
@@ -98,19 +97,21 @@ function occurrences(code, needles) {
 }
 
 /**
- * The violations of one candidate spec for scenario `id`: `{violations: [{file, line, rule}], files}`.
+ * The violations of one candidate spec for scenario `id`: `{violations: [{file, line, rule, needle?}], files, title}`
+ * (`needle`: the forbidden call a spec-rule violation matched).
  * `files` is the scanned closure (the spec, its fixtures module and every relative helper), sorted
- * and repo-relative. The header and the unobservable lines are read raw; the rest after stripComments.
+ * and repo-relative; `title` is the test declaration's title (null when none). The header and the
+ * unobservable lines are read raw; the rest after stripComments.
  */
 export function lintSpec(root, cfg, specPath, id) {
   const violations = [];
   const rel = (f) => posix(path.relative(root, f));
-  const add = (file, line, rule) => violations.push({ file, line, rule });
-  const settings = catalogSettings(cfg);
-  const block = parseCatalog(root, catalogFiles(root, settings)).find((b) => b.id === id);
+  const add = (file, line, rule, needle) => violations.push(needle ? { file, line, rule, needle } : { file, line, rule });
+  const { settings, blocks } = loadCatalog(root, cfg);
+  const block = blocks.find((b) => b.id === id);
   const specFile = path.resolve(root, specPath);
   let raw;
-  try { raw = fs.readFileSync(specFile, 'utf8').replace(/\r/g, ''); } catch { return { violations: [{ file: specPath, line: 0, rule: 'spec file absent' }], files: [] }; }
+  try { raw = fs.readFileSync(specFile, 'utf8').replace(/\r/g, ''); } catch { return { violations: [{ file: specPath, line: 0, rule: 'spec file absent' }], files: [], title: null }; }
   if (!block) add(specPath, 0, `no scenario ${id} in the catalog`);
   const code = stripComments(raw);
 
@@ -130,7 +131,7 @@ export function lintSpec(root, cfg, specPath, id) {
   else if (block && header[2].trim() !== source) add(specPath, 1, `header source ${header[2].trim()} differs from the catalog Source ${source}`);
 
   // The account: Needs is the only authority.
-  const account = needsKeys(block?.fields.Needs?.value).find((k) => k.startsWith('account:'))?.slice('account:'.length) ?? null;
+  const account = accountOf(needsKeys(block?.fields.Needs?.value));
   const use = /\btest\.use\(\s*\{\s*account\s*:\s*(null|'([^']*)'|"([^"]*)")\s*,?\s*\}\s*\)/.exec(code);
   const used = use ? (use[1] === 'null' ? null : use[2] ?? use[3]) : null;
   if (account && used !== account) add(specPath, 1, `account:${account} in Needs needs test.use({ account: '${account}' })`);
@@ -144,7 +145,7 @@ export function lintSpec(root, cfg, specPath, id) {
     fixtures = resolveModule(specFile, testImport.from);
     if (!fixtures) add(specPath, 1, `unresolvable import ${testImport.from}`);
   }
-  for (const o of occurrences(code, SPEC_CALLS)) add(specPath, o.line, `forbidden ${o.needle}`);
+  for (const o of occurrences(code, SPEC_CALLS)) add(specPath, o.line, `forbidden ${o.needle}`, o.needle);
 
   // The closure: the spec, then every relative import, breadth first; the fixtures module is a leaf.
   const visited = new Set();
@@ -168,7 +169,7 @@ export function lintSpec(root, cfg, specPath, id) {
   if (fixtures) {
     try { scanCommon(stripComments(fs.readFileSync(fixtures, 'utf8')), rel(fixtures), add, { network: false }); } catch { add(rel(fixtures), 0, 'unreadable'); }
   }
-  return { violations, files: [...visited].map(rel).sort() };
+  return { violations, files: [...visited].map(rel).sort(), title: title?.[2] ?? null };
 }
 
 /** Route and context-default rules for every scanned module; the network and process rules unless exempt. */

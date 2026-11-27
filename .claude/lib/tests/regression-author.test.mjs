@@ -121,6 +121,18 @@ test('select --from-qa: joins a PASS row by fingerprint, refuses a FAIL row and 
   assert.doesNotMatch(r.stdout, /eligible: CART-00[89]/);
 });
 
+test('select --from-qa: a CITED row next to the observed row lets the observation decide', () => {
+  const ctx = withoutSpec4(setup());
+  write(ctx, 'cited.md', read(ctx, QA)
+    .replace('- E2-3.AC2 [a1b2c3] — PASS', '- E2-3.AC2 [a1b2c3] — CITED — task ledger: met (PR #7)\n- E2-3.AC2 [a1b2c3] — PASS')
+    .replace('- E2-3.AC3 [d4e5f6] — FAIL', '- E2-3.AC3 [d4e5f6] — CITED — task ledger: met (PR #7)\n- E2-3.AC3 [d4e5f6] — FAIL'));
+  const r = author(ctx, 'select', '--from-qa', 'cited.md');
+  assert.equal(r.status, 0, r.out);
+  has(r, /^eligible: CART-004 e2e\/regression\/cart\/cart-004\.spec\.ts qa: E2-3\.AC2 \(script\) qa-artifacts\/ac2-flow\.mjs$/m);
+  has(r, /^not promoted: CART-008 — E2-3\.AC3 FAIL$/m);
+  assert.doesNotMatch(r.stdout, /CITED/);
+});
+
 test('select --from-qa: a ticket-key scenario with two PASS rows is ambiguous', () => {
   const ctx = withoutSpec4(setup());
   const r = author(ctx, 'select', '--from-qa', QA);
@@ -191,6 +203,26 @@ test('claim: writes Spec back and re-validates the catalog', () => {
   const v = spawnSync(process.execPath, [CATALOG, '--root', ctx.root], { encoding: 'utf8' });
   assert.equal(v.status, 0, v.stdout + v.stderr);
   assert.equal(fs.readdirSync(path.join(ctx.root, CAT)).some((f) => f.includes('.tmp-')), false);
+});
+
+test('claim: fills a Spec written as - and takes the title of the real test declaration, not a comment', () => {
+  const ctx = setup();
+  write(ctx, `${CAT}/cart.md`, read(ctx, `${CAT}/cart.md`).replace('**Source:** E2-3.AC2 [a1b2c3] · **Spec:** —', '**Source:** E2-3.AC2 [a1b2c3] · **Spec:** -'));
+  write(ctx, SPEC4, `// was: test('CART-004 — an older title')\n${read(ctx, SPEC4)}`);
+  const dir = writeVerify(ctx, [{ id: 'CART-004', spec: SPEC4, projects: BOTH }]);
+  const r = claim(ctx, 'CART-004', SPEC4, dir, writeCritic(ctx, dir, 'CART-004', SPEC4));
+  assert.equal(r.status, 0, r.out);
+  assert.match(read(ctx, `${CAT}/cart.md`), /^- \*\*Source:\*\* E2-3\.AC2 \[a1b2c3\] · \*\*Spec:\*\* e2e\/regression\/cart\/cart-004\.spec\.ts › CART-004 — See the cart heading$/m);
+});
+
+test('claim: fills a Spec field that another field follows on its line', () => {
+  const ctx = setup();
+  write(ctx, `${CAT}/cart.md`, read(ctx, `${CAT}/cart.md`)
+    .replace('- **Source:** E2-3.AC2 [a1b2c3] · **Spec:** —', '- **Spec:** — · **Source:** E2-3.AC2 [a1b2c3]'));
+  const dir = writeVerify(ctx, [{ id: 'CART-004', spec: SPEC4, projects: BOTH }]);
+  const r = claim(ctx, 'CART-004', SPEC4, dir, writeCritic(ctx, dir, 'CART-004', SPEC4));
+  assert.equal(r.status, 0, r.out);
+  assert.match(read(ctx, `${CAT}/cart.md`), /^- \*\*Spec:\*\* e2e\/regression\/cart\/cart-004\.spec\.ts › CART-004 — See the cart heading · \*\*Source:\*\* E2-3\.AC2 \[a1b2c3\]$/m);
 });
 
 test('claim: refuses without three passes, with a changed spec or block, or without a critic pass', () => {

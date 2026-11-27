@@ -24,7 +24,8 @@ const ENUMS = { Priority: PRIORITIES, Viewport: ['desktop', 'mobile', 'both'], E
 export const STATUSES = ['READY', 'BLOCKED', 'DROPPED'];
 const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
 // `live: <reason>`: an inventoried path that fails on the live app (regression.md §13).
-const BLOCKED_REF = /^(E\d+-\d+|[A-Z][A-Z0-9]+-\d+|#\d+|live: \S.*)$/;
+const LIVE_REF = /live: \S.*/;
+const BLOCKED_REF = new RegExp(`^(E\\d+-\\d+|[A-Z][A-Z0-9]+-\\d+|#\\d+|${LIVE_REF.source})$`);
 const CRITERION = /^E\d+-\d+\.AC\d+ \[[0-9a-f]{6}\]$/;
 const CRITERION_BARE = /^E\d+-\d+\.AC\d+$/;
 const FLOW = /^FL-\d+(\.A\d+)?$/;
@@ -42,12 +43,28 @@ export const FP_REFERENCE = '.agents/reference/qa-evidence-families.md';
 const BACKLOG = '.agents/backlog.md';
 
 const isEmpty = (v) => v === undefined || /^\s*(—|-)?\s*$/.test(v);
-const posix = (p) => p.split(path.sep).join('/');
+export const posix = (p) => p.split(path.sep).join('/');
 // A single-value field wrapped onto continuation lines reads as one line (the header copies it on one).
 export const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
 /** `[match, status, ref]` of a block's Status, `[]` when it does not parse. */
 export const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
 const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
+const LIVE_BLOCKED = new RegExp(`^${LIVE_REF.source}$`);
+/** Whether a block is `BLOCKED (live: <reason>)` — a path the walk saw fail. */
+export const isLiveBlocked = (b) => { const [, s, ref] = statusOf(b); return s === 'BLOCKED' && LIVE_BLOCKED.test((ref ?? '').trim()); };
+/** The parsed `Spec` of a block (parseSpec): null for `—`, `{error}` when malformed. */
+export const specOf = (b) => parseSpec(b.fields.Spec?.value ?? '—', b.id);
+/** A READY scenario that has no spec yet — the author lane's and the baseline's work. */
+export const awaitsSpec = (b) => statusOf(b)[1] === 'READY' && specOf(b) === null;
+/** The area code of a scenario id (`CART-004` → `CART`). */
+export const areaOf = (id) => id.split('-')[0];
+
+/** The catalog of an adopted config: `{settings, files, blocks}` (catalogSettings → catalogFiles → parseCatalog). */
+export function loadCatalog(root, cfg) {
+  const settings = catalogSettings(cfg);
+  const files = catalogFiles(root, settings);
+  return { settings, files, blocks: parseCatalog(root, files) };
+}
 
 /** Catalog files: `*.md` directly in `settings.path`, README.md excluded, sorted, repo-relative. */
 export function catalogFiles(root, settings) {
@@ -134,7 +151,7 @@ export function blockTexts(root, files) {
 
 /** `[{clause, reason}]` of the spec's `// regression-unobservable:` lines for `id`. */
 function unobservableOf(root, b) {
-  const spec = parseSpec(b.fields.Spec?.value ?? '—', b.id);
+  const spec = specOf(b);
   if (!spec || spec.error) return [];
   let text;
   try { text = fs.readFileSync(path.resolve(root, spec.path), 'utf8'); } catch { return []; }
@@ -160,6 +177,9 @@ export function needsKeys(value) {
   if (value === undefined || value === null || isEmpty(value)) return [];
   return oneLine(value).split(' · ').map((k) => k.trim()).filter((k) => k !== '');
 }
+
+/** The account key of a scenario's Needs keys (`account:<key>` → `<key>`), or null. */
+export const accountOf = (needs) => needs.find((k) => k.startsWith('account:'))?.slice('account:'.length) ?? null;
 
 /** `{path, title}` of a `Spec` value, `null` for `—`, `{error}` when malformed. */
 export function parseSpec(value, id) {
