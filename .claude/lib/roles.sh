@@ -44,13 +44,27 @@ claude_name() {
   x="$( { . "$LIB/team-channel.sh" && team_channel_names "$MAIN" && printf '%s' "${TEAM_CHANNEL_SUFFIX:-}"; } 2>/dev/null )" || x=""
   echo "$1$x"
 }
-# The channel's CODEX_HOME for a Claude role (its codex calls); else the caller's. The agent-mail
-# channel is optional: without one this falls back silently. The redirect sits inside the
-# substitution, since one after a bare assignment leaves the substitution's stderr on the terminal.
+# The CODEX_HOME of a role launch: the team channel's, else the first value line of
+# .claude/codex-profile (same parse as team-roles.sh / codex-bg.sh), else empty. A profile value that
+# does not resolve, or a channel home that differs from it → the reason on stdout, rc 1. The caller's
+# own CODEX_HOME is the Claude call sites' last fallback. The agent-mail channel is optional: without
+# one this falls through silently. The redirect sits inside the substitution, since one after a bare
+# assignment leaves the substitution's stderr on the terminal.
 codex_home() {
-  local h
-  h="$( { . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}"; } 2>/dev/null )" || h=""
-  echo "${h:-${CODEX_HOME:-}}"
+  local c p rp rcp
+  c="$( { . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}"; } 2>/dev/null )" || c=""
+  p="$(sed -n '/^[[:space:]]*$/d; /^#/d; p; q' "$MAIN/.claude/codex-profile" 2>/dev/null || true)"
+  case "$p" in "~/"*) p="$HOME/${p#\~/}" ;; esac
+  if [ -n "$p" ]; then
+    rp="$(cd "$p" 2>/dev/null && pwd -P || true)"
+    [ -n "$rp" ] || { echo "Codex profile $p from .claude/codex-profile does not resolve — no session launched"; return 1; }
+    if [ -n "$c" ]; then
+      rcp="$(cd "$c" 2>/dev/null && pwd -P || true)"
+      [ -n "$rcp" ] && [ "$rcp" = "$rp" ] \
+        || { echo "Codex home $c of the team channel differs from $p in .claude/codex-profile — the agent-mail entry still names $c: set its codex_home to the profile's home (or restore the profile), then rerun /setup:teams → channel; no session launched"; return 1; }
+    fi
+  fi
+  printf '%s\n' "${c:-${rp:-}}"
 }
 standing() { roles_list --standing | grep -qxF "$1"; }
 
@@ -283,7 +297,7 @@ adhoc_lines() {  # one paste-ready resume line per gone ad-hoc conversation
 }
 
 up() {
-  local only="${1:-}" list r rc=0 st todo="" res="" out err cli sid ch cmd name trust="" wait="" panes mw
+  local only="${1:-}" list r rc=0 st todo="" res="" out err cli sid ch="" rch cmd name trust="" wait="" panes mw
   sh_pick_host "$MAIN" >/dev/null || exit $?
   roles_validate || exit 2
   roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
@@ -306,15 +320,18 @@ up() {
       *) res="$res$r: failed: liveness probe (exit $st)"$'\n'; rc=1 ;;
     esac
   done
-  # shellcheck disable=SC2086
-  [ -z "$todo" ] || materialize $todo || exit 1
+  if [ -n "$todo" ]; then
+    ch="$(codex_home)" || { echo "refused: $ch" >&2; exit 1; }
+    # shellcheck disable=SC2086
+    materialize $todo || exit 1
+  fi
   err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
   for r in $todo; do
-    cli="$(roles_cfg "$r" cli)"; sid=""; ch=""
-    if [ "$cli" = claude ]; then sid="$(new_uuid)" || { res="$res$r: failed: no session id (new_uuid)"$'\n'; rc=1; continue; }; ch="$(codex_home)"; fi
+    cli="$(roles_cfg "$r" cli)"; sid=""; rch="$ch"
+    if [ "$cli" = claude ]; then sid="$(new_uuid)" || { res="$res$r: failed: no session id (new_uuid)"$'\n'; rc=1; continue; }; rch="${ch:-${CODEX_HOME:-}}"; fi
     cmd="$(launch_cmd "$r" "$sid")" || { res="$res$r: failed: bad model or effort"$'\n'; rc=1; continue; }
     if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli "$cli" \
-         --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} \
+         --env "TEAM_SESSION_ROLE=$r" ${rch:+--env "CODEX_HOME=$rch"} \
          ${sid:+--session-id "$sid" --program claude --claude-home auto} -- "$cmd" 2>"$err")"; then
       res="$res$r: started"$'\n'; wait="$wait $r:$name:$cli"
     else
@@ -490,11 +507,12 @@ here() {
   fi
   cli="$(roles_cfg "$r" cli)"
   m="$(roles_cfg "$r" model)" && e="$(roles_cfg "$r" effort)" || exit 2
+  ch="$(codex_home)" || { echo "refused: $ch" >&2; exit 1; }
   if [ "$cli" = claude ]; then
     materialize "$r" || exit 1
     . "$LIB/team-profile.sh"
     w="$(team_claude_home "$MAIN")" || { echo "refused: $w" >&2; exit 1; }
-    sid="$(new_uuid)" || { echo "error: no session id — new_uuid failed" >&2; exit 1; }; ch="$(codex_home)"
+    sid="$(new_uuid)" || { echo "error: no session id — new_uuid failed" >&2; exit 1; }
   fi
   t="$(tty 2>/dev/null)" || t=none
   sh_record_put "$MAIN" "$r" '{address: $a, kind: "role", backend: $b, handle: $h, name: $n, cwd: $cwd,
@@ -560,9 +578,11 @@ resume() {
   [[ "$sid" =~ ^[A-Za-z0-9-]{8,64}$ ]] || { echo "refused: no previous session for $r" >&2; exit 1; }
   roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
   trap 'roles_unlock "$REG"' EXIT
+  ch="$(codex_home)" || { echo "refused: $ch" >&2; exit 1; }
+  ch="${ch:-${CODEX_HOME:-}}"
   materialize "$r" || exit 1
   cmd="$(launch_cmd "$r" "$sid" resume)" || exit 2
-  ch="$(codex_home)"; err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
+  err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
   # --session-id: the record keeps the conversation's id until the live session's hook confirms it.
   if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli claude \
        --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} --program claude --claude-home auto \

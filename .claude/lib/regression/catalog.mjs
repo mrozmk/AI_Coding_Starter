@@ -23,7 +23,7 @@ const OPTIONAL = ['Data', 'Needs'];
 const ENUMS = { Priority: PRIORITIES, Viewport: ['desktop', 'mobile', 'both'], Effect: ['read', 'write'] };
 export const STATUSES = ['READY', 'BLOCKED', 'DROPPED'];
 const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
-// `live: <reason>`: an inventoried path that fails on the live app (regression.md §13).
+// `live: <reason>`: an inventoried path that fails on the live app (regression.md §14).
 const LIVE_REF = /live: \S.*/;
 const BLOCKED_REF = new RegExp(`^(E\\d+-\\d+|[A-Z][A-Z0-9]+-\\d+|#\\d+|${LIVE_REF.source})$`);
 const CRITERION = /^E\d+-\d+\.AC\d+ \[[0-9a-f]{6}\]$/;

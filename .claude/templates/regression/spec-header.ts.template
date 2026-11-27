@@ -8,7 +8,7 @@
 //                    the computed automation state compares with the current criteria (regression.md §7)
 //   <, '@smoke'>     `, '@smoke'` when the scenario's Priority is in catalog.smoke; otherwise nothing
 // A clause of Expected a browser cannot observe is not asserted; it gets one line, which
-// `catalog.mjs --status` lists (regression.md §14):
+// `catalog.mjs --status` lists (regression.md §15):
 // regression-unobservable: <ID> · <clause> — <reason>
 import { test, expect } from '<relative-path>/fixtures';
 

@@ -35,18 +35,46 @@
     }
   },
 
+  "_visual_doc": "The visual lane (optional; /setup:regression Visual stage; recipe .claude/skills/regression/references/visual.md; contract .agents/reference/regression.md §13). Screenshots per environment, compared against that environment's own accepted baselines — never across environments. `config` / `spec`: the copied visual.config.ts / visual.spec.ts (the spec's `test` comes from the guarded fixtures). `command`: the plain runner command — no --update-snapshots, -u, --repeat-each, --grep, --project, --ignore-snapshots, --output, --workers or --retries: the run manifest drives them. `report`: the visual pass's JSON report. `baselines`: <baselines>/<env>/<project>/<source>--<id>.png plus <env>/index.json, committed; written ONLY by `run.mjs visual accept` with the token `visual update` issued, after a human answered `Accept baselines`. `policy`: warn (default — a difference is a warning) | block (a difference makes the run RED). `tolerance`: threshold (0.2) and max_diff_pixels (0) — no command widens it beyond the accepted index.json; a human edits index.json in a reviewed commit. `max_mask_ratio`: the share of a shot masks may cover (0.25). `timezone`: the browser's (UTC). `mask`: global {selector, reason} masks for volatile regions (prices, promotions, stock, banners) — never html, body, :root or *. `routes`: {id, path, title, devices (desktop, mobile), mask, full_page, wait_for}. `storybook`: per kind: test environment only — {url, ready (required: a selector present once render and play finished), error, exclude_tags, build_sha_url (the Storybook build; without it stories are compared but never offered)}; its host must be on the environment's guard.hosts.",
+  "visual": {
+    "config": "e2e/visual/visual.config.ts",
+    "spec": "e2e/visual/visual.spec.ts",
+    "command": "npx playwright test --config e2e/visual/visual.config.ts",
+    "report": "e2e/.results/visual-report.json",
+    "baselines": "e2e/visual-baselines",
+    "policy": "warn",
+    "tolerance": { "threshold": 0.2, "max_diff_pixels": 0 },
+    "max_mask_ratio": 0.25,
+    "timezone": "UTC",
+    "mask": [{ "selector": "[data-price]", "reason": "price" }],
+    "routes": [
+      { "id": "home", "path": "/", "title": "Home page", "devices": ["desktop", "mobile"], "mask": [], "full_page": false, "wait_for": null },
+      { "id": "pdp", "path": "/p/sample-product", "title": "Product page", "devices": ["desktop", "mobile"], "mask": [{ "selector": "[data-stock]", "reason": "stock level" }] }
+    ],
+    "storybook": {
+      "test": {
+        "url": "https://storybook.test.example.com",
+        "ready": "body[data-visual-ready]",
+        "error": ".sb-show-errordisplay",
+        "exclude_tags": ["visual-skip"],
+        "build_sha_url": "https://storybook.test.example.com/version.json"
+      }
+    }
+  },
+
   "_default_env_doc": "The environment a run targets when /regression-tests names none. Only a `kind: test` environment may be the default; production is never reached without naming it (--env).",
   "default_env": "test",
 
   "_environments_doc": "Deployed environments a run may target (baseline stage). `host`: an http(s) URL without credentials or a trailing slash, or \"qa-env\" = take `base_url` from .claude/qa-env.json; a local server (localhost, 127.0.0.0/8, ::1, 0.0.0.0) is refused. `kind`: test | production; ABSENT = production, so the adapter's provision and reset refuse it. Every policy key below has a production-safe default when absent: `writes` refuse, `workers` 1, `means` [], no pacing, guard allowlist = the environment's own host, stops on 403 and 429, consent strategy decline. Contract: .agents/reference/regression.md §10–§12.",
   "environments": {
     "test": {
-      "_doc": "A test shop: full paths. `writes: allowed` runs every write scenario whose Needs keys are declared here; `means` are the safe means this environment provides (a scenario's `Needs` keys must be declared as a means or a guard operation).",
+      "_doc": "A test shop: full paths. `writes: allowed` runs every write scenario whose Needs keys are declared here; `means` are the safe means this environment provides (a scenario's `Needs` keys must be declared as a means or a guard operation). `guard.hosts` is explicit here because `host` is \"qa-env\": it lists the shop, its asset CDN (every font, image and script host a page loads — else the guard aborts the request and the visual target fails) and the Storybook host of `visual.storybook.test`.",
       "host": "qa-env",
       "kind": "test",
       "writes": "allowed",
       "workers": 2,
-      "means": ["account:shopper", "payment:sandbox"]
+      "means": ["account:shopper", "payment:sandbox"],
+      "guard": { "hosts": ["test.shop.example.com", "*.static.example.com", "storybook.test.example.com"] }
     },
     "prod": {
       "_doc": "Production (no `kind` = production): read-only by default. `writes: declared` runs a write scenario only when it names its safe means in `Needs` and every key is declared here. The guard aborts any unnamed mutating request; `operations` name the allowed ones (method + url regex + optional whole-payload body regex), `cost`/`backend_calls` budget the expensive ones (a costed operation without `backend_calls` is never selected and aborted). `rpc` marks a GraphQL/RPC endpoint whose payload can hide a write. `budget` is required with a costed operation. WebSockets are closed; `build_sha_url` pins the build a green run is for. The confirmation token cannot be skipped by any key.",

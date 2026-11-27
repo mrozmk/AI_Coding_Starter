@@ -6,7 +6,7 @@
 // It registers one test per walk group of the run manifest (`WALK<k> — <account | anonymous>`); an
 // ordinary run's manifest carries no walk, so it registers nothing there. Every navigation goes
 // through the guard the fixtures install: this file never adds a route or a context default of its
-// own, and it never submits a form through the page (regression.md §13).
+// own, and it never submits a form through the page (regression.md §14).
 import { test } from '<fixtures-relative>';
 import { loadRunManifest } from '<guard-module-relative>';
 import { walkGroup } from '<walk-module-relative>';

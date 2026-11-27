@@ -3,7 +3,7 @@
 // the only writer of a scenario's `Spec` field (`claim`) — after three green passes of
 // `run.mjs verify` and a critic verdict bound to the same spec, inputs and block digests. Writes
 // candidate files only under the run directory it is given and the catalog only under the checkout
-// lock; never commits. Node builtins only — ships to every downstream. Contract: regression.md §14.
+// lock; never commits. Node builtins only — ships to every downstream. Contract: regression.md §15.
 //
 //   node .claude/lib/regression/author.mjs select (<ID>… | --area <CODE[,CODE]> | --pending | --from-qa <file>) [--env <n>] [--json] [--root <dir>]
 //   node .claude/lib/regression/author.mjs lint <spec> --id <ID> [--root <dir>]

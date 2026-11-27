@@ -6,7 +6,7 @@
 // the environment's `redact` patterns. Allow-listed GET forms are submitted by a native GET
 // navigation built from the route list. Also the route list grammar (`validateRouteList`), shared
 // by run.mjs walk and inventory.mjs. Library only (no CLI; run.mjs walk drives it).
-// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §13.
+// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §14.
 
 import fs from 'node:fs';
 import path from 'node:path';

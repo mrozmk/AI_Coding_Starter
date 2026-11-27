@@ -3,7 +3,7 @@
 Turns READY scenarios without a spec into specs that are claimed only after they ran green three
 times with zero retries on every device project of the scenario and a critic found every
 `Expected` clause asserted. Read with `spec-rules.md` (how a spec is written) and
-`.agents/reference/regression.md` §14 (the scripts' contract). Nothing in the lane commits.
+`.agents/reference/regression.md` §15 (the scripts' contract). Nothing in the lane commits.
 
 ## 1. Select
 

@@ -3,7 +3,7 @@
 The rules every candidate spec follows. The mechanical half is `node .claude/lib/regression/author.mjs
 lint <spec> --id <ID>` (`speclint.mjs` `lintSpec`); the half a script cannot judge — does each
 assertion prove its clause — is `@regression-critic`'s. Contract: `.agents/reference/regression.md`
-§6 (the block), §11 (the guard), §14 (the lane).
+§6 (the block), §11 (the guard), §15 (the lane).
 
 ## The file
 

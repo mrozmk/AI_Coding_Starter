@@ -59,7 +59,7 @@ export const test = base.extend<{ account: string | null; regressionGuard: void 
   // storage-state file path, which becomes this test's storageState. REGRESSION_RUN is inherited, so on
   // production the adapter signs in through guard.mjs and calls attestSession(manifest, account).
   // Every sign-in carries this test's id (`session-start` here; `session` from attestSession, through
-  // REGRESSION_TEST_ID), so a verify sees that each case ran signed in as planned (regression.md §14).
+  // REGRESSION_TEST_ID), so a verify sees that each case ran signed in as planned (regression.md §15).
   storageState: async ({ regressionGuard, account }, use, testInfo) => {
     if (!account) return use(undefined);
     const env = process.env.REGRESSION_ENV;

@@ -4,7 +4,7 @@
 // closure of its relative imports. The closure (`files`) is the candidate's executable surface:
 // verify hashes it into `inputs_sha256` and claim re-hashes it, so a changed helper invalidates both.
 // Library only (no CLI — `author.mjs lint` prints it). Imports only node: and ./catalog.mjs, so it
-// never forms a cycle with run.mjs. Contract: .agents/reference/regression.md §14.
+// never forms a cycle with run.mjs. Contract: .agents/reference/regression.md §15.
 
 import fs from 'node:fs';
 import path from 'node:path';

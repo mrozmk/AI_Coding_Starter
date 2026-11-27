@@ -4,7 +4,7 @@
 // on exactly the staged routes) and the observed outcome of every route to each scenario it maps,
 // only appends blocks (never rewrites one), merges the route list, and does all of it under the
 // checkout lock a run takes. `split` proposes one to three baseline Tasks by area. Nothing commits.
-// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §13.
+// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §14.
 //
 //   node .claude/lib/regression/inventory.mjs stage [--root <dir>]
 //   node .claude/lib/regression/inventory.mjs check-staged --routes <file> [--root <dir>]

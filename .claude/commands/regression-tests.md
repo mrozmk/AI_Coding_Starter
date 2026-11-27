@@ -1,6 +1,6 @@
 ---
-description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status), or write specs for READY scenarios (author — 3 green passes, a critic, then a claim); production needs a confirmation every time
-argument-hint: "[run [smoke|full] | smoke | full | status | author (<ID>… | --area <CODE> | --pending | --from-qa <file>)] [--env <name>]"
+description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status | visual compare | visual update), or write specs for READY scenarios (author — 3 green passes, a critic, then a claim); production needs a confirmation every time
+argument-hint: "[run [smoke|full] | smoke | full | status | visual compare | visual update | author (<ID>… | --area <CODE> | --pending | --from-qa <file>)] [--env <name>]"
 allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/lib/regression/policy.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(node .claude/lib/regression/author.mjs:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Agent, Read, Write, Edit, Glob, Grep
 ---
 
@@ -9,8 +9,9 @@ allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/li
 ## Input: $ARGUMENTS
 
 Runs in the project's repo root. Contract: [.agents/reference/regression.md](../../.agents/reference/regression.md)
-§10 (selection), §11 (the request guard), §12 (the run), §14 (the author lane). The verdict is the
-script's — this command never judges a run and never reads a spec to decide pass/fail.
+§10 (selection), §11 (the request guard), §12 (the run), §13 (the visual lane), §15 (the author
+lane). The verdict is the script's — this command never judges a run and never reads a spec to
+decide pass/fail.
 
 ## Guardrails (absolute)
 
@@ -18,8 +19,12 @@ script's — this command never judges a run and never reads a spec to decide pa
   turn.** The token is the human's decision, not a formality: never reuse one from an earlier turn,
   never pass it on your own judgement, never retry a refused production run with a new token
   without asking again.
-- `run` and `status` never edit a spec or the catalog and never start a lane — a red run prints the
-  `heal` command; you only relay it. A red run never starts `heal`.
+- **Never pass `--token` to `visual accept` without an `Accept baselines` answer to the acceptance
+  question in this turn.** The same rule as the production token: never reuse one from an earlier
+  turn, never accept on your own judgement, never retry a refused acceptance without asking again.
+- `run`, `status` and `visual` never edit a spec or the catalog and never start a lane — a red run
+  prints the `heal` command; you only relay it. A red run never starts `heal` or `author`; never
+  start `visual update` from a `run` or on your own initiative — only when the user typed it.
 - `author` writes only its own candidate spec files (created by `author.mjs draft`) and the critic
   and provenance verdict files in its verify run directory; it changes the catalog only through
   `author.mjs claim` and moves every unclaimed draft out with `author.mjs reject`.
@@ -36,8 +41,10 @@ script's — this command never judges a run and never reads a spec to decide pa
 | `run smoke`, `smoke` | `run smoke` |
 | `run full`, `full` | `run full` |
 | `status` | `catalog.mjs --status`, then `run.mjs status` |
+| `visual compare` | `run.mjs visual compare` (§ Visual) |
+| `visual update` | `run.mjs visual update`, then the acceptance question (§ Visual) |
 | `author <ID>…`, `author --area <CODE[,CODE]>`, `author --pending`, `author --from-qa <file>` | `## Author` |
-| `heal`, `visual` | "not yet shipped" (regression.md §4) — stop |
+| `heal` | "not yet shipped" (regression.md §4) — stop |
 
 `--env <name>` passes through to `run.mjs` (and to `run.mjs status`). Anything else → print the
 argument hint and stop.
@@ -71,11 +78,41 @@ argument hint and stop.
    `Cancel` → stop, nothing ran. An exit 3 `confirmation invalid: <why>` (expired, reused, the plan
    changed) prints a fresh token: ask again with the new text — never confirm on the user's behalf.
 
+## Visual
+
+1. Run, as its own Bash call:
+
+   ```bash
+   node .claude/lib/regression/run.mjs visual <compare|update> [--env <name>]
+   ```
+
+2. Read the exit code and the printed lines:
+
+   | Exit | Meaning | Next |
+   |---|---|---|
+   | 0 · 1 · 4 · 5 | GREEN · RED · INCOMPLETE · BLOCKED/ENV | Report (below); for `update` also the `visual offer: none — <why>` line. |
+   | 2 | not adopted, config error, `visual not configured`, a widened tolerance, no target | As Run step 2 (an `environments:` line → ask, rerun); otherwise report verbatim and stop. |
+   | 3 with `confirmation-required:` | production confirmation | As Run step 3, rerunning `visual <action> --env <name> --confirm <token>`. |
+   | 3 with `acceptance-required: <token>` | `update` offers new baselines | Step 3. |
+   | 3 otherwise | refused (team clone, lock held, not guard-integrated, overlapping baselines) | Report verbatim. Stop. |
+
+3. **Acceptance.** Show every `visual offer:` line the script printed, **verbatim**, and the
+   candidate paths to open, in one `AskUserQuestion` with the options `Accept baselines` and
+   `Cancel`. Only on `Accept baselines`, run (the run id is the directory of the `record:` line):
+
+   ```bash
+   node .claude/lib/regression/run.mjs visual accept --run <run-id> --token <token>
+   ```
+
+   `Cancel` → stop, nothing is written. An exit 3 from `accept` (`stale offer`, expired, changed
+   since the offer) → report it; a new `visual update` is the only way to a new token. Exit 0 →
+   relay `accepted: …` and say the baselines are committed with `/commit`.
+
 ## Report
 
 In the project's language: the target environment and host, the mode, the verdict, the build SHA,
-the `reason:` and `warning:` lines, the `not run — policy` list, and the record path
-(`record: …`). RED → print the `next: /regression-tests heal --run <run-id>` line the script
+the `reason:` and `warning:` lines, the `not run — policy` list, the `visual:` and every `visual
+portability:` line (`run full` and `visual …`), and the record path (`record: …`). RED → print the `next: /regression-tests heal --run <run-id>` line the script
 printed, and say that `heal` is not started (and not yet shipped). INCOMPLETE → name what kept it
 from green (a skipped / flaky case, no build SHA, a report error). BLOCKED/ENV → the stop reason;
 the environment pushed back or the guard could not be attested — do not retry.
