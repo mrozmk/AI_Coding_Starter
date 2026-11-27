@@ -129,7 +129,7 @@ SHELL_ASK = re.compile(r"\bdelete[ \t]+(top\s*\(\s*\d+\s*\)[ \t]+)?from[ \t]+" +
 SQL_PARTS = re.compile(r"'(?:[^']|'')*'|\[(?:[^\]]|\]\])*\]|\"(?:[^\"]|\"\")*\"|/\*.*?\*/|--[^\n]*",
                        re.S)
 MENTIONS_SQL = re.compile(r"sqlcmd|\.sql\b", re.I)
-SUBST = re.compile(r"\$\(|`|\)")  # same as guard_team_egress.SUBST
+SUBST = re.compile(r"\$\(|`|\)")  # also the egress guard's (guard_team_egress_words.nested_texts)
 DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 SCRIPT_REF = re.compile(r"\.(sh|sql)\b")
 CD_WORD = re.compile(r"(^|[\s;&|(])cd\s")

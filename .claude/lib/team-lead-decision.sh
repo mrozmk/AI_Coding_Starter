@@ -16,6 +16,12 @@
 #     --request <digest> --mandate m-<uuid> --class <class> --text "d-<n> <reply>" --why "<line>"
 #   decision handback <team> d-<n> --why "<line>"     (both: the Supervisor, main checkout)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
+#   decision open <team> --batch <file> [--question "<line>"] [--recommend allow|deny] [--source …]
+#     (#322: an Operator decision of kind batch — team_batch.py prepare copies the entries into
+#     decisions/d-<n>.batch.json, its sha256 goes into batch_sha256 and the rendered entries into
+#     the question and the dialog; the reply `d-<n> allow|deny` (d_batch_reply) sets answer_outcome;
+#     each entry then answers its exact request once, team-ask-hook.sh)
+#   decision revoke <team> d-<n> --why "<line>"       (lead or Supervisor: an answered batch grants no more)
 # Delegation (team-mandate.sh, team-lead.md §7): open marks an ask-bound decision whose class the
 # Operator's mandate covers `delegate: supervisor` and files it in the Supervisor's inbox; the
 # runner holds its Operator notification while that stands. answer --delegated records the
@@ -58,6 +64,12 @@ dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter k
   mv "$1.tmp" "$1"
 }
 d_bad() { echo "error: $2" >&2; exit "$1"; }
+# d_batch_reply <d-n> <text> → allow | deny (rc 0): the one reply of a batch decision, keyed by its
+# id — exactly `d-<n> allow` or `d-<n> deny[: …]`; rc 1 for anything else (another decision too).
+d_batch_reply() {
+  local t; t="$(jq -rn --arg m "$2" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
+  case "$t" in "$1 allow") echo allow ;; "$1 deny"|"$1 deny:"*) echo deny ;; *) return 1 ;; esac
+}
 d_reply_shape() {  # d_reply_shape <a-n> — the reply form of a multi-question ask
   jq -r '[.payload.tool_input.questions[] | "\(.header // .question): <label>"] | join("; ")' "$ASK_D/$1.json"
 }
@@ -289,18 +301,25 @@ d_route() {
 
 decision_open() {
   local src="" q="" opts="" rec="" notify=human_decision gate="" ask="" n f tmp v rel bind="" kind=""
-  local reply="" reason="" new="" qgiven="" dq="" dialog="" dl="" dcls="" dman=""
+  local reply="" reason="" new="" qgiven="" dq="" dialog="" dl="" dcls="" dman="" batch="" bo="" bsha="" block=""
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
       --source) src="$2" ;; --question) q="$2" ;; --options) opts="$2" ;; --recommend) rec="$2" ;;
       --notify) notify="$2" ;; --gate) gate="$2" ;; --ask) ask="$2" ;;
-      --reason) reason="$2" ;;
+      --reason) reason="$2" ;; --batch) batch="$2" ;;
       *) usage ;;
     esac
     shift 2
   done
   team_lead_caller || d_bad 3 "only this run's TeamLead opens decisions"
+  if [ -n "$batch" ]; then
+    [ -z "$ask$gate" ] || d_bad 2 "--batch goes without --ask and --gate"
+    [ -f "$batch" ] || d_bad 2 "no batch file $batch"
+    kind=batch; opts="${opts:-allow|deny}"; [ "$opts" = "allow|deny" ] || d_bad 2 "a batch's options are allow|deny"
+    [ -n "$q" ] || q="batch of $(jq -r '.entries | length' "$batch" 2>/dev/null || echo '?') network operations — allow each once?"
+    src="${src:-batch}"
+  fi
   case "$reason" in ""|human-only|no-rule|lead-unsure|channel-failed|guard) ;;
     *) d_bad 2 "--reason human-only|no-rule|lead-unsure|channel-failed|guard" ;; esac
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
@@ -337,9 +356,21 @@ ask_kind: $kind"
   mkdir -p "$DD"
   n="$(ls "$DD" 2>/dev/null | sed -n 's/^d-\([0-9]*\)\.md$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); f="$DD/d-$n.md"; tmp="$DD/.d-$n.md.tmp"
+  if [ -n "$batch" ]; then
+    # The stored copy is the decision's own, validated before anything is published.
+    d_lock
+    bo="$(python3 -I "$LIB/team_batch.py" prepare --file "$batch" --project "${TD%/.agents/team}" \
+      --out-dir "$DD" --id "d-$n" 2> "$DD/.d-$n.batch.err")" \
+      || { v="$(cat "$DD/.d-$n.batch.err" 2>/dev/null)"; rm -f "$DD/.d-$n.batch.err"; ask_unlock; d_bad 3 "${v:-the batch was refused}"; }
+    rm -f "$DD/.d-$n.batch.err"; ask_unlock
+    bsha="$(sed -n 's/^sha256: //p' <<<"$bo")"; block="$(sed '/^sha256: /d' <<<"$bo")"
+    [ -n "$bsha" ] || d_bad 1 "the batch copy has no sha256"
+    [ "$src" != batch ] || src="decisions/d-$n.batch.json"
+  fi
   if [ -n "$new" ]; then
     [ -n "$rec" ] || d_bad 2 "decision open needs --recommend <one of the Operator's options>"
     dq="$q"
+    [ "$kind" != batch ] || dq="$q"$'\n'"$block"
     if [ "$kind" = text ] && [ -z "$qgiven" ]; then
       dq="$(ask_get "$ask" role): $(jq -r '.payload.text // ""' "$ASK_D/$ask.json")"
     fi
@@ -358,13 +389,26 @@ ask_kind: $kind"
     [ -z "$dcls" ] || { echo "delegate: supervisor"; echo "delegate_class: $dcls"; echo "delegate_mandate: $dman"; }
     [ -z "$gate" ] || echo "gate: $gate"
     [ -z "$bind" ] || printf '%s\n' "$bind"
+    [ -z "$batch" ] || { echo "kind: batch"; echo "batch_sha256: $bsha"; }
     echo "---"; echo "## Question"; echo "$q"
+    [ -z "$batch" ] || { echo; echo "$block"; }
     [ -z "$opts" ] || { echo; echo "## Options"; tr '|' '\n' <<<"$opts" | sed 's/^/- /'; }
     [ -z "$rec" ] || { echo; echo "## Recommendation"; echo "$rec"; }
     [ -z "$dialog" ] || { echo; echo "## Dialog"; echo "$dialog"; }
   } > "$tmp"
-  [ ! -e "$f" ] || { rm -f "$tmp"; d_bad 1 "$f already exists"; }
-  mv "$tmp" "$f"
+  if [ -n "$ask" ] && [ "$kind" = permission ]; then
+    # #322: one locked section with the lead's own egress deny (team-answer.sh) — the ask still
+    # open and unanswered, then the decision published.
+    d_lock
+    case "$(d_ask_state "$ask")" in waiting|timed-out) ;;
+      *) ask_unlock; rm -f "$tmp"; d_bad 4 "ask $ask is $(ask_get "$ask" state), not open" ;; esac
+    [ ! -e "$ASK_D/$ask.answer.json" ] || { ask_unlock; rm -f "$tmp"; d_bad 4 "ask $ask is already answered"; }
+    [ ! -e "$f" ] || { ask_unlock; rm -f "$tmp"; d_bad 1 "$f already exists"; }
+    mv "$tmp" "$f"; ask_unlock
+  else
+    [ ! -e "$f" ] || { rm -f "$tmp"; d_bad 1 "$f already exists"; }
+    mv "$tmp" "$f"
+  fi
   # From now on only the Operator's relay answers an escalated question or stop.
   if [ -n "$ask" ]; then
     case "$kind" in question|text)
@@ -529,6 +573,12 @@ decision_answer() {
       [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
     fi
     aval="$(jq -r .value <<<"$p")"; [ -n "$amap" ] || amap="$(jq -c '.map // empty' <<<"$p")"
+  elif [ "$(dfm "$f" kind)" = batch ]; then
+    # #322: one reply parser for a batch, typed or from the dialog: `d-<n> allow|deny[: …]`.
+    po="$(d_batch_reply "$id" "$text")" || d_bad 7 "reply must read $id allow|deny"
+    [ -z "$outcome" ] || [ "$outcome" = "$po" ] || d_bad 7 "the reply reads $po, not --outcome $outcome"
+    outcome="$po"; aval="${text#"$id deny"}"; aval="${aval#:}"; aval="${aval#"${aval%%[![:space:]]*}"}"
+    [ "$po" = deny ] || aval=""
   elif [ -n "$fromask" ]; then
     ans="${text#"$id "}"
     labels="$(sed -n '/^## Dialog$/{n;p;q;}' "$f" | jq -r '.questions[0].options[].label' 2>/dev/null)"
@@ -565,7 +615,7 @@ decision_answer() {
     how="terminal"
   else
     local erc=0
-    if [ -n "$ask" ]; then ev="$(d_evidence "$f" "$text" exact)" || erc=$?
+    if [ -n "$ask" ] || [ "$(dfm "$f" kind)" = batch ]; then ev="$(d_evidence "$f" "$text" exact)" || erc=$?
     else ev="$(d_evidence "$f" "$text")" || erc=$?; fi
     [ "$erc" != 3 ] || d_bad 7 "the TeamLead session is not one the runner recorded — answer from a terminal"
     [ -n "$ev" ] || d_bad 7 "no Operator message in the TeamLead window after $(dfm "$f" created_at) contains this answer — answer from a terminal, or relay the Operator's own words"
@@ -652,6 +702,8 @@ decision_relay() {
       esac
     fi
     outcome="$(jq -r .outcome <<<"$p")"; aval="$(jq -r .value <<<"$p")"; amap="$(jq -c '.map // empty' <<<"$p")"
+  elif [ "$(dfm "$f" kind)" = batch ]; then
+    outcome="$(d_batch_reply "$id" "$reply")" || d_bad 7 "reply must read $team $id allow|deny"
   else
     w="${rest%%[[:space:]]*}"; w="${w%:}"
     case "$w" in continue|close|more-revise|approve) outcome="$w" ;; esac
@@ -894,6 +946,25 @@ decision_withdraw() {
   echo "withdrawn: $id"
 }
 
+decision_revoke() {  # #322: an answered batch grants no more uses (revoking only removes a grant)
+  local id="${1:-}" why="" f
+  [ -n "$id" ] || usage; shift
+  [ $# -eq 2 ] && [ "$1" = --why ] && one_line "$2" || usage; why="$2"
+  team_lead_caller || [ "${TEAM_SESSION_ROLE:-}" = Supervisor ] \
+    || d_bad 3 "only this run's TeamLead or the Supervisor revokes a batch"
+  f="$(d_file "$id")"
+  [ "$(dfm "$f" kind)" = batch ] || d_bad 7 "$id is no batch decision"
+  d_lock
+  case "$(dfm "$f" status)" in answered|dispatched) ;;
+    *) ask_unlock; d_bad 4 "$id is $(dfm "$f" status), not answered" ;; esac
+  python3 -I "$LIB/team_batch.py" revoke --dir "$DD" --id "$id" --why "$why" \
+    || { ask_unlock; d_bad 1 "$id could not be revoked"; }
+  dfm_set "$f" revoked_at "$(team_utc)"
+  printf '\n## Revoked\n%s\n' "$why" >> "$f"
+  ask_unlock
+  echo "revoked: $id"
+}
+
 decision_list() {
   local f st
   for f in "$DD"/d-*.md; do
@@ -916,6 +987,7 @@ decision_main() {  # decision_main <op> <team> …
   case "$op" in
     open) decision_open "$@" ;; answer) decision_answer "$@" ;; relay) decision_relay "$@" ;;
     withdraw) decision_withdraw "$@" ;; list) decision_list "$@" ;; handback) decision_handback "$@" ;;
+    revoke) decision_revoke "$@" ;;
     *) usage ;;
   esac
 }

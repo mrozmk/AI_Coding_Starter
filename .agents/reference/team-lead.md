@@ -360,9 +360,23 @@ ask is published:
 |---|---|---|
 | `class` | ask matches only, in one enabled `team_prompt_classes.py` class (Bash, file edits) | the hook, at once: answer `authority: class`, an `answers.md` line, no ring |
 | `lead` | no human-only cause — a baseline ask match, no rule at all (a guard's own `ask` leaves no trace in the payload), an MCP or other unevaluated tool with a baseline rule or none | the lead: `--allow` or `--deny` |
-| `operator` | egress by the real egress classifier (`guard_team_egress.bash_reason` / `webfetch_reason`, so an inline interpreter is caught), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write, a tool name, a bare `mcp__<server>`, or a parameterized rule of an unevaluated tool — `Skill(<name>)` / `Skill(<name> *)` by the skill name, `Read(<glob>)` and any argument it cannot judge as covered), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
+| `operator` | egress by the #322 effect classifier (`guard_team_egress.bash_effect` / `webfetch_effect`, `security-egress.md` → Effect classes): a `deny` kind → cause `refuse (egress denied): …` (the hook refuses it at once, never filed, never approved), an `operator` or `ask` kind → `egress: …` — reported first, but only after every other check ran; a `pass` kind gives no egress cause (no blanket WebFetch cause, no egress regex: a prompted pass read or public WebFetch is `lead`), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write, a tool name, a bare `mcp__<server>`, or a parameterized rule of an unevaluated tool — `Skill(<name>)` / `Skill(<name> *)` by the skill name, `Read(<glob>)` and any argument it cannot judge as covered), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
 
 Relative operands resolve against the payload's `cwd`; the clone root stays the boundary.
+The checker prints three lines: the tier, `retry: <key>|none` and `batch: eligible|no` — eligible
+only when the one cause is an `operator`/`ask` egress kind and every other check found nothing
+(§7, Batch decision).
+
+**The lead's egress deny (#322).** An operator-tier `permission` ask whose stored cause starts
+`egress:` and to which no decision is bound (no `decisions/d-*.md` with `bind_ask` naming it,
+withdrawn ones aside) is the lead's to **deny or reformulate**:
+`team-answer.sh <team> a-<n> --deny "<what to do instead>" --authority teamlead --why "<line>"`.
+The sender checks and writes it under the run's ask lock — the same section `decision open --ask`
+publishes a decision in, so exactly one of the two wins — and records `authority teamlead`, never
+the Operator's; the hook delivers it without the Operator verification (a deny grants nothing).
+Its `--allow` stays exit 9: an allow is the Operator's. A `refuse (egress denied)` cause is a hard
+deny class: the hook refused it already.
+
 `question` and `text` asks are tier `lead`, unless the lead finds one of the escalated classes
 below in one and opens a decision (`requires_decision` on the ask; from then on only the
 Operator's relay answers it).
@@ -476,6 +490,29 @@ absolute) — except `bash <abs>/.claude/lib/team-ask.sh wait a-<n>` for the sta
 clone: like §7's "Limit of the human binding", this raises the bar, it is not proof.
 
 ## 7. Human decisions
+
+**Batch decision (#322).** One Operator decision may cover several exact network operations a
+stage names in one JSON batch file (`{"entries": [{"command", "cwd", "pins": [...], "outputs":
+[...]}]}`, 1–20 entries, literal text only): `team-lead.sh decision open <team> --batch <file>
+[--question "<line>"] [--recommend allow|deny]` (no `--source`: the source is the decision's own
+copy, `decisions/d-<n>.batch.json`). `team_batch.py prepare` refuses a deny-class entry, an
+expansion `inline_literals` cannot resolve, a directory pin, an absent pin no earlier entry creates,
+and an install form without its inputs (npm: `package.json` and the lockfile — pinned, or created as
+an entry's output; pip: the `-r` / `--constraint` file); it writes the canonical copy, whose sha256
+goes into `batch_sha256`, and renders every entry — command, cwd, pins with their digests or
+`absent (created by entry k)` — verbatim into the question and the dialog. The Operator answers
+`d-<n> allow|deny` through the usual human binding (lead window, the `--from-ask` dialog, the
+Supervisor relay); `answer_outcome` comes from one parser (`d_batch_reply`). **Use:** an
+operator-tier permission with `batch: eligible` is matched by the stage hook against the run's
+allowed, unrevoked batches — byte-identical command and canonical cwd, the stored copy's sha256
+unchanged, every pin present at open unchanged, every pin absent at open present now with its
+creating entry used, every output still absent, no `npm-shrinkwrap.json` appearing beside a pinned
+manifest, within 12 h of the answer and the run. The decision is verified like any Operator
+decision, then the claim runs under the run's ask lock (an earlier ask of this session for this
+very request with an answer waiting wins). Matched → `allow` with authority `operator (batch d-<n>)`
+in `answers.md`, the use in `d-<n>.batch-state.json`, no Operator touch (no human acted at use).
+Each entry answers once. `team-lead.sh decision revoke <team> d-<n> --why "<line>"` (lead or
+Supervisor) ends the remaining entries.
 
 A decision only the Operator can make becomes a file, and the lead raises it as an
 `AskUserQuestion` dialog in its own window (lead launched with `ask_operator`, §1). The cost: the

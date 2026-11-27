@@ -36,8 +36,11 @@ Every answer the lead sends to a stage names an authority and lands in `runs/<ru
 
 **Human-only** (`teams.teamlead.human_only`, default `settings-profiles` + `prod-ask`): any edit of
 settings or permission profiles, an ask rule the project added beyond the starter's baseline
-(`.claude/team/baseline-ask.json` — the production group), egress (`git remote add|set-url`, a
-network verb), and an irreversible delete outside the clone or inside its git dir. Deny rules,
+(`.claude/team/baseline-ask.json` — the production group), egress (`git remote add|set-url`, and
+— #322 — what the effect classifier gives `deny`, `operator` or `ask`; a `pass` read is no egress,
+`security-egress.md` → Effect classes), and an irreversible delete outside the clone or inside its
+git dir. The lead may itself deny or reformulate an unbound egress ask (`--deny … --authority
+teamlead`, `team-lead.md` §6); an allow stays the Operator's, also as one batch decision (§7). Deny rules,
 destructive SQL and an unreadable prompt are refused for everyone, the Operator included. A
 human-only item becomes `runs/<run>/decisions/d-<n>.md` (pending), and the Operator's answer is
 recorded in their own words ([team-lead.md](team-lead.md) §7).
@@ -56,7 +59,7 @@ Operator, or hands it back.
 | Class | Covers | Delegable |
 |---|---|---|
 | `no-rule`, `lead-unsure` | a question, a plan or a lead-tier prompt the lead escalated with that reason | when named |
-| — | every operator-tier request (a settings or profile edit, a production ask, an irreversible delete, egress), a deny rule, destructive SQL, a path outside the clone; a plan gate, an abandon decision, a stop, any decision bound to no ask; an escalation with another reason | never — a human-only gate is not overridden |
+| — | every operator-tier request (a settings or profile edit, a production ask, an irreversible delete, egress — the #322 classifier's non-pass kinds), a deny rule, destructive SQL, a path outside the clone; a plan gate, an abandon decision, a stop, any decision bound to no ask; an escalation with another reason | never — a human-only gate is not overridden |
 
 A delegated answer is refused wherever a binding cannot be established — the sender (the registered
 Supervisor session and its own standalone call, whose argv names the run, the decision, the ask,
@@ -79,7 +82,7 @@ reaches the Operator only when the lead itself finds a material conflict, a cons
 since the brief was written, or a requested scope change.
 
 **Human-only is the act, not the plan.** The classes above gate the request when a stage makes it
-(the settings edit, the network or install command). Planning a step that will need such an
+(the settings edit, the network or install command the #322 classifier does not pass). Planning a step that will need such an
 approval is the lead's to answer: a planned future egress is not human-only, including the step
 grants nothing, and a prerequisite denied later means a blocked stage or a replan.
 

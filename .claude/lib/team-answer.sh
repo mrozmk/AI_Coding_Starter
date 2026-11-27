@@ -11,6 +11,10 @@
 #   question: --answers, --pick (a single-question ask; one of its labels), --text (free text)
 #   permission, plan: --allow, --deny · text (a stop): --text
 #   e.g. bash .claude/lib/team-answer.sh alfa a-3 --pick "Option A" --authority teamlead --why "the order says A"
+# #322: an operator-tier permission ask whose tier cause starts `egress:` (never `refuse (egress
+#   denied)`) and to which no decision is bound may be denied or reformulated by the lead itself:
+#   --deny "<what to do instead>" --authority teamlead (checked and written under the run's ask
+#   lock, recorded `authority teamlead`); its --allow stays the Operator's (9).
 # Run from the team's clone (the lead's cwd): its .agents/team/team.json must name <team>.
 # Exit: 0 written · 2 usage · 6 stale, replaced or already answered · 7 caller or decision rule
 #   · 9 operator tier (open a decision: team-lead.sh decision open <team> --ask a-<n>).
@@ -69,7 +73,23 @@ esac
 
 KIND="$(ask_get "$ASK" kind)"; TIER="$(ask_get "$ASK" tier)"; REQ="$(ask_get "$ASK" requires_decision)"
 case "$TIER" in class|lead|operator) ;; *) refuse 6 "ask $ASK is not classified" ;; esac
-if [ "$TIER" = operator ] || [ -n "$REQ" ]; then
+# #322: the lead's own deny of an unbound egress permission ask (re-checked under the lock below).
+EGRESS_DENY=""
+case "$(ask_get "$ASK" tier_cause)" in "egress: "*)
+  [ "$TIER" = operator ] && [ "$AUTH" = teamlead ] && [ "$FORM" = deny ] && [ "$KIND" = permission ] \
+    && [ -z "$REQ" ] && [ -z "$DEC_ID" ] && EGRESS_DENY=1 ;;
+esac
+# bound_decision → the id of a decision bound to this ask and not withdrawn, or nothing.
+bound_decision() {
+  local v
+  for v in "$ASK_TD/runs/$ASK_RUN/decisions"/d-*.md; do
+    [ -f "$v" ] || continue
+    [ "$(auth_fm "$v" bind_ask)" = "$ASK" ] || continue
+    [ "$(auth_fm "$v" status)" = withdrawn ] && continue
+    basename "$v" .md; return 0
+  done
+}
+if [ -z "$EGRESS_DENY" ] && { [ "$TIER" = operator ] || [ -n "$REQ" ]; }; then
   [ "$AUTH" != teamlead ] && [ -n "$DEC_ID" ] \
     || refuse 9 "ask $ASK is the Operator's${REQ:+ (decision $REQ)} — open a decision: team-lead.sh decision open $TEAM --ask $ASK"
   [ -z "$REQ" ] || [ "$REQ" = "$DEC_ID" ] || refuse 7 "ask $ASK waits for decision $REQ, not $DEC_ID"
@@ -109,7 +129,19 @@ ANSWER="$(jq -n --arg id "$ASK" --arg form "$FORM" --argjson v "$V" --arg auth "
   --arg dec "$DEC_ID" --arg at "$(team_utc)" --arg lsid "$(jq -r '.session_id // ""' "$TD/teamlead.json")" \
   '{id: $id, form: $form, value: $v, authority: $auth, why: $why, decision: $dec, answered_at: $at,
     lead_session_id: $lsid}')"
-rc=0; ask_answer_write "$ASK" "$ANSWER" || rc=$?
+rc=0
+if [ -n "$EGRESS_DENY" ]; then
+  # One locked section with decision open --ask: the ask still open, no decision bound, the write.
+  ask_lock || refuse 6 "cannot take the ask lock of run $ASK_RUN"
+  ask_reconcile "$ASK"; st="$(ask_get "$ASK" state)"
+  case "$st" in waiting|timed-out) ;; *) ask_unlock; refuse 6 "ask $ASK is $st, not open" ;; esac
+  bd="$(bound_decision)"
+  [ -z "$bd" ] || { ask_unlock; refuse 9 "ask $ASK is bound to decision $bd — the Operator answers it"; }
+  ask_answer_write "$ASK" "$ANSWER" || rc=$?
+  ask_unlock
+else
+  ask_answer_write "$ASK" "$ANSWER" || rc=$?
+fi
 [ "$rc" = 0 ] || refuse 6 "ask $ASK already answered"
 ask_cas "$ASK" "waiting timed-out" answered || true
 auth_dispatch

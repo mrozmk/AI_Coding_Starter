@@ -1,0 +1,11 @@
+# Expected #322 effect view lines of `prompt-replay.sh run --impl <starter> --layer all` for the
+# synthetic corpus (no labels: every intervention counts under its label row, `unlabelled`; the
+# modeled one is not-replayable). Touched: the direct long echo is a native prompt no guard caused
+# (native-prompt), the token call a hard deny. Replay: the 16 unique calls by their most severe
+# occurrence. Compared: the `### Effect view` tables only (r1e).
+### Effect view — label × candidate outcome
+| row | pass | lead | native-prompt | operator | deny | not-replayable |
+| unlabelled | 2 | 2 | 1 | 5 | 1 | 4 |
+### Effect view — unique calls × candidate outcome
+| row | pass | lead | native-prompt | operator | deny | not-replayable |
+| calls | 7 | 0 | 0 | 8 | 1 | 0 |

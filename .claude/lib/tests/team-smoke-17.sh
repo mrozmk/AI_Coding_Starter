@@ -48,7 +48,27 @@ $PC --block < "$WORK/hist" > "$WORK/blk" || fail "(77) --block found no block"
   || { cp "$WORK/blk" "$WORK/out"; fail "(77) --block is not the newest prompt"; }
 printf 'Fetch\n  https://example.com/x\nDo you want to proceed?\n❯ 1. Yes\n' > "$WORK/fetch"
 $PC "$MAIN" < "$WORK/fetch" 2> "$WORK/out" && fail "(77) WebFetch approved"
-has "egress" "$WORK/out" || fail "(77) WebFetch refusal does not say egress"
+has "egress" "$WORK/out" && has "not bound" "$WORK/out" || fail "(77) an unbound WebFetch refusal does not say egress / not bound"
+# #322: a Fetch prompt bound to its one pending WebFetch call is judged by the effect classifier,
+# through the pane and through --input-json alike; an allowlisted read passes, a token is refused.
+fx_fetch() {  # fx_fetch <url> — the pane (the real layout) and the transcript of one pending WebFetch call
+  { printf '─%.0s' $(seq 120); printf '\n Fetch\n %s\n Do you want to allow Claude to fetch this content?\n' "$1"
+    printf ' ❯ 1. Yes\n   2. No\n Esc to cancel\n'; } > "$WORK/fetchb"
+  jq -nc --arg u "$1" '{type: "assistant", uuid: "a-tw1", message: {content: [{type: "tool_use",
+    id: "tw1", name: "WebFetch", input: {url: $u, prompt: "p"}}]}}' > "$WORK/fetchb.jsonl"
+  jq -nc --arg u "$1" '{tool_name: "WebFetch", tool_input: {url: $u, prompt: "p"}, cwd: "/tmp"}' > "$WORK/fetchb.json"
+}
+fx_fetch https://developer.mozilla.org/x
+$PC "$MAIN" --strict --transcript "$WORK/fetchb.jsonl" < "$WORK/fetchb" 2> "$WORK/out" \
+  || { cat "$WORK/out"; fail "(77) a bound allowlisted WebFetch is refused through the pane"; }
+[ "$($PC "$MAIN" --input-json "$WORK/fetchb.json" | sed -n 1p)" = "tier: lead" ] \
+  || fail "(77) an allowlisted WebFetch is not lead through --input-json"
+fx_fetch "https://developer.mozilla.org/x?token=abc123def456"
+$PC "$MAIN" --strict --transcript "$WORK/fetchb.jsonl" < "$WORK/fetchb" 2> "$WORK/out" \
+  && fail "(77) a token URL approved through the pane"
+has "egress" "$WORK/out" || fail "(77) the token URL refusal does not say egress"
+$PC "$MAIN" --input-json "$WORK/fetchb.json" | grep -q "^tier: operator — refuse (egress denied)" \
+  || fail "(77) a token URL is not refused through --input-json"
 R="$(printf 'x token=abc --password p Bearer q\n' | bash -c ". $SRC/.claude/lib/team-lib.sh; team_redact")"
 [ "$R" = "x token=*** --password *** Bearer ***" ] || fail "(77) redaction: $R"
 printf 'Bash command\n  az storage blob list --sas-token s3cr3t\nDo you want to proceed?\n❯ 1. Yes\n' \

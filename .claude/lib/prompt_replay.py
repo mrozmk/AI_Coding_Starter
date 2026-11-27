@@ -4,7 +4,12 @@
 worker process (guard_team_egress, team_prompt_check and team_prompt_authority imported from that
 root, never re-implemented) and prints the outcome counts; with two roots it lists every entry
 whose raw decision (guard reason, tier, class, cause) or mapped outcome differs. Exit: 0 ok ·
-1 runtime · 2 usage · 3 refused (hash or coverage). Stdlib only. Contract: the #321 spec."""
+1 runtime · 2 usage · 3 refused (hash or coverage). Stdlib only. Contract: the #321 spec.
+#322: a root whose guard has the effect API (bash_effect / webfetch_effect) is replayed by effect
+— a deny kind is the deny outcome — with an offline resolver stub (every lexically public name
+resolves to a public address: no live DNS) and an isolated worker environment; the report adds
+the effect view (the candidate's own decision, independent of the historical prompt bit) per
+implementation and the pass → non-pass lists the acceptance counts come from."""
 import argparse
 import csv
 import gzip
@@ -21,6 +26,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUTCOMES = ("pass", "lead", "supervisor-clearable", "operator", "deny")
 COLUMNS = OUTCOMES + ("not-replayable",)
 SEVERITY = {o: i for i, o in enumerate(OUTCOMES)}
+EFFECT_COLUMNS = ("pass", "lead", "native-prompt", "operator", "deny", "not-replayable")
+EFFECT_SEVERITY = {o: i for i, o in enumerate(EFFECT_COLUMNS[:-1])}
+STUB_ADDRESS = "93.184.216.34"
+GIT_PUSH = re.compile(r"(?:^|[\s;&|(])git\b[^;&|\n]*\bpush\b")
 CTX_ROLE = {"supervisor": "Supervisor", "teamlead": "TeamLead", "advisor": "Advisor"}
 # guard-corpus.txt's documented policy: a main checkout with no local gh rules and the inline
 # Python opt-ins (its header, lines 1-4).
@@ -64,24 +73,33 @@ class Evaluator:
         # The retry key is delivery state that opens files the input names; not part of a decision.
         team_prompt_authority.retry_key = lambda *a, **k: None
         self.g, self.a, self.c = guard_team_egress, team_prompt_authority, team_prompt_check
+        self.effect_api = hasattr(guard_team_egress, "bash_effect")
+        # #322: the classifier's resolver is an offline stub — no verdict depends on live DNS.
+        cl = sys.modules.get("guard_team_egress_classify")
+        if cl is not None and os.path.realpath(cl.__file__).startswith(self.root + os.sep):
+            import socket
+            cl.RESOLVER = lambda host, port, *a, **k: [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", (STUB_ADDRESS, port))]
         self.fx = self.fixtures(policy)
 
     def fixtures(self, policy):
         t, root = self.tmp, self.root
         settings = os.path.join(root, ".claude", "settings.json")
         fx = {k: os.path.join(t, k) for k in ("sup", "supc", "role", "main", "clone", "scratch", "jobs")}
-        for k, pol in (("sup", policy), ("supc", CORPUS_POLICY)):
+        origin = os.path.join(t, "origin.git")
+        _git(t, "init", "-q", "--bare", origin)
+        for k, pol in (("sup", policy), ("supc", CORPUS_POLICY), ("role", None)):
             os.makedirs(os.path.join(fx[k], ".claude"))
             shutil.copyfile(settings, os.path.join(fx[k], ".claude", "settings.json"))
-            _write(os.path.join(fx[k], ".claude", "settings.local.json"), pol)
+            if pol is not None:
+                _write(os.path.join(fx[k], ".claude", "settings.local.json"), pol)
+            # #322: a repository with an origin, so a non-stage push resolves its destination.
             _git(fx[k], "init", "-q")
-        os.makedirs(os.path.join(fx["role"], ".claude"))
-        shutil.copyfile(settings, os.path.join(fx["role"], ".claude", "settings.json"))
+            _git(fx[k], "remote", "add", "origin", origin)
         os.makedirs(fx["scratch"])
         os.makedirs(fx["jobs"])
         # The stage: a distinct main + clone pair with a runner anchor (team-smoke-12.sh fixture).
-        origin, main, clone = os.path.join(t, "origin.git"), fx["main"], fx["clone"]
-        _git(t, "init", "-q", "--bare", origin)
+        main, clone = fx["main"], fx["clone"]
         os.makedirs(os.path.join(main, ".claude"))
         shutil.copyfile(settings, os.path.join(main, ".claude", "settings.json"))
         prof = os.path.join(root, ".claude", "project-profile.json")
@@ -118,34 +136,68 @@ class Evaluator:
         elif ctx in CTX_ROLE:
             os.environ["TEAM_SESSION_ROLE"] = CTX_ROLE[ctx]
 
+    def project_of(self, ctx, fixture=None):
+        return {"stage": self.fx["clone"], "supervisor": self.fx["supc" if fixture == "guard-corpus" else "sup"]}.get(ctx, self.fx["role"])
+
     def guard(self, ctx, tool, ti, fixture=None):
-        project = {"stage": self.fx["clone"], "supervisor": self.fx["supc" if fixture == "guard-corpus" else "sup"]}.get(ctx, self.fx["role"])
+        return self.effect(ctx, tool, ti, fixture)[1]
+
+    def effect(self, ctx, tool, ti, fixture=None, cwd=None):
+        """(kind, reason): the effect API when the root has it, else today's reason as pass|ask."""
+        project = self.project_of(ctx, fixture)
         self._env(ctx, project)
         try:
             if tool == "Bash":
                 cmd = ti.get("command")
-                return self.g.bash_reason(cmd, project) if isinstance(cmd, str) else "unreadable Bash command"
-            if tool == "WebFetch":
-                return self.g.webfetch_reason(ti.get("url"), project)
+                if not isinstance(cmd, str):
+                    return "ask", "unreadable Bash command"
+                if self.effect_api:
+                    return self.g.bash_effect(cmd, project, cwd)
+                r = self.g.bash_reason(cmd, project)
+            elif tool == "WebFetch":
+                if self.effect_api:
+                    return self.g.webfetch_effect(ti.get("url"), project)
+                r = self.g.webfetch_reason(ti.get("url"), project)
+            else:
+                return "pass", ""
         except Exception as e:  # noqa: BLE001 — the wrapper turns a crash into its fail-closed ask
-            return "guard-error:%s" % e.__class__.__name__
-        return ""
+            return "ask", "guard-error:%s" % e.__class__.__name__
+        return ("ask" if r else "pass"), r
 
     def tier(self, tool, ti, cwd):
+        """(tier, class, cause, rest): rest is tier_full's tier without the egress cause (#322), or
+        None for a root without tier_full."""
         self._env("stage", self.fx["clone"])
         f = os.path.join(self.fx["jobs"], "job.json")
         _write(f, {"tool_name": tool, "tool_input": ti, "cwd": cwd})
+        args = (self.c, self.fx["clone"], self.fx["main"], [], f)
         try:
-            line = self.a.input_tier(self.c, self.fx["clone"], self.fx["main"], [], f)
+            if hasattr(self.a, "input_tier_parts"):
+                parts = self.a.input_tier_parts(*args)
+                if not parts:
+                    return "error", None, None, None
+                kind, why, _, rest, _ = parts
+                cause = self.norm(str(why).split("\n", 1)[0]) if kind == "operator" else None
+                return kind, why if kind == "class" else None, cause, list(rest) if rest else None
+            line = self.a.input_tier(*args)
         except Exception as e:  # noqa: BLE001
-            return "error", None, e.__class__.__name__
+            return "error", None, e.__class__.__name__, None
         if not line:
-            return "error", None, None
+            return "error", None, None, None
         first = line.split("\n", 1)[0]
         m = re.match(r"^tier: (class|lead|operator)(?: — (.*)| (.*))?$", first)
         if not m:
-            return "error", None, self.norm(first)
-        return m.group(1), m.group(3) if m.group(1) == "class" else None, self.norm(m.group(2))
+            return "error", None, self.norm(first), None
+        return m.group(1), m.group(3) if m.group(1) == "class" else None, self.norm(m.group(2)), None
+
+    def policy_match(self, project, cmd):
+        """deny | ask | None: the strongest rule of the fixture's policy a Bash command meets."""
+        try:
+            found = self.c.matches(cmd, self.c.rules(project, []), True)
+        except Exception:  # noqa: BLE001 — an unreadable policy counts as an ask
+            return "ask"
+        kinds = {f[0] for f in found}
+        return "deny" if "deny" in kinds else "ask" if "ask" in kinds else None
 
     def norm(self, s):
         if not s:
@@ -174,13 +226,39 @@ class Evaluator:
             return [sub(x) for x in v] if isinstance(v, list) else v
         return sub(job.get("input") or {}), cwd
 
+    def remap_role(self, job, ctx, ti):
+        """(tool_input, cwd, limit) of a non-stage job inside its fixture project (#322): every path
+        the job's `paths` map names becomes the fixture dir; a git push whose repository or
+        destination the fixture cannot represent gets the limit `origin not representable`."""
+        project = self.project_of(ctx, job.get("fixture"))
+        cmd = ti.get("command") if isinstance(ti.get("command"), str) else None
+        if cmd is None:
+            return ti, project, None
+        for p, _ in sorted(job.get("paths") or [], key=lambda pc: -len(pc[0] or "")):
+            if p:
+                cmd = boundary(p).sub(lambda m: project, cmd)
+        limit = None
+        if GIT_PUSH.search(cmd):
+            words = cmd.split()
+            after = words[words.index("push") + 1:] if "push" in words else []
+            dest = next((w for w in after if not w.startswith("-")), "origin")
+            dest = dest.rstrip(";&|)")
+            # Another repository (`git -C <dir>`, a `cd` first) or a destination other than origin:
+            # the fixture holds one repository and its origin, nothing else.
+            other = re.search(r"\bgit\s+-C\s", cmd) or re.search(r"(?:^|[;&|(\n])\s*(?:cd|pushd)\s", cmd)
+            if dest != "origin" or other:
+                limit = "origin not representable"
+        return dict(ti, command=cmd), project, limit
+
     def evaluate(self, job):
         ctx = job.get("ctx") or "unknown"
         if ctx == "unknown":
             ctx = self.ctx_override or "advisor"
         tool, ti, prompted = job.get("tool"), job.get("input") or {}, bool(job.get("prompted"))
         out = {"key": job.get("key"), "ctx": ctx, "guard": "", "tier": None, "class": None, "cause": None,
-               "modeled": bool(job.get("modeled")), "modeled_why": job.get("modeled_why")}
+               "modeled": bool(job.get("modeled")), "modeled_why": job.get("modeled_why"), "effect": None,
+               "effect_outcome": None, "limit": None}
+        cwd = None
         if not out["modeled"] and ctx == "stage":
             m = self.remap(job)
             if m is None:
@@ -189,19 +267,50 @@ class Evaluator:
                 out.update(modeled=True, modeled_why="file content unavailable")
             else:
                 ti, cwd = m
+        elif not out["modeled"] and ctx != "solo" and tool == "Bash" and self.effect_api:
+            ti, cwd, out["limit"] = self.remap_role(job, ctx, ti)
         if out["modeled"]:
             out.update(outcome=None, decision=None)
             return out
+        kind, rest = "pass", None
         if ctx != "solo" and tool in ("Bash", "WebFetch"):
-            out["guard"] = self.guard(ctx, tool, ti, job.get("fixture"))
+            kind, out["guard"] = self.effect(ctx, tool, ti, job.get("fixture"), cwd)
+        out["effect"] = kind
+        guard_caused = bool(job.get("guard_caused"))
         if ctx == "stage":
-            out["tier"], out["class"], out["cause"] = self.tier(tool, ti, cwd)
+            out["tier"], out["class"], out["cause"], rest = self.tier(tool, ti, cwd)
             esc = bool(out["guard"]) or prompted
-            out["outcome"] = ("operator" if out["tier"] in ("operator", "error") else "lead") if esc else "pass"
+            mapped = "operator" if out["tier"] in ("operator", "error") else "lead"
+            out["outcome"] = "deny" if kind == "deny" else (mapped if esc else "pass")
+            if kind == "deny":
+                eo = "deny"
+            elif kind != "pass" or (prompted and not guard_caused):
+                eo = mapped
+            elif prompted and rest and (rest[0] != "lead" or rest[1]):
+                # The egress prompt is gone; an independent trigger the candidate still meets.
+                eo = "operator" if rest[0] == "operator" else "lead"
+            else:
+                eo = "pass"
+            out["effect_outcome"] = eo
         elif ctx == "solo":
             out["outcome"] = "operator" if prompted else "pass"
+            out["effect_outcome"] = "native-prompt" if prompted else "pass"
         else:
-            out["outcome"] = "operator" if out["guard"] or prompted else "pass"
+            out["outcome"] = "deny" if kind == "deny" else ("operator" if out["guard"] or prompted else "pass")
+            if kind == "deny":
+                eo = "deny"
+            elif kind != "pass":
+                eo = "operator"
+            elif prompted and not guard_caused:
+                eo = "native-prompt"
+            else:
+                eo = "pass"
+                pol = self.policy_match(self.project_of(ctx, job.get("fixture")), ti.get("command")) \
+                    if prompted and tool == "Bash" and isinstance(ti.get("command"), str) else None
+                if pol:
+                    eo = "deny" if pol == "deny" else "native-prompt"
+                    out["effect_cause"] = "policy %s rule" % pol
+            out["effect_outcome"] = eo
         out["guard"] = self.norm(out["guard"])
         out["decision"] = [out["guard"] or "", out["tier"], out["class"], out["cause"]]
         return out
@@ -248,6 +357,14 @@ def load(corpus):
     return touched, replay
 
 
+def guard_caused(r):
+    """True when this record shows the historical prompt was the guard's own (#322): a touch row
+    with reason guard, an ask filed on an egress cause, a guard-corpus row."""
+    ev = r.get("evidence") or {}
+    return (r.get("source") == "guard-corpus" or (r.get("source") == "touch" and ev.get("reason") == "guard")
+            or (r.get("source") == "ask" and str(ev.get("tier_cause") or "").startswith("egress:")))
+
+
 def jobs_of(touched, replay, layer):
     """(jobs, touched interventions {iid: {rep, members}}, replay occurrence index)."""
     jobs, inter, b = [], {}, _build()
@@ -263,6 +380,7 @@ def jobs_of(touched, replay, layer):
                 jobs.append(dict(key=iid, tool=rep["tool"], input=(rep.get("input") or {}).get("tool_input") or {},
                                  ctx=rep["ctx"], prompted=rep.get("prompted", False), modeled=rep.get("modeled", False),
                                  modeled_why=rep.get("modeled_why"), fixture=rep.get("fixture"),
+                                 guard_caused=any(guard_caused(r) for r in [rep] + list(ms)),
                                  **{k: rep.get(k) for k in ("cwd_class", "cwd_rel", "paths")}))
     occs = {}
     if layer in ("replay", "all"):
@@ -279,7 +397,14 @@ def run_worker(impl, policy, jobs, ctx):
     if ctx:
         cmd += ["--ctx", ctx]
     data = "".join(json.dumps(j) + "\n" for j in jobs)
-    p = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # #322: no .curlrc or git config of the person running the report enters a verdict.
+    home = tempfile.mkdtemp(prefix="replay-home-")
+    env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home, CURL_HOME=home,
+               GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1")
+    try:
+        p = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
     if p.returncode != 0:
         raise RuntimeError("implementation %s: %s" % (impl, (p.stderr.strip().splitlines() or ["worker failed"])[-1]))
     res = {}
@@ -289,13 +414,13 @@ def run_worker(impl, policy, jobs, ctx):
     return res
 
 
-def table(title, rows, out):
+def table(title, rows, out, columns=COLUMNS):
     out.append("### " + title)
     out.append("")
-    out.append("| row | " + " | ".join(COLUMNS) + " |")
-    out.append("|---" * (len(COLUMNS) + 1) + "|")
+    out.append("| row | " + " | ".join(columns) + " |")
+    out.append("|---" * (len(columns) + 1) + "|")
     for name in sorted(rows):
-        out.append("| %s | %s |" % (name, " | ".join(str(rows[name].get(c, 0)) for c in COLUMNS)))
+        out.append("| %s | %s |" % (name, " | ".join(str(rows[name].get(c, 0)) for c in columns)))
     out.append("")
 
 
@@ -326,15 +451,20 @@ def bump(tbl, row, col, n=1):
     tbl[row][col] += n
 
 
-def report_touched(touched, reps, first, labels, ctx_given):
-    out, rows, obs, b = [], {}, {}, _build()
+def effect_col(res):
+    return (res.get("effect_outcome") or "not-replayable") if res and not res.get("modeled") else "not-replayable"
+
+
+def report_touched(touched, reps, first, labels, ctx_given, impl="A"):
+    out, rows, obs, eff, b = [], {}, {}, {}, _build()
     for iid, (rep, ms) in sorted(reps.items()):
         res = first.get(iid) if rep else None
         name = row_of(res, labels.get(iid) or "unlabelled", rep is not None and rep["ctx"] == "unknown", ctx_given)
         col = (res.get("outcome") or "not-replayable") if res else "not-replayable"
         bump(rows, name, col)
         bump(obs, b.observed(ms), col)
-    out.append("## Layer touched — interventions (implementation A)")
+        bump(eff, labels.get(iid) or "unlabelled", effect_col(res))
+    out.append("## Layer touched — interventions (implementation %s)" % impl)
     out.append("")
     table("Outcome by label", rows, out)
     table("Observed handling × simulated outcome", obs, out)
@@ -346,19 +476,23 @@ def report_touched(touched, reps, first, labels, ctx_given):
     bad = []
     for iid, rep in sorted(gc):
         res = first.get(iid) or {}
-        got = "ask" if res.get("guard") else "none"
-        if res.get("modeled") or got != rep["evidence"].get("expected"):
-            bad.append("- %s expected %s got %s: %s" % (rep["ref"], rep["evidence"].get("expected"), got,
+        want = rep["evidence"].get("expected")
+        # Any reason reduces to ask (the frozen rows); a live deny row expects the effect deny.
+        got = "deny" if want == "deny" and res.get("effect") == "deny" else "ask" if res.get("guard") else "none"
+        if res.get("modeled") or got != want:
+            bad.append("- %s expected %s got %s: %s" % (rep["ref"], want, got,
                                                         rep["input"]["tool_input"].get("command", "")[:160]))
     if gc:
         out.append("guard-corpus expectations: " + ("all match" if not bad else "%d mismatch" % len(bad)))
         out += bad
     out.append("")
+    if eff:
+        table("Effect view — label × candidate outcome", eff, out, EFFECT_COLUMNS)
     return out
 
 
-def report_replay(occs, first, ctx_given):
-    out, uniq, weighted, per = [], {}, {}, {}
+def report_replay(occs, first, ctx_given, impl="A"):
+    out, uniq, weighted, per, eff = [], {}, {}, {}, {}
     for key, (r, o) in occs.items():
         per.setdefault(r["id"], []).append((o, first.get(key)))
     for rid, lst in sorted(per.items()):
@@ -367,32 +501,51 @@ def report_replay(occs, first, ctx_given):
                  (res or {}).get("outcome") or "not-replayable", o["count"])
         live = [(o, res) for o, res in lst if res and not res.get("modeled")]
         if not live:
-            name, col = "modeled", "not-replayable"
+            name, col, ecol = "modeled", "not-replayable", "not-replayable"
         else:
             col = max((res["outcome"] for _, res in live), key=lambda x: SEVERITY[x])
             name = "unknown-as-advisor" if all(o["ctx"] == "unknown" for o, _ in live) and not ctx_given else "unlabelled"
+            ecol = max((effect_col(res) for _, res in live), key=lambda x: EFFECT_SEVERITY.get(x, -1))
         bump(uniq, name, col)
-    out.append("## Layer replay (implementation A)")
+        bump(eff, "calls", ecol)
+    out.append("## Layer replay (implementation %s)" % impl)
     out.append("")
     table("Unique calls (most severe occurrence)", uniq, out)
     table("Occurrence-weighted", weighted, out)
+    if eff:
+        table("Effect view — unique calls × candidate outcome", eff, out, EFFECT_COLUMNS)
     return out
 
 
 def report_changes(results, changes_out):
-    dec, oc = [], []
+    dec, oc, pn, pd, lim = [], [], {"touched": [], "replay": []}, {"touched": [], "replay": []}, []
     for key in sorted(set(results[0]) | set(results[1])):
         x, y = results[0].get(key) or {}, results[1].get(key) or {}
         if x.get("decision") != y.get("decision"):
             dec.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), fmt(x.get("decision")), fmt(y.get("decision"))))
         if x.get("outcome") != y.get("outcome"):
             oc.append("%s %s %s → %s" % (key, x.get("ctx") or y.get("ctx"), x.get("outcome") or "modeled", y.get("outcome") or "modeled"))
+        layer = "replay" if "#" in key else "touched"
+        if y.get("limit"):
+            lim.append("%s %s" % (key, y["limit"]))
+            continue
+        xa, yb = x.get("effect_outcome") or x.get("outcome"), y.get("effect_outcome")
+        if xa == "pass" and yb in ("lead", "operator", "native-prompt"):
+            pn[layer].append("%s %s pass → %s (%s)" % (key, y.get("ctx"), yb, y.get("guard") or y.get("cause") or y.get("effect_cause") or ""))
+        elif xa == "pass" and yb == "deny":
+            pd[layer].append("%s %s pass → deny (%s)" % (key, y.get("ctx"), y.get("guard") or ""))
     if changes_out:
         with open(changes_out, "w", encoding="utf-8") as fh:
             fh.write("Decision changes: %d\n%sOutcome changes: %d\n%s" % (
                 len(dec), "".join(l + "\n" for l in dec), len(oc), "".join(l + "\n" for l in oc)))
-    return (["## A → B", "", "Decision changes: %d" % len(dec)] + dec[:CHANGES_CAP]
-            + ["Outcome changes: %d" % len(oc)] + oc[:CHANGES_CAP])
+    out = (["## A → B", "", "Decision changes: %d" % len(dec)] + dec[:CHANGES_CAP]
+           + ["Outcome changes: %d" % len(oc)] + oc[:CHANGES_CAP])
+    if any(r.get("effect_outcome") is not None for r in results[1].values()):
+        for layer in ("touched", "replay"):
+            out += ["Pass → non-pass (effect, %s): %d" % (layer, len(pn[layer]))] + pn[layer]
+            out += ["Pass → deny (%s): %d" % (layer, len(pd[layer]))] + pd[layer]
+        out += ["Replay limits: origin not representable: %d" % len(lim)] + lim
+    return out
 
 
 def report(a, m, touched, reps, occs, results, labels):
@@ -402,10 +555,14 @@ def report(a, m, touched, reps, occs, results, labels):
            "Corpus files: " + ", ".join("%s %s" % (k, v[:12]) for k, v in sorted(m["files"].items()))]
     out += ["Implementation %s: %s @ %s" % ("AB"[i], r, b.rev(r) or "?") for i, r in enumerate(a.impl)]
     out.append("")
-    if a.layer in ("touched", "all"):
-        out += report_touched(touched, reps, results[0], labels, a.ctx)
-    if a.layer in ("replay", "all"):
-        out += report_replay(occs, results[0], a.ctx)
+    # #322: every implementation's tables, under its own revision.
+    for i, res in enumerate(results):
+        if i:
+            out += ["## Implementation %s (%s)" % ("AB"[i], b.rev(a.impl[i]) or "?"), ""]
+        if a.layer in ("touched", "all"):
+            out += report_touched(touched, reps, res, labels, a.ctx, "AB"[i])
+        if a.layer in ("replay", "all"):
+            out += report_replay(occs, res, a.ctx, "AB"[i])
     if len(results) == 2:
         out += report_changes(results, a.changes_out)
     print("\n".join(out))

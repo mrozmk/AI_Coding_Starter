@@ -7,7 +7,8 @@
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
 #        bash .claude/lib/team-lead.sh digest-check <team> <plan path>
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
-#        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
+#        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list|revoke <team> …  (team-lead-decision.sh;
+#          open --batch <file> and revoke d-<n>: #322 batch binding)
 #        bash .claude/lib/team-lead.sh decision relay <team> d-<n> --text "<team> d-<n> <reply>"
 #          (the Supervisor, main checkout)
 #        bash .claude/lib/team-lead.sh decision answer <team> d-<n> --delegated --run <run> --ask a-<n>

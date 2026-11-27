@@ -6,7 +6,9 @@
 # $CLAUDE_PROJECT_DIR = the clone, so a ticket that edits this file cannot change its own run.
 #   PreToolUse AskUserQuestion → question · PreToolUse ExitPlanMode → plan ·
 #   PermissionRequest → permission (stage and sub-agent) · Stop → text (a blocked record or a
-#   plain-text stop) · PreToolUse Edit|Write|NotebookEdit → the asks/ and decisions/ write guard.
+#   plain-text stop) · PreToolUse Edit|Write|NotebookEdit → the asks/ and decisions/ write guard
+#   (#322: also settings and role profiles, and .claude/hooks outside the clone and its run's
+#   starter worktree).
 # The ask branches fail open (exit 0, no output: the normal prompt shows); the write guard fails
 # closed (exit 2, registered with onFailure: block). TEAM_ASK_TIMEOUT = the registration's timeout;
 # the hook answers by its own deadline 15 s before it.
@@ -26,6 +28,8 @@ PAYLOAD="$(cat)"
 
 # --- the write guard (fail closed) -----------------------------------------------------------
 guard_refuse() { echo "team ask write guard: $1" >&2; exit 2; }
+out_pre_deny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
+  permissionDecision: "deny", permissionDecisionReason: $r}}'; }
 if ! command -v jq >/dev/null 2>&1; then
   case "$PAYLOAD" in *'"PreToolUse"'*'"Edit"'*|*'"PreToolUse"'*'"Write"'*|*'"PreToolUse"'*'"NotebookEdit"'*)
     guard_refuse "jq missing — refused" ;; esac
@@ -42,7 +46,7 @@ if [ "$EV" = PreToolUse ]; then
     P="$(real "$FILE")" && [ -n "$P" ] || guard_refuse "cannot resolve $FILE — refused"
     RUNS="$(real "$TD/runs")" || guard_refuse "cannot resolve the runs dir — refused"
     # Case-folded: on a case-insensitive volume `RUNS/x/ASKS` is the same directory.
-    P="$(tr '[:upper:]' '[:lower:]' <<<"$P")"; RUNS="$(tr '[:upper:]' '[:lower:]' <<<"$RUNS")"
+    PO="$P"; P="$(tr '[:upper:]' '[:lower:]' <<<"$P")"; RUNS="$(tr '[:upper:]' '[:lower:]' <<<"$RUNS")"
     case "$P" in "$RUNS"/*/asks|"$RUNS"/*/asks/*|"$RUNS"/*/decisions|"$RUNS"/*/decisions/*)
       jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
         permissionDecisionReason: "asks/ and decisions/ are written by the hook and the TeamLead'"'"'s scripts only"}}'
@@ -60,6 +64,19 @@ if [ "$EV" = PreToolUse ]; then
         permissionDecisionReason: "the Operator'"'"'s mandate and the delegation ledger are written by team-mandate.sh and the Supervisor'"'"'s delegated answer only"}}'
       exit 0 ;;
     esac
+    # #322 (Operator decision d-2): settings and role profiles of a live guard layer (all but a
+    # fixture tree inside a repository) are never edited by a stage; the hooks only in its own clone
+    # or its run's starter worktree. One decider with the Bash classifier (target_class):
+    # exit 0 = deny, 1 = not, else refused.
+    case "$P" in *.json|*/.claude/hooks/*)
+      python3 -I "$MAIN/.claude/hooks/lib/guard_team_egress_hard.py" target-class "$PO" "$CLONE"; TC=$?
+      [ "$TC" -le 1 ] || guard_refuse "the guard layer check failed — refused"
+      [ "$TC" = 1 ] && exit 0
+      case "$P" in */.claude/hooks/*)
+        out_pre_deny "a stage edits hooks only in its own clone or its run's starter worktree (#322)" ;;
+      *) out_pre_deny "settings and role profiles are never edited by a stage (#322)" ;; esac
+      exit 0 ;;
+    esac
     exit 0 ;;
   esac
 fi
@@ -71,6 +88,7 @@ LIB="$MAIN/.claude/lib"
 . "$LIB/team-lead-lib.sh" >/dev/null 2>&1 || exit 0
 . "$LIB/team-ask.sh" || exit 0
 . "$LIB/team-evidence.sh" || exit 0
+. "$LIB/team-ask-batch.sh" || exit 0  # verify_delegated, the lead's egress deny, the batch claim (#322)
 sj() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json" 2>/dev/null; }
 SID="$(jq -r '.session_id // ""' <<<"$PAYLOAD")"
 team_lead_caller "$SID" 2>/dev/null && exit 0
@@ -86,8 +104,6 @@ trap 'rm -f "$TMP".*' EXIT
 stopped() { [ -e "$TD/cancel" ] || [ -e "$TD/closing" ]; }
 STOP_MSG="the team was stopped — write nothing more"
 
-out_pre_deny() { jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-  permissionDecision: "deny", permissionDecisionReason: $r}}'; }
 out_perm_deny() { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PermissionRequest",
   decision: {behavior: "deny", message: $m}}}'; }
 out_block() { jq -n --arg r "$1" '{decision: "block", reason: $r}'; }
@@ -134,22 +150,34 @@ fallback() {
 # typed `d-<n> …` message in the lead's own transcript, or the answer entry of the decision's
 # AskUserQuestion dialog there, or a `<team> d-<n> …` message the Supervisor relayed from its own
 # transcript) with this very answer.
-verify_operator() {
-  local id="$1" a="$2" did f via uuid t form val msg p x cfg r dlg
-  did="$(jq -r '.decision // ""' <<<"$a")"
+verify_operator() { verify_decision "$(jq -r '.decision // ""' <<<"$2")" "$1" "$2"; }
+# dfm_h <key> — one frontmatter value of the decision file "$f" (the caller's local).
+dfm_h() { sed -n '/^---$/,/^---$/p' "$f" | sed -n "s/^$1: *//p" | head -n 1; }
+
+# verify_decision <d-n> <ask id | -batch> <answer json | ""> — the human evidence of a decision:
+# bound to that ask with this very answer, or (-batch, #322) an allowed, unrevoked batch decision
+# whose reply is exactly `d-<n> allow` (d_batch_reply's form; ask_parse_reply reads an ask file a
+# batch does not have). The evidence branches are the same for both.
+verify_decision() {
+  local did="$1" id="$2" a="${3:-}" f via uuid t form val msg p x cfg r dlg
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
   [ -f "$f" ] || return 1
-  dfm_h() { sed -n '/^---$/,/^---$/p' "$f" | sed -n "s/^$1: *//p" | head -n 1; }
-  [ "$(dfm_h bind_ask)" = "$id" ] || return 1
   case "$(dfm_h status)" in answered|dispatched) ;; *) return 1 ;; esac
-  form="$(jq -r .form <<<"$a")"; val="$(jq -r '.value // "" | if type == "string" then . else tojson end' <<<"$a")"
-  case "$form" in
-    allow|deny) [ "$(dfm_h answer_outcome)" = "$form" ] || return 1 ;;
-    answers) [ "$(jq -cS . <<<"$(dfm_h answer_map)" 2>/dev/null)" = "$(jq -cS .value <<<"$a")" ] || return 1 ;;
-    *) [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;;
-  esac
-  case "$form" in deny) [ -z "$val" ] || [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;; esac
+  if [ "$id" = -batch ]; then
+    [ "$(dfm_h kind)" = batch ] && [ "$(dfm_h answer_outcome)" = allow ] && [ -z "$(dfm_h revoked_at)" ] \
+      && [ -z "$(dfm_h bind_ask)" ] || return 1
+    form=allow; val=""; a='{"form": "allow", "value": "", "authority": "operator"}'
+  else
+    [ "$(dfm_h bind_ask)" = "$id" ] || return 1
+    form="$(jq -r .form <<<"$a")"; val="$(jq -r '.value // "" | if type == "string" then . else tojson end' <<<"$a")"
+    case "$form" in
+      allow|deny) [ "$(dfm_h answer_outcome)" = "$form" ] || return 1 ;;
+      answers) [ "$(jq -cS . <<<"$(dfm_h answer_map)" 2>/dev/null)" = "$(jq -cS .value <<<"$a")" ] || return 1 ;;
+      *) [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;;
+    esac
+    case "$form" in deny) [ -z "$val" ] || [ "$(dfm_h answer_value)" = "$val" ] || return 1 ;; esac
+  fi
   via="$(dfm_h answered_via)"
   # A delegated answer is delivered only as one, and nothing else is delivered as delegated: the
   # sender's authority and the decision's evidence must name the same thing.
@@ -221,6 +249,9 @@ msg_at() {
 # the writer's own parser, is this very answer.
 reply_matches() {
   local p
+  if [ "$1" = -batch ]; then  # #322: a batch reply is exactly `d-<n> allow`
+    [ "$(jq -rn --arg m "$3" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')" = "$2 allow" ]; return
+  fi
   p="$(ask_parse_reply "$1" "$2" "$3")" || return 1
   case "$4" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$4" ] || return 1 ;; esac
   case "$4" in
@@ -240,7 +271,8 @@ verify_relay() {
   x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
   team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
   lf="$MAIN/.agents/team/relays/$team-$RUN-$2.json"
-  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" "$3" || return 1
+  # A batch decision binds no ask: its relay ledger holds an empty one.
+  team_relay_pins "$lf" "$team" "$RUN" "$2" "${1#-batch}" "$3" || return 1
   cfg="$(team_supervisor_home "$MAIN")" || return 1
   t="$(team_role_transcript "$(jq -r '.cwd // ""' "$lf")" "$(jq -r '.session_id // ""' "$lf")" "$cfg")"
   [ -f "$t" ] || return 1
@@ -251,67 +283,17 @@ verify_relay() {
   reply_matches "$1" "$2" "$msg" "$4" "$5" "$6"
 }
 
-# verify_delegated <id> <did> <form> <val> <answer json> — a decision the Supervisor answered as a
-# delegate (team-lead-decision.sh decision_delegated). Nothing is taken from the clone or from the
-# ledger as proof; every binding is rebuilt from what this hook holds now and looked up in the
-# Supervisor's own call:
-# - the team and its active run from the main checkout's anchor;
-# - the live input of this very event (handle's payload: the question, the plan, the permission
-#   request) — an event with none refuses delegation — and its canonical digest;
-# - the stage's active run, session and attempt, read from session.json now (after the wait,
-#   never the values of this hook's entry), which must be the ask's;
-# - the governing instruction now, derived from the Operator's message in the registered
-#   Supervisor session: its id (m-<message uuid>) and the class, bound to this run;
-# - the registered Supervisor session's transcript (registry + declared profile, never the
-#   ledger) holds a standalone call whose argv is exactly run, decision, ask, attempt, session,
-#   request digest, THAT mandate id, that class and the reply, made no earlier than the decision
-#   opened or the run started — the call itself attests the grant it answered under, so a later
-#   mandate of the same class approves nothing, whatever the files say and whatever the times;
-# - that reply, parsed by the writer's parser, is this answer.
-# The ledger only says which reply, class and mandate to look for and stops a second answer.
-verify_delegated() {
-  local x team lf cfg t floor cls reply sid cwd dig args ssid att mid
-  . "$LIB/team-mandate.sh" 2>/dev/null && command -v mandate_covers >/dev/null 2>&1 || return 1
-  x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
-  team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
-  # Live input, for every event kind: the payload this hook process was given (handle's local).
-  [ -n "${LIVEP:-}" ] && jq -e 'type == "object"' <<<"$LIVEP" >/dev/null 2>&1 || return 1
-  dig="$(jq -cS . <<<"$LIVEP" 2>/dev/null | team_evidence_sha)" && [ -n "$dig" ] || return 1
-  [ "$dig" = "$(jq -cS .payload "$ASK_D/$1.json" 2>/dev/null | team_evidence_sha)" ] || return 1
-  # The stage's run, session and attempt as they are now, and they are the ask's.
-  ssid="$(sj session_id)"; att="$(sj attempt)"
-  [ "$(sj run)" = "$RUN" ] && [ -n "$ssid" ] && [ -n "$att" ] && [ "$(ask_get "$1" session_id)" = "$ssid" ] \
-    && [ "$(ask_get "$1" attempt)" = "$att" ] || return 1
-  lf="$MAIN/.agents/team/delegated/$team-$RUN-$2.json"
-  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" || return 1
-  reply="$(jq -r '.reply // ""' "$lf")"; cls="$(jq -r '.class // ""' "$lf")"; mid="$(jq -r '.mandate // ""' "$lf")"
-  [ -n "$reply" ] && [ -n "$cls" ] && [ -n "$mid" ] && [ "$mid" = "$(dfm_h delegate_mandate)" ] || return 1
-  # The class from the main checkout's checker on the live input; the answer's own mandate, in force.
-  jq -n --arg k "$(ask_get "$1" kind)" --argjson p "$LIVEP" '{kind: $k, payload: $p}' > "$TMP.mand" 2>/dev/null || return 1
-  [ "$(mandate_ask_class "$MAIN" "$CLONE" "$TMP.mand" "$cls")" = "$cls" ] || return 1
-  [ "$(mandate_covers "$MAIN" "$cls" "$team" "$RUN" "$mid")" = "$mid" ] || return 1
-  sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"
-  cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null)"; cwd="${cwd:-$MAIN}"
-  [ -n "$sid" ] || return 1
-  cfg="$(team_supervisor_home "$MAIN")" || return 1
-  t="$(team_role_transcript "$cwd" "$sid" "$cfg")"
-  [ -f "$t" ] || return 1
-  floor="$(team_run_floor "$RUN" "$(dfm_h created_at)")"
-  [ -n "$floor" ] || return 1
-  args="$(team_delegate_args "$team" "$2" "$RUN" "$1" "$att" "$ssid" "$dig" "$reply" "$mid" "$cls")"
-  [ -n "$(team_evidence_tool_call "$t" "$floor" "$MAIN" "$args")" ] || return 1
-  reply_matches "$1" "$2" "$reply" "$3" "$4" "$5"
-}
-
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
-# check_input <{tool_name, tool_input, cwd} file> — the checker's tier line and `retry: <key>|none`.
+# check_input <{tool_name, tool_input, cwd} file> — the tier line, `retry: <key>|none`, `batch: …`.
 check_input() { python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$1" --main "$MAIN" 2>/dev/null; }
 
 deliver() {
   local id="$1" a="$2" kind form val q1
   kind="$(ask_get "$id" kind)"; form="$(jq -r .form <<<"$a")"
   # ${tier:-}: the tier this hook computed for a permission (handle's local), whatever the file says.
-  if [ "$(jq -r .authority <<<"$a")" = operator ] || [ "$(ask_get "$id" tier)" = operator ] \
+  if lead_egress_deny "$id" "$a"; then
+    :
+  elif [ "$(jq -r .authority <<<"$a")" = operator ] || [ "$(ask_get "$id" tier)" = operator ] \
       || [ "$(jq -r .authority <<<"$a")" = "supervisor (delegated)" ] \
       || [ "${tier:-}" = operator ] \
       || [ -n "$(ask_get "$id" requires_decision)" ]; then
@@ -483,6 +465,11 @@ case "$EV:$TOOL" in
     jq -c --arg c "$c" '{tool_name, tool_input, cwd: $c}' <<<"$PAYLOAD" > "$TMP.in" || exit 0
     out="$(check_input "$TMP.in")" || exit 0
     line="$(sed -n 1p <<<"$out")"
+    # #322: a hard deny class is never routed to an approval (no ask, no batch, no retry key) — the
+    # clone's PreToolUse guard may be older than this checker.
+    case "$line" in "tier: operator — refuse (egress denied)"*)
+      out_perm_deny "${line#tier: operator — } — a hard deny class, never approved"; exit 0 ;;
+    esac
     # An operator-tier ask with a retry key outlives the deadline (timed-out, claimable); none → withdrawn.
     RETRY_KEY="$(sed -n 's/^retry: //p' <<<"$out")"; [ -n "$RETRY_KEY" ] || RETRY_KEY=none
     case "$line" in
@@ -491,6 +478,12 @@ case "$EV:$TOOL" in
       "tier: operator — "*) tier=operator; cause="${line#tier: operator — }" ;;
       *) exit 0 ;;
     esac
+    # #322: one unused entry of an allowed batch may answer an egress-only operator tier — authority
+    # `operator (batch d-<n>)` (batch_claim, team-ask-batch.sh).
+    if [ "$tier" = operator ] && [ "$(sed -n 's/^batch: //p' <<<"$out")" = eligible ] && ! stopped \
+        && batch_claim; then
+      exit 0
+    fi
     handle permission "$(cat "$TMP.in")" "$tier" "$cause" ;;
   Stop:*)
     if ! stop_branch; then
