@@ -61,7 +61,7 @@ codex_home() {
     if [ -n "$c" ]; then
       rcp="$(cd "$c" 2>/dev/null && pwd -P || true)"
       [ -n "$rcp" ] && [ "$rcp" = "$rp" ] \
-        || { echo "Codex home $c of the team channel differs from $p in .claude/codex-profile — rerun /setup:teams → channel; no session launched"; return 1; }
+        || { echo "Codex home $c of the team channel differs from $p in .claude/codex-profile — the agent-mail entry still names $c: set its codex_home to the profile's home (or restore the profile), then rerun /setup:teams → channel; no session launched"; return 1; }
     fi
   fi
   printf '%s\n' "${c:-${rp:-}}"

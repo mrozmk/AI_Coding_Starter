@@ -223,6 +223,7 @@ printf '~/.codex-other\n' > "$MAIN/.claude/codex-profile"
 run "$MAIN" $RS stop all; kill_roles; : > "$STUB_LOG"
 run "$MAIN" $RS up Supervisor; expect 1 "of the team channel differs from" "(2b) up Supervisor"
 has "rerun /setup:teams → channel" "$WORK/out" || fail "(2b) the refusal does not name the fix"
+has "the agent-mail entry still names" "$WORK/out" || fail "(2b) the refusal does not name the registry entry"
 ! grep -q '^claude --name SupervisorXY ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(2b) a Supervisor was launched"; }
 cp "$WORK/codex-profile.keep" "$MAIN/.claude/codex-profile"
 echo "team-smoke-sessions: (2b) a channel Codex home that differs from the profile refuses OK"
