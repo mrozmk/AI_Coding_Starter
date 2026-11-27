@@ -22,6 +22,8 @@ Operator's consent.
   ([team-pipeline.md → Merge](../team-pipeline.md)).
 - Releases ordered by the Operator: `supervisor-sessions.sh freeze on <release>` before, and the
   Operator's `freeze off` after the post-check.
+- The **regression cadence** of the batch gate and the **day plan** with the Operator
+  ([Regression cadence](#regression-cadence)).
 - Operator records (`operator-record.sh failure|release`, [supervisor-sessions.md → Operator
   records](../supervisor-sessions.md)): close each one yourself with `operator-record.sh close <id>`
   as soon as the Operator has acted on it — answered, finished that release step, or the failure is
@@ -65,6 +67,7 @@ Operator's consent.
 - Relay the Operator's decision to a team other than through that team's TeamLead, or with
   `team-answer.sh`.
 - Clear a release freeze without the Operator.
+- Run the batch gate while the Operator's hold stands, or record or lift a hold on your own words.
 
 ## Follow-up chains
 
@@ -237,6 +240,108 @@ A role session's or a team stage's permission request of a Supervisor-clearable 
   profile denies you `grant`); `revoke clearance` cancels for good. Codex is refused (shadow only).
   `show` prints the mode; `pause` removes the record.
 
+## Regression cadence
+
+The batch gate — the project's whole Validation suite on the merged line, once for a batch of
+merges, never in a role session (CLAUDE.md → Validation) — is yours to schedule: you decide from
+evidence when a batch is due, plan it with the Operator and keep their hold. A project whose
+CLAUDE.md → Validation names no batch gate has no cadence; skip this section.
+
+- **The day plan.** On the Operator's first message of a day with no plan for it —
+  `.agents/team/day-plan.md` in the main checkout absent, its `date:` not today, or no
+  `accepted:` line — propose the day before anything else: the tickets, the team (or `solo`) and
+  the order of each, the regression points, and the cadence's state (below). Write the plan once
+  the Operator accepts or edits it, keeping what the file already holds for today: merge marks
+  and runs may be written into it before the plan is accepted (a merge can come before the
+  Operator's first message), and they do not make it a plan. The file
+  is per machine and never in git (`.agents/team/` is ignored). It records who takes what; you
+  follow it at `/start-team`, nothing starts by itself. After each merge, mark the ticket
+  `merged <gate> <sha7>` in it, next to the tracker bookkeeping — one mark per gate whose repo the
+  ticket landed in (a ticket that lands in two repos gets two marks, each with that repo's merge
+  commit).
+
+  ```
+  date: 2026-03-02
+  accepted: 2026-03-02T08:10:00Z by Operator
+  ## Tickets
+  - 41 · alfa · 1
+  - 42 · beta · 2 · merged here 1a2b3c4
+  ## Regression points
+  - after 41 42 · gate here
+  - before release · gate here
+  ```
+
+  A point names the gates it runs; a release point names every gate of the repos the release
+  ships.
+
+- **When a batch is due.** Count the merges on the line (first-parent commits) since the last green
+  batch run on this machine, on an up-to-date line: after a merge, the main checkout's line must
+  contain the merged commit — update it first, or the count misses that merge. A merge counts when
+  it touches a file the suite tests — a file in the tests directory, or one a test names; it is
+  heavy when it touches a hook, a guard, the team runner, or a settings or session-profile file
+  (heavy counts even when no test names it). A batch is due at 4 counted merges, at 2 heavy ones,
+  when a counted merge is from an earlier day, when the last run was red, and when there is no
+  green baseline at all. A day-plan point is reached once every ticket it names has landed
+  everywhere it lands (each with its `merged` marks); it is then due for each gate it names until
+  a green run of that gate contains every merge commit the point's tickets have in that gate's
+  repo (a ticket that never lands there does not hold that gate back), whatever the counts say:
+  the Operator planned it. A point a green run satisfied stays satisfied for that plan. The profile's thresholds replace these numbers once the signal
+  ships. Before every release, each gate the release ships is green at that repo's release
+  commit: the commit that gets tagged in the repo that is tagged, the line's head in the others.
+- **Size and moment.** One gate run at a time on a machine, across repos: a batch run never
+  overlaps another batch run, a merge-check or a test gate holding the machine's gate lock. A team
+  run in progress loads the machine: when a running team's ticket comes before the due point in the
+  plan, run after its merge; otherwise run now. Say it to the Operator in one line —
+  `batch due (here): 4 merges since 2026-03-02 08:10Z (2 heavy: guards, runner) · alfa running
+  41, planned before this point — run after its merge · ~9 min`.
+- **The hold.** The Operator's word that no batch runs until they say is recorded in
+  `.agents/team/batch-hold.md` — `state: held` or `lifted`, `since: <UTC>`, `by: Operator`,
+  `words: <their message, verbatim>` — written only after their typed message, never on your own
+  words; an inbox note or a mail is not the record. While held the cadence still reports the batch
+  as `due — held by the Operator since <date>`, and you never run it — not for a release either:
+  the Operator lifts the hold, you record the lift, then the run. A hold file that exists but that
+  you cannot read, or that lacks a field or contradicts itself, counts as held until the Operator
+  clears it up; only an absent file (no hold ever recorded) means no hold. A hold the Operator gave before this file existed (an inbox note, a message) stays
+  binding: ask them to confirm it, record it, and run nothing until they lift it. A hold binds the
+  machine it is recorded on: the Operator gives it to each machine's Supervisor. A hold you only
+  hear of from another machine (its mail, its notes) counts once the Operator confirms it to you —
+  until then ask before any batch run.
+- **Green.** A run is green only when the gate exits 0, prints no `FAIL` line, and every step of
+  its step set ran and passed — run the batch command with no step selection or test directory
+  inherited from your shell (no per-task `TEAM_SUITE_ONLY` or a `TEAM_SUITE_TESTS` left over). A `skip` line is not a failure only when the
+  suite prints it for a documented reason: a step of the gate's own skip set, or a step the suite
+  documents as not applicable on this machine (a missing optional engine, its message naming the
+  install). Any other missing step is no green. A step red for an environment reason is red: fix
+  the environment and rerun it, or the Operator moves the step to the gate's skip set (CLAUDE.md →
+  Validation). There is no per-run waiver.
+- **Repos and machines.** Each repo is its own gate with its own count (in the project that
+  develops the starter: this repo's suite, and the starter's template-only steps in a clean starter
+  checkout); the day plan names the gates the project has. Each machine counts from its own green:
+  another machine's run does not reset yours.
+
+**Until the signal ships.** The computed signal — `batch-gate.sh due|run|hold|lift`, its line at
+your bootstrap, on your first prompt of a day without a plan, after each merge, in `/tasks-status`,
+and the `/release` check — is not built yet. Until then, apply the rule above by hand at bootstrap
+and after each merge (`git log --first-parent --name-only <last green>..<line>`) and run the
+CLAUDE.md batch command yourself, this way:
+
+1. Pick the commit the run validates (the line's head after the merges it covers). The gate's
+   checkout must be clean, on the line, at exactly that commit.
+2. Start only while the machine's gate lock has no holder (`team-pipeline.md` §12), start no
+   merge-check of your own until the run ends, and say in the run's line that a team's test gate
+   may still queue beside it — the manual run does not take the lock.
+3. After the run, check that the checkout is still clean at that same commit. If it moved or got
+   dirty, the result proves nothing: keep the previous green.
+4. Record every run — planned or not — in the day plan's `## Batch runs` section, one line per
+   gate: `- <gate> · last green <sha7> <UTC> <minutes> min · last run <sha7> <UTC> green|red
+   [<failed steps>]`, with `last green none` while the gate has never been green (a first run
+   that is red: `- here · last green none · last run 1a2b3c4 2026-03-02T09:40Z red smoke-roles`).
+   Mark a point a run satisfied with `· done <gate> <sha7>`.
+5. When a new day's plan replaces yesterday's, copy into it the `## Batch runs` section (your
+   baseline — a gate with no line there is due) and every reached point that is not yet `done`
+   for each of its gates, with its tickets' merge marks (a point that waited overnight, on a hold
+   for instance, is still due).
+
 ## Inbox
 
 `.agents/team/inbox/Supervisor/new` holds the messages addressed to it. Handling is
@@ -253,6 +358,10 @@ Reconcile from files, never from memory:
 4. open operator records (`.agents/team/operator/*.md` with `status: open`): close those whose
    step the Operator has already done;
 5. pending decisions: the latest commits to `.agents/memory/decisions.md`.
+6. only when CLAUDE.md → Validation names a batch gate: the regression cadence — today's day
+   plan and the hold ([Regression cadence](#regression-cadence)); no plan for today, or a batch
+   due, is an open item (`No day plan for today — proposing it now.`, `Batch due — 4 merges since
+   this morning; held by you since Monday.`).
 
 **Report what waits on the Operator, not what was checked.** A check that found nothing is not
 reported. Name no command, no script output, no commit date, no ad-hoc session and no internal
