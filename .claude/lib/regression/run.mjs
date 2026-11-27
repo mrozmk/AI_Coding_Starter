@@ -624,7 +624,8 @@ async function runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifes
     let snapshot = capDir;
     if (pass === 'compare') {
       snapshot = path.join(pdir, 'expected');
-      if (fs.existsSync(envDir)) fs.cpSync(envDir, snapshot, { recursive: true });
+      // Never through a symlinked `<env>` (verifyBaselines reports it): another environment's images.
+      if (fs.existsSync(envDir) && fs.lstatSync(envDir).isDirectory()) fs.cpSync(envDir, snapshot, { recursive: true });
       else fs.mkdirSync(snapshot, { recursive: true });
     } else fs.mkdirSync(capDir, { recursive: true });
     const manifest = {

@@ -472,7 +472,9 @@ renderer> — this run same | differs in <fields>`.
 **Disjointness.** Before any token, lock, report deletion or runner: the baselines (resolved,
 nearest existing ancestor) must not overlap `runner.report`, `visual.report`, the functional
 Playwright `outputDir` (the `test-results` defaults beside the config and the nearest
-`package.json`, any literal `outputDir`; a non-literal one is refused) or the runs directory —
+`package.json`, any literal `outputDir`; `runnerOptions(…).outputDir` or a variable bound to
+`runnerOptions(…)` in the same file is the run directory; any other non-literal is refused) or the
+runs directory —
 else exit 3. The tolerance may never be wider than the accepted index's (or the defaults): exit 2.
 
 **Update, offer, accept.** `visual update` runs a capture pass (`updateSnapshots: all` into the

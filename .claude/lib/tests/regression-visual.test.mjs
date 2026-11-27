@@ -954,8 +954,26 @@ test('a functional outputDir from runnerOptions is resolved statically', async (
     fs.writeFileSync(config, text.replace("testDir: './regression',", `testDir: './regression',\n  outputDir: ${value},`));
     assert.equal(assertDisjoint(root, readConfig(root), RUNS), null, value);
   }
-  fs.writeFileSync(config, text.replace("testDir: './regression',", "testDir: './regression',\n  outputDir: path.join(x),"));
-  assert.match(assertDisjoint(root, readConfig(root), RUNS), /cannot resolve the functional outputDir .* — set it to a string literal or runnerOptions\(…\)\.outputDir/);
+  for (const value of ['path.join(x)', 'paths.outputDir']) {
+    fs.writeFileSync(config, text.replace("testDir: './regression',", `testDir: './regression',\n  outputDir: ${value},`));
+    assert.match(assertDisjoint(root, readConfig(root), RUNS), /cannot resolve the functional outputDir .* — set it to a string literal or runnerOptions\(…\)\.outputDir/, value);
+  }
+});
+
+test('a symlinked environment directory is an integrity reason and never compared', async () => {
+  const root = copyRoot();
+  knownBuild(root);
+  editConfig(root, (cfg) => { cfg.environments.other = { ...cfg.environments.test }; });
+  await acceptBaselines(root, { env: 'other' });
+  fs.mkdirSync(path.join(root, BASE), { recursive: true });
+  fs.symlinkSync('other', path.join(root, BASE, 'test'));
+  const r = await run(['visual', 'compare', '--root', root]);
+  assert.equal(r.status, 4, r.out);
+  const b = recordOf(root, r).visual;
+  assert.ok(b.integrity.includes(`baselines environment is not a plain directory: ${BASE}/test`), r.out);
+  assert.equal(b.counts.same, 0, r.out);
+  const u = await run(['visual', 'update', '--root', root]);
+  assert.match(u.stdout, /^visual offer: none — baselines integrity \(baselines environment is not a plain directory/m, u.out);
 });
 
 test('an interrupted report stops the next pass', async () => {

@@ -97,6 +97,7 @@ reports `Git LFS pointer — run git lfs pull`.
 | `visual.tolerance widened over the accepted baselines` | Restore the tolerance, or have a human edit `index.json` in a reviewed commit. |
 | `visual.baselines overlaps …` | Move the baselines out of report, output and run directories. |
 | `cannot resolve the functional outputDir` | Use a string literal, `runnerOptions(…).outputDir` or a variable holding `runnerOptions(…)` (`opts.outputDir`, as the template does). |
+| `baselines environment is not a plain directory` | Replace the symlink (or file) at `<baselines>/<env>` with a real directory — baselines are never shared between environments. |
 | `file not part of the baselines` | Remove the file (a `.DS_Store`, a README) from `<baselines>/<env>/` — only `index.json` and accepted PNGs live there. |
 | `baseline altered outside visual accept` / `baseline not accepted` | `git restore` the baselines, or accept a new set through `visual update`. |
 | `interrupted accept: …` | Do what the line says (remove the staging dir, or rename the previous dir back), then rerun `visual update`. |

@@ -133,8 +133,13 @@ function functionalOutputDirs(root, cfg) {
     const value = m[1].trim();
     const lit = /^(['"`])([^'"`$]*)\1$/.exec(value);
     if (lit) dirs.push(path.resolve(configDir, lit[2]));
-    // `opts.outputDir` or `runnerOptions(…).outputDir`: the run directory, owned by run.mjs.
-    else if (!/^(\w+|runnerOptions\(.*\))\.outputDir$/.test(value)) return { error: `cannot resolve the functional outputDir in ${cfg.runner.config} (${value}) — set it to a string literal or runnerOptions(…).outputDir (or opts.outputDir as in playwright.config.ts.template)` };
+    // `runnerOptions(…).outputDir`, or `<v>.outputDir` with `<v>` bound to `runnerOptions(…)` in this
+    // file: the run directory, owned by run.mjs. Any other non-literal is refused.
+    else {
+      const ref = /^(\w+)\.outputDir$/.exec(value);
+      const bound = ref && new RegExp(`\\b(?:const|let|var)\\s+${ref[1]}\\s*=\\s*runnerOptions\\(`).test(code);
+      if (!bound && !/^runnerOptions\(.*\)\.outputDir$/.test(value)) return { error: `cannot resolve the functional outputDir in ${cfg.runner.config} (${value}) — set it to a string literal or runnerOptions(…).outputDir (or opts.outputDir as in playwright.config.ts.template)` };
+    }
   }
   return { dirs };
 }
@@ -208,6 +213,11 @@ export function verifyBaselines(root, settings, env) {
   const images = new Map();
   const targetErrors = new Map();
   if (!fs.existsSync(envDir)) return { integrity, images, index: null, index_digest: null, target_errors: targetErrors };
+  // A symlinked `<env>` would compare (and accept) against another environment's tree.
+  if (!fs.lstatSync(envDir).isDirectory()) {
+    integrity.push(`baselines environment is not a plain directory: ${rel(envDir)}`);
+    return { integrity, images, index: null, index_digest: null, target_errors: targetErrors };
+  }
   const envReal = fs.realpathSync(envDir);
   const files = walk(envDir);
   for (const f of files) if (f.link) integrity.push(`baseline is a symlink: ${rel(f.abs)}`);
@@ -632,6 +642,7 @@ export async function acceptOffer({ root, settings, runId, token, runsDir, after
   const envDir = path.join(baseAbs, env);
   const pending = interruptedAccepts(baseAbs, env);
   if (pending.length) return { exit: 3, message: `refused: ${pending.join('; ')}` };
+  if (fs.existsSync(envDir) && !fs.lstatSync(envDir).isDirectory()) return { exit: 3, message: `refused: baselines environment is not a plain directory: ${env}` };
   const candidateSha = {};
   for (const [k, p] of Object.entries(offer.candidates ?? {})) { try { candidateSha[k] = sha256(fs.readFileSync(p)); } catch { candidateSha[k] = null; } }
   const digest = offerDigest({ ...offer, tree: treeDigest(envDir), dest: destOf(root, settings, env), candidate_sha256s: candidateSha });
