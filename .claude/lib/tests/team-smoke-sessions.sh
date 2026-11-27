@@ -210,6 +210,17 @@ run "$MAIN" $SS materialize Advisor; expect 2 "Advisor has no settings profile" 
 run "$CLONE" bash "$MAIN/.claude/lib/supervisor-sessions.sh" check; expect 1 "team clone" "(2) in a clone"
 echo "team-smoke-sessions: (2) launch, removed verbs, materialise OK"
 
+# ---- (2b) the channel's Codex home differs from .claude/codex-profile: nothing is launched ------
+mkdir -p "$HOME/.codex-other"
+cp "$MAIN/.claude/codex-profile" "$WORK/codex-profile.keep"
+printf '~/.codex-other\n' > "$MAIN/.claude/codex-profile"
+run "$MAIN" $RS stop all; kill_roles; : > "$STUB_LOG"
+run "$MAIN" $RS up Supervisor; expect 1 "of the team channel differs from" "(2b) up Supervisor"
+has "rerun /setup:teams → channel" "$WORK/out" || fail "(2b) the refusal does not name the fix"
+! grep -q '^claude --name SupervisorXY ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(2b) a Supervisor was launched"; }
+cp "$WORK/codex-profile.keep" "$MAIN/.claude/codex-profile"
+echo "team-smoke-sessions: (2b) a channel Codex home that differs from the profile refuses OK"
+
 # ---- (3) profiles and their check ----------------------------------------------------------------
 run "$SRC" $CHK "$SRC"; expect 0 "Supervisor OK" "(3) shipped profiles"
 ! has "TeamLead OK" "$WORK/out" || fail "(3) the retired TeamLead is still checked"

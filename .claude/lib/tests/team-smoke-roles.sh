@@ -67,7 +67,7 @@ STUB
 for t in claude codex; do
   cat > "$WORK/bin/$t" <<STUB
 #!/usr/bin/env bash
-echo "$t \$* | role=\${TEAM_SESSION_ROLE-unset} addr=\${HARNESS_ADDRESS-unset} be=\${HARNESS_BACKEND-unset} cc=\${CLAUDECODE-unset}" >> "\$STUB_LOG"
+echo "$t \$* | role=\${TEAM_SESSION_ROLE-unset} addr=\${HARNESS_ADDRESS-unset} be=\${HARNESS_BACKEND-unset} cc=\${CLAUDECODE-unset} ch=\${CODEX_HOME-unset}" >> "\$STUB_LOG"
 [ -z "\${STUB_CLI_STAY:-}" ] || exec sleep 30
 STUB
 done
@@ -87,7 +87,10 @@ noline "error: team channel" "$WORK/out" "(1) the optional channel's absence lea
 for r in Supervisor Fable Astra; do for d in tmp new done; do
   [ -d "$MAIN/.agents/team/inbox/$r/$d" ] || fail "(1) no inbox $r/$d after up"; done; done
 [ "$(starts)" = 3 ] || fail "(1) $(starts) new-session calls, expected 3"
-for r in Supervisor Fable Astra; do line "-e TEAM_SESSION_ROLE=$r -e HARNESS_ADDRESS=$r" "$STUB_LOG" "(1) env $r"; done
+for r in Supervisor Fable Astra; do
+  grep "^tmux new-session.* -s smk-$(echo "$r" | tr '[:upper:]' '[:lower:]') " "$STUB_LOG" > "$WORK/env-$r"
+  line "-e TEAM_SESSION_ROLE=$r " "$WORK/env-$r" "(1) env $r"; line "-e HARNESS_ADDRESS=$r " "$WORK/env-$r" "(1) env $r"
+done
 grep '^tmux new-session.* -s smk-astra ' "$STUB_LOG" > "$WORK/astra"
 line "codex --no-daemon -c model_reasoning_effort=high 'You are Astra. Follow the role contract" "$WORK/astra" "(1) Astra argv"
 noline " -m " "$WORK/astra" "(1) Astra floating model"
@@ -458,6 +461,40 @@ clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13b
 ! grep -q "reconcile .agents/team/inbox" "$STUB_LOG" || fail "(13b) an empty inbox was rung"
 run "$MAIN" $RS stop all; expect 0 "" "(13b) stop all"
 echo "team-smoke-roles: (13b) resume rings a waiting inbox OK"
+
+# ---- (13c) Codex home from .claude/codex-profile: Codex and Claude roles; none; unresolvable --------
+CP="$MAIN/.claude/codex-profile"; cp "$CP" "$WORK/codex-profile.bak"
+CH="$(cd "$HOME/.codex-acmeshop" && pwd -P)"
+nsline() { grep "^tmux new-session.* -s smk-$1 " "$STUB_LOG" > "$WORK/ns-$1" || true; }
+# the fixture's value line
+clr; run "$MAIN" $RS up Astra; expect 0 "Astra: started" "(13c) value: up Astra"
+nsline astra; line "-e CODEX_HOME=$CH " "$WORK/ns-astra" "(13c) value: up Astra"
+clr; run "$MAIN" $RS up Fable; expect 0 "Fable: started" "(13c) value: up Fable"
+nsline fable; line "-e CODEX_HOME=$CH " "$WORK/ns-fable" "(13c) value: up Fable"
+run "$MAIN" $RS stop all; expect 0 "" "(13c) value: stop all"
+clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13c) value: resume Supervisor"
+nsline supervisor; line "-e CODEX_HOME=$CH " "$WORK/ns-supervisor" "(13c) value: resume Supervisor"
+run "$MAIN" $RS stop all; expect 0 "" "(13c) value: stop after resume"
+clr; run "$MAIN" $RS here Astra; expect 0 "" "(13c) value: here Astra"
+grep -q "^codex .* ch=$CH\$" "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(13c) value: here Astra: no ch=$CH"; }
+# no value line
+printf '# template — no value\n' > "$CP"
+clr; run "$MAIN" $RS up Astra; expect 0 "Astra: started" "(13c) none: up Astra"
+nsline astra; noline "CODEX_HOME=" "$WORK/ns-astra" "(13c) none: up Astra"
+run "$MAIN" $RS stop all; expect 0 "" "(13c) none: stop all"
+clr; run "$MAIN" $RS here Astra; expect 0 "" "(13c) none: here Astra"
+grep -q '^codex .* ch=unset$' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(13c) none: here Astra: no ch=unset"; }
+# a value that does not resolve
+printf '~/.codex-missing\n' > "$CP"
+NORES="Codex profile $HOME/.codex-missing from .claude/codex-profile does not resolve — no session launched"
+clr; run "$MAIN" $RS up Astra; expect 1 "$NORES" "(13c) unresolvable: up Astra"
+[ "$(starts)" = 0 ] || fail "(13c) unresolvable: up Astra started $(starts) sessions"
+cp "$REG/Astra.json" "$WORK/astra-rec.bak"
+clr; run "$MAIN" $RS here Astra; expect 1 "$NORES" "(13c) unresolvable: here Astra"
+! grep -q '^codex ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(13c) unresolvable: here Astra ran codex"; }
+cmp -s "$REG/Astra.json" "$WORK/astra-rec.bak" || fail "(13c) unresolvable: here Astra changed the record"
+cp "$WORK/codex-profile.bak" "$CP"
+echo "team-smoke-roles: (13c) Codex home from .claude/codex-profile OK"
 
 # ---- (14) restart simulation: roles, one interrupted run, two ad-hoc sessions, nothing resumed ------
 run "$MAIN" $RS; expect 0 "" "(14) roles up"
