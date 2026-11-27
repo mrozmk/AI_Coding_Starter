@@ -582,8 +582,10 @@ lock lifetime: the proposal's digest (sha256 of `proposal.md`, NUL, `proposal.js
 the walk must be `COMPLETE`, run on exactly the staged bytes (`routes_digest`) and complete per
 group. The best outcome of each route over its groups decides every id mapped to it — new,
 existing or retained from `routes.json`: `failed` → only `BLOCKED (live: …)` citing `live`;
-`ok` → `live` READY or BLOCKED, or `code`; anything else → `code` only (cited, and never
-`live`). A block describing a submit path follows its submit's outcome. New blocks: a configured
+`ok` → a new block cites `live` (READY or BLOCKED) or `code` — a criterion-only new block is
+refused — while an existing catalog id mapped to an `ok` route stays accepted whatever its
+`Source` (gaps mode maps a route to the scenario that already covers it); anything else → `code`
+only (cited, and never `live`). A block describing a submit path follows its submit's outcome. New blocks: a configured
 area, `Spec: —`, never a rewrite of an existing block (byte-identical text is
 `skipped: <id> (already applied)`, a DROPPED id is never reused), every new block reachable from a route. The merged catalog is validated before any
 rename; `routes.json` is written last. A sample that needed redaction is never committed. A

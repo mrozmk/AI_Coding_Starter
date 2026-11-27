@@ -332,6 +332,24 @@ test('apply: a route the walk did not see work admits code only — a criterion-
   assert.equal(r.status, 0, r.out);
 });
 
+test('apply: a new criterion-only block on an ok route is refused; an existing id mapped there stays accepted', () => {
+  const ctx = setup();
+  const json = proposalOf(ctx);
+  json.routes['/p/:id'].scenarios.push('PDP-002');
+  json.sources['PDP-002'] = { code: null, covered_by: null, submit: null };
+  restage(ctx, { json, md: `${mdOf(ctx)}\n${block('PDP-002', { title: 'See a second product', source: 'E2-3.AC2 [a1b2c3]' })}\n` });
+  refused(apply(ctx), /^refused: route \/p\/:id: PDP-002 must cite live or code — a new block on a route the walk saw work \(walk: ok\)$/m);
+  const existing = setup();
+  const cart = path.join(existing.root, CAT, 'cart.md');
+  fs.writeFileSync(cart, fs.readFileSync(cart, 'utf8').replace('- **Source:** code · **Spec:** —', '- **Source:** E2-3.AC2 [a1b2c3] · **Spec:** —'));
+  const json2 = proposalOf(existing);
+  json2.routes['/p/:id'].scenarios.push('CART-002');
+  restage(existing, { json: json2 });
+  const r = apply(existing);
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(readJson(path.join(existing.root, ROUTES)).routes.find((e) => e.route === '/p/:id').scenarios, ['PDP-001', 'CART-002']);
+});
+
 test('apply: refuses a proposal that omits a staged route', () => {
   const ctx = setup();
   const json = proposalOf(ctx);

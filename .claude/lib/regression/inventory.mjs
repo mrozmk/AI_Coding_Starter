@@ -211,7 +211,10 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
       const live = usesWord(b, 'live');
       const problem = (() => {
         if (outcome === 'failed') return isLiveBlocked(b) && live ? null : 'must be BLOCKED (live: …) citing live';
-        if (outcome === 'ok') return null;
+        // A new block on a path the walk saw work cites what shows it: live or code. An existing
+        // catalog id stays accepted whatever its Source (gaps mode maps a route to the scenario
+        // that already covers it).
+        if (outcome === 'ok') return !newIds.has(id) || live || usesWord(b, 'code') ? null : 'must cite live or code — a new block on a route the walk saw work';
         // Anything but ok admits code only: no live, and code cited.
         if (live) return 'cites live, but the walk did not see the path work';
         return usesWord(b, 'code') ? null : 'must cite code — the walk did not see the path work';
