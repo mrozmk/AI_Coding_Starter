@@ -151,7 +151,7 @@ Criteria that **cannot** be settled here, whatever the family says. A match mean
 | Pattern of criterion | Why it is not observable here | What would make it observable |
 |---|---|---|
 | *(template)* `<the shape of criterion this covers>` | `<the concrete missing capability — tooling, access, or environment>` | `<what would have to exist>` |
-| Pixel-level visual regression against a previous release | No visual-regression tooling and no stored baselines in this repo | A baseline snapshot suite wired into CI |
+| Pixel-level visual difference from an accepted baseline — across environments, for an environment with no accepted baselines, or under another renderer than the baselines' | The visual lane compares one environment against its own baselines under the renderer that produced them; other cases have no baseline to compare with | /regression-tests visual update + accept on that environment and renderer (regression.md §13) |
 | *(non-browser apps)* Content inside an embedded webview | The inspector sees one platform-view node with no children | A browser-automation lane pointed at the embedded page's URL |
 | *(non-browser apps)* What a screen reader actually announces | A semantics/accessibility label being present and reachable is provable; VoiceOver / TalkBack output is not | A manual assistive-technology pass |
 | *(non-browser apps)* Behaviour that exists only in a release build | QA runs debug/profile builds; stripped, obfuscated or flag-gated release paths never execute | A release-build QA target in `qa-env.json` |

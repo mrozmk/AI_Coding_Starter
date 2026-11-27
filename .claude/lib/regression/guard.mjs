@@ -44,11 +44,16 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The scenario id of a test title `<ID> — <title>` (the text before the separator), or null. */
 export const scenarioId = (title) => (typeof title === 'string' && title.includes(TITLE_SEP) ? title.split(TITLE_SEP)[0].trim() : null);
 
-/** Config-side options: workers, a per-project grep of the selected ids, service workers blocked, slowMo. */
+/**
+ * Config-side options: workers, a per-project grep of the selected ids, service workers blocked,
+ * slowMo, and the output directory under the run directory (Playwright cleans it at start — it
+ * must never sit near committed files such as the visual baselines).
+ */
 export function runnerOptions(manifest) {
   const selection = Array.isArray(manifest.selection) ? manifest.selection : [];
   return {
     workers: manifest.workers ?? 1,
+    outputDir: manifest.run_dir ? path.join(manifest.run_dir, 'output') : undefined,
     grepFor(projectName) {
       const ids = [...new Set(selection.filter((c) => c.project === projectName).map((c) => c.id))];
       // A project with no selected case matches nothing: a desktop-only scenario never runs on mobile.
@@ -472,7 +477,8 @@ async function walk(g, first, send) {
 function guardState(manifest) {
   const policy = compilePolicy(manifest);
   const ledger = ledgerFor(manifest);
-  return { policy, ledger, throttle: makeThrottle(ledger, policy.rpm) };
+  // The visual pass the context belongs to (null on a functional pass): attestations join per pass.
+  return { policy, ledger, throttle: makeThrottle(ledger, policy.rpm), pass: manifest.visual?.pass ?? null };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -484,7 +490,7 @@ function attestCase(g, context, testInfo) {
   context[GUARDED].attested ??= new Set();
   if (context[GUARDED].attested.has(t.testId)) return;
   context[GUARDED].attested.add(t.testId);
-  g.ledger.attest({ test: t.testId, id: t.id, project: t.project });
+  g.ledger.attest({ test: t.testId, id: t.id, project: t.project, pass: g.pass });
 }
 
 async function routeHandler(g, raw, route) {

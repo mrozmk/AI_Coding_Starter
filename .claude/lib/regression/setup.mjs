@@ -1,11 +1,13 @@
 // The deterministic half of /setup:regression and the only writer of `.claude/regression.json`:
 // `catalog` creates the file with its `catalog` section (never overwrites), `baseline` adds each of
-// `runner` / `environments` that is absent (never alters an existing key), `check` lists what the
-// foundation still lacks (static: never runs an adapter command, never reaches the network), `env`
-// prints an environment's resolved base URL. Node builtins only. Contract: .agents/reference/regression.md.
+// `runner` / `environments` that is absent (never alters an existing key), `visual` adds the `visual`
+// section the same way (baseline established first), `check` lists what the foundation still lacks
+// (static: never runs an adapter command, never reaches the network), `env` prints an environment's
+// resolved base URL. Node builtins only. Contract: .agents/reference/regression.md.
 //
 //   node .claude/lib/regression/setup.mjs catalog  [--root <dir>] --areas CODE=Name,… [--path <dir>] [--smoke P0,…]
 //   node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file>   ({runner?, environments?}; a relative path resolves against --root)
+//   node .claude/lib/regression/setup.mjs visual   [--root <dir>] --fragment <json file>   ({visual})
 //   node .claude/lib/regression/setup.mjs check    [--root <dir>]
 //   node .claude/lib/regression/setup.mjs env <name> [--root <dir>]
 //   exit 0 = ok / nothing missing · 1 = something missing / refused write · 2 = usage / invalid config
@@ -15,9 +17,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAtomic } from '../backlog-check.mjs';
 import {
-  CONFIG_PATH, DEFAULTS, TEST_DATA_COMMANDS, isObject, docKey, loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl,
+  CONFIG_PATH, DEFAULTS, TEST_DATA_COMMANDS, isObject, docKey, loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl, visualSettings,
 } from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog } from './catalog.mjs';
+import { scanIntegration } from './run.mjs';
 
 const BASELINE_SECTIONS = ['runner', 'environments'];
 const INTERPRETERS = new Set(['node', 'bash', 'sh', 'python3', 'npx']);
@@ -27,6 +30,7 @@ const serialize = (cfg) => `${JSON.stringify(cfg, null, 2)}\n`;
 class UsageError extends Error {}
 const USAGE = `usage: node .claude/lib/regression/setup.mjs catalog --areas CODE=Name,… [--path <dir>] [--smoke P0,…] [--root <dir>]
        node .claude/lib/regression/setup.mjs baseline --fragment <json file, relative to --root> [--root <dir>]
+       node .claude/lib/regression/setup.mjs visual --fragment <json file, relative to --root> [--root <dir>]
        node .claude/lib/regression/setup.mjs check [--root <dir>]
        node .claude/lib/regression/setup.mjs env <name> [--root <dir>]`;
 
@@ -45,7 +49,7 @@ function parseArgs(argv) {
   if (cmd === 'env' && args.positional.length !== 1) throw new UsageError('env takes exactly one environment name');
   if (cmd !== 'env' && args.positional.length) throw new UsageError(`unexpected argument ${args.positional[0]}`);
   if (cmd === 'catalog' && !args.areas) throw new UsageError('catalog needs --areas CODE=Name,…');
-  if (cmd === 'baseline' && !args.fragment) throw new UsageError('baseline needs --fragment <json file>');
+  if ((cmd === 'baseline' || cmd === 'visual') && !args.fragment) throw new UsageError(`${cmd} needs --fragment <json file>`);
   return args;
 }
 
@@ -76,20 +80,17 @@ function cmdCatalog(root, args) {
   return 0;
 }
 
-function cmdBaseline(root, args) {
-  const loaded = loadConfig(root);
-  if (!loaded.adopted) { console.log('no regression.json — run the catalog stage first'); return 1; }
-  if (loaded.errors.length) { for (const e of loaded.errors) console.error(`setup: ${CONFIG_PATH}: ${e}`); return 2; }
+/** Add each of `sections` absent from the config from the fragment file; never alter an existing key. */
+function addSections(root, fragmentPath, sections, existing) {
   let fragment;
-  try { fragment = JSON.parse(fs.readFileSync(path.resolve(root, args.fragment), 'utf8')); } catch (err) {
-    console.error(`setup: --fragment ${args.fragment} unreadable (${err.message})`);
+  try { fragment = JSON.parse(fs.readFileSync(path.resolve(root, fragmentPath), 'utf8')); } catch (err) {
+    console.error(`setup: --fragment ${fragmentPath} unreadable (${err.message})`);
     return 2;
   }
   if (!isObject(fragment)) { console.error('setup: --fragment must hold a JSON object'); return 2; }
-  const existing = loaded.config;
   const added = [];
   const missing = [];
-  for (const sec of BASELINE_SECTIONS) {
+  for (const sec of sections) {
     if (sec in existing) console.log(`kept ${sec}${sec in fragment ? ' (fragment section ignored)' : ''}`);
     else if (sec in fragment) added.push(sec);
     else missing.push(sec);
@@ -106,6 +107,21 @@ function cmdBaseline(root, args) {
   for (const sec of missing) console.log(`still missing: ${sec} — add it to the fragment`);
   if (!added.length && !missing.length) console.log('nothing to add');
   return missing.length ? 1 : 0;
+}
+
+function cmdBaseline(root, args) {
+  const loaded = loadConfig(root);
+  if (!loaded.adopted) { console.log('no regression.json — run the catalog stage first'); return 1; }
+  if (loaded.errors.length) { for (const e of loaded.errors) console.error(`setup: ${CONFIG_PATH}: ${e}`); return 2; }
+  return addSections(root, args.fragment, BASELINE_SECTIONS, loaded.config);
+}
+
+function cmdVisual(root, args) {
+  const loaded = loadConfig(root);
+  if (!loaded.adopted) { console.log('no regression.json — run the catalog stage first'); return 1; }
+  if (loaded.errors.length) { for (const e of loaded.errors) console.error(`setup: ${CONFIG_PATH}: ${e}`); return 2; }
+  if (!isObject(loaded.config.runner) || !isObject(loaded.config.environments)) { console.log('baseline not established — run the baseline stage first'); return 1; }
+  return addSections(root, args.fragment, ['visual'], loaded.config);
 }
 
 const insideRoot = (root, rel) => !path.isAbsolute(rel) && !rel.split('/').includes('..') && fs.existsSync(path.resolve(root, rel));
@@ -181,7 +197,33 @@ export function checkFoundation(root) {
       if (gap) gaps.push(gap);
     }
   }
+  if (isObject(cfg.visual)) gaps.push(...visualGaps(root, cfg));
   gaps.push(...mcpGaps(root));
+  return gaps;
+}
+
+/** The visual lane's gaps: its config and spec present and guard-integrated, the baselines, the Storybook environments. */
+function visualGaps(root, cfg) {
+  const s = visualSettings(cfg);
+  const gaps = [];
+  const present = [['config', s.config], ['spec', s.spec]].filter(([k, f]) => {
+    if (isFileIn(root, f)) return true;
+    gaps.push(`visual.${k}: ${f} not found`);
+    return false;
+  });
+  if (present.length === 2) {
+    const findings = scanIntegration(root, {
+      configFile: s.config,
+      configNeeds: [{ module: /\.claude\/lib\/regression\/guard\.mjs$/, binding: 'runnerOptions' }, { module: /\.claude\/lib\/regression\/visual-spec\.mjs$/, binding: 'visualOptions' }],
+      specs: [s.spec],
+    });
+    for (const f of findings) gaps.push(`visual: ${f.file}: ${f.reason}`);
+  }
+  if (!insideRoot(root, s.baselines)) gaps.push(`visual.baselines: ${s.baselines} not found — created by the first visual accept`);
+  for (const env of Object.keys(s.storybook)) {
+    const r = resolveEnvBaseUrl(root, cfg, env);
+    if (r.error) gaps.push(`visual.storybook.${env}: ${r.error}`);
+  }
   return gaps;
 }
 
@@ -202,7 +244,7 @@ function cmdEnv(root, args) {
   return 0;
 }
 
-const COMMANDS = { catalog: cmdCatalog, baseline: cmdBaseline, check: cmdCheck, env: cmdEnv };
+const COMMANDS = { catalog: cmdCatalog, baseline: cmdBaseline, visual: cmdVisual, check: cmdCheck, env: cmdEnv };
 
 export function main(argv = process.argv.slice(2)) {
   try {

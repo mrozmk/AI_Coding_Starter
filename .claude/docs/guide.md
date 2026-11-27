@@ -36,7 +36,7 @@ The starter ships **no application code** — only the scaffolding that makes Cl
 | `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
 | `lib/` | Shared scripts — `backlog-check.mjs` (backlog validator), `delivery-plan.mjs` (the delivery-plan scheduler), `backlog-migrate.mjs` (one-off migration of a pre-Scope backlog), `codex-bg.sh` (the one way to spawn Codex), `git-baseline.sh`, the team layer's `team-*.sh`, `costs/` (token usage) |
 | `team/` | The opt-in team layer (manifest, role prompts, tracker and PR adapters) |
-| config files | `project-profile.json.example` (the `/setup:start` answers), `qa-env.json` (QA hosts), `regression.json.example` (the opt-in regression switch — catalog, runner, environments), `comment-guard.json`, `nudge-rules.json`, `memory-domains.json`, `starter-sync-playbook.md` (how sync classifies files) |
+| config files | `project-profile.json.example` (the `/setup:start` answers), `qa-env.json` (QA hosts), `regression.json.example` (the opt-in regression switch — catalog, runner, environments, visual), `comment-guard.json`, `nudge-rules.json`, `memory-domains.json`, `starter-sync-playbook.md` (how sync classifies files) |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
@@ -70,7 +70,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Business analyst** | `/prime-ba`, `/brainstorm-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/create-task`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
-| **QA and security** | `/prime-qa`, `/qa-verify`, `/regression-tests` (deterministic regression run against a named environment, status), `/audit-security`, `/seo-geo-audit`, `/ai-act-audit`, `/wcag-audit` |
+| **QA and security** | `/prime-qa`, `/qa-verify`, `/regression-tests` (deterministic regression run against a named environment, status, visual compare / update), `/audit-security`, `/seo-geo-audit`, `/ai-act-audit`, `/wcag-audit` |
 | **Teams (opt-in)** | `/setup:teams`, `/roles`, `/start-team`, `/tasks-status` |
 | **Session and upkeep** | `/handoff`, `/hc`, `/analysis`, `/simply`, `/retro`, `/maintain:refresh-brief`, `/maintain:cleanup-workflow`, `/maintain:sync-from-starter`, `/maintain:sync-herdr-kit` |
 

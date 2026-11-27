@@ -4,7 +4,10 @@
 // (a dry run: it writes nothing and never issues a confirmation token — that is run.mjs's).
 // Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §10.
 //
-//   node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full] [--json] [--root <dir>]
+// The visual part of a plan (`visualPlan`, `mode visual` and `full`) is pure config: route targets ×
+// runner projects, the action and its pass count, one digest folded into the plan digest.
+//
+//   node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full|visual] [--action compare|update] [--json] [--root <dir>]
 //   exit 0 = ok (or not adopted) · 2 = usage / config error / invalid catalog / no target
 
 import fs from 'node:fs';
@@ -12,11 +15,13 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
-  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey,
+  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey, envKind, visualSettings,
 } from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf } from './catalog.mjs';
 
-export const MODES = ['smoke', 'full'];
+export const MODES = ['smoke', 'full', 'visual'];
+export const VISUAL_ACTIONS = ['compare', 'update'];
+const VISUAL_REPEAT = { capture: 1, stability: 3, compare: 1 };
 const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
 
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
@@ -64,12 +69,60 @@ export function exclusionReason(scenario, policy, envName) {
   return null;
 }
 
+/** The device → runner project map of the config (doc keys dropped). */
+const runnerDevices = (cfg) => (isObject(cfg?.runner?.devices) ? Object.fromEntries(Object.entries(cfg.runner.devices).filter(([k, v]) => !docKey(k) && typeof v === 'string' && v !== '')) : {});
+
+/**
+ * Targets × runner projects: `{cases: [{id, title, project, spec, file, source}], no_device: [{id, device}]}`.
+ * A device without a runner project is `no_device`: never run, its baselines never orphans.
+ */
+export function expandTargets(cfg, targets) {
+  const devices = runnerDevices(cfg);
+  const spec = visualSettings(cfg).spec;
+  const cases = [];
+  const noDevice = [];
+  for (const t of targets) {
+    for (const d of t.devices) {
+      if (devices[d]) cases.push({ id: t.id, title: t.title, project: devices[d], spec, file: t.file, source: t.source });
+      else noDevice.push({ id: t.id, device: d });
+    }
+  }
+  return { cases, no_device: noDevice };
+}
+
+/**
+ * The visual part of a plan (pure — config only): route targets, their cases on the runner
+ * projects, the passes of the action and the digest that binds them. Stories are enumerated at run
+ * time and only on a test environment, so a production plan's digest binds every case it runs.
+ */
+export function visualPlan(cfg, envName, action = 'compare') {
+  const s = visualSettings(cfg);
+  const routes = s.routes.map((r) => ({
+    id: `route:${r.id}`, source: 'routes', title: r.title, url: r.path, devices: Array.isArray(r.devices) ? r.devices : ['desktop', 'mobile'],
+    mask: Array.isArray(r.mask) ? r.mask : [], full_page: r.full_page === true, wait_for: r.wait_for ?? null, ready: null, error: null, file: `routes--${r.id}.png`,
+  }));
+  const { cases, no_device: noDevice } = expandTargets(cfg, routes);
+  const passes = action === 'update' ? ['capture', 'stability'] : ['compare'];
+  const entry = isObject(cfg?.environments) ? cfg.environments[envName] : undefined;
+  const sb = envKind(entry) === 'test' && isObject(s.storybook[envName]) ? s.storybook[envName].url : null;
+  const digest = digestJson({ action, passes, repeat: VISUAL_REPEAT, cases, tolerance: s.tolerance, mask: s.mask, policy: s.policy, storybook: sb });
+  return { action, passes, repeat: { ...VISUAL_REPEAT }, routes, cases, no_device: noDevice, storybook: sb, policy: s.policy, digest };
+}
+
+/** PNG files under `<baselines>/<env>/` (a count for the confirmation; not part of any digest). */
+function countBaselines(root, cfg, envName) {
+  const dir = path.resolve(root, visualSettings(cfg).baselines, envName);
+  try { return fs.readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.png')).length; } catch { return 0; }
+}
+
 /**
  * The plan of one run, or `{error}` / `{catalog_errors}`. Cases are (scenario, project) pairs:
  * `{id, title, project, spec, effect, needs}`. Never resolves a loopback target (resolveEnvBaseUrl refuses it).
  */
-export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CONFIG_PATH } = {}) {
+export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CONFIG_PATH, visualAction } = {}) {
   if (!MODES.includes(mode)) return { error: `unknown mode ${mode} — expected ${MODES.join('|')}` };
+  if (mode === 'visual' && !isObject(cfg?.visual)) return { error: 'visual not configured — see .claude/skills/regression/references/visual.md' };
+  if (visualAction !== undefined && !VISUAL_ACTIONS.includes(visualAction)) return { error: `unknown visual action ${visualAction} — expected ${VISUAL_ACTIONS.join('|')}` };
   const entry = isObject(cfg?.environments) ? cfg.environments[envName] : undefined;
   if (!isObject(entry) || docKey(envName)) return { error: `unknown environment ${envName}` };
   const base = resolveEnvBaseUrl(root, cfg, envName);
@@ -96,6 +149,7 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
     if (status === 'DROPPED') { counted.dropped += 1; continue; }
     const spec = parseSpec(b.fields.Spec?.value ?? '—', b.id);
     if (!spec || spec.error) { counted.ready_without_spec += 1; continue; }
+    if (mode === 'visual') continue;
     if (mode === 'smoke' && !smoke.has(b.fields.Priority?.value)) continue;
     const scenario = { id: b.id, title: b.title, spec: spec.path, effect: b.fields.Effect?.value ?? 'read', needs: needsKeys(b.fields.Needs?.value) };
     const reason = exclusionReason(scenario, policy, envName);
@@ -113,12 +167,16 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
   const budget = { ceiling: policy.guard.budget, operations, worst_case_backend_calls: worstCaseBackendCalls(policy.guard.budget, operations) };
   const configFile = path.resolve(root, configPath);
   const digests = { config: sha256(fs.readFileSync(configFile)), catalog: digestFiles(root, files) };
-  digests.plan = digestJson({ env: envName, base_url: base.url, mode, config: digests.config, catalog: digests.catalog, cases, budget });
+  const visual = isObject(cfg.visual) && (mode === 'full' || mode === 'visual')
+    ? { ...visualPlan(cfg, envName, mode === 'visual' ? visualAction ?? 'compare' : 'compare'), baselines_present: countBaselines(root, cfg, envName) }
+    : undefined;
+  digests.plan = digestJson({ env: envName, base_url: base.url, mode, config: digests.config, catalog: digests.catalog, cases, budget, visual: visual?.digest ?? null });
   return {
     env: envName, kind: policy.kind, base_url: base.url, mode,
     cases, scenarios: [...new Set(cases.map((c) => c.id))].length,
     excluded, no_device: noDevice, counted, budget, digests, policy,
     catalog_ids: blocks.map((b) => b.id),
+    ...(visual ? { visual } : {}),
   };
 }
 
@@ -139,6 +197,14 @@ export function confirmationText(plan) {
     `pacing: action_delay_ms ${p.pacing.action_delay_ms}, requests_per_minute ${p.pacing.requests_per_minute || 'unlimited'}`,
     `consent: ${p.consent.strategy}${p.consent.cookies.length ? '' : ' (not applied — no cookies declared)'}`,
   ];
+  if (plan.visual) {
+    const v = plan.visual;
+    const projects = [...new Set(v.cases.map((c) => c.project))];
+    lines.push(
+      `visual: ${v.action} · passes ${v.passes.join(', ')}${v.passes.includes('stability') ? ` (stability ×${v.repeat.stability})` : ''} · ${v.cases.length} route cases on ${projects.join(', ') || 'no project'} · policy ${v.policy}`,
+      `visual baselines: ${v.baselines_present ? `present ${v.baselines_present}` : 'none'} for ${plan.env}`,
+    );
+  }
   return lines.join('\n');
 }
 
@@ -149,24 +215,30 @@ function renderPlan(plan) {
   for (const e of plan.excluded) out.push(`not run — policy: ${e.id} — ${e.reason}`);
   for (const n of plan.no_device) out.push(`not run — no device: ${n.id} (${n.device})`);
   out.push(`counted, not run: ${plan.counted.ready_without_spec} READY without spec · ${plan.counted.blocked} BLOCKED · ${plan.counted.dropped} DROPPED`);
+  if (plan.visual) {
+    out.push(`visual: ${plan.visual.action} · ${plan.visual.cases.length} route cases${plan.visual.storybook ? ` · stories enumerated at run time from ${plan.visual.storybook}` : ''}`);
+    for (const c of plan.visual.cases) out.push(`  ${c.id} · ${c.project} · ${c.file}`);
+    for (const n of plan.visual.no_device) out.push(`not run — no device: ${n.id} (${n.device})`);
+  }
   if (plan.kind === 'production') out.push('confirmation (run.mjs asks for it with a single-use token):', confirmationText(plan));
   return out.join('\n');
 }
 
 class UsageError extends Error {}
-const USAGE = 'usage: node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full] [--json] [--root <dir>]';
+const USAGE = 'usage: node .claude/lib/regression/policy.mjs [--env <name>] [--mode smoke|full|visual] [--action compare|update] [--json] [--root <dir>]';
 
 function parseArgs(argv) {
-  const args = { root: process.cwd(), env: undefined, mode: 'smoke', json: false };
+  const args = { root: process.cwd(), env: undefined, mode: 'smoke', action: undefined, json: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--json') args.json = true;
-    else if (a === '--env' || a === '--mode' || a === '--root') {
+    else if (a === '--env' || a === '--mode' || a === '--root' || a === '--action') {
       if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`);
       args[a.slice(2)] = argv[++i];
     } else throw new UsageError(`unknown argument ${a}`);
   }
   if (!MODES.includes(args.mode)) throw new UsageError(`unknown mode ${args.mode}`);
+  if (args.action !== undefined && (args.mode !== 'visual' || !VISUAL_ACTIONS.includes(args.action))) throw new UsageError('--action compare|update goes with --mode visual');
   return args;
 }
 
@@ -190,7 +262,7 @@ export function main(argv = process.argv.slice(2)) {
     console.error(`environments: ${target.names.join(', ') || '(none)'}`);
     return 2;
   }
-  const plan = buildPlan(root, loaded.config, target.name, args.mode);
+  const plan = buildPlan(root, loaded.config, target.name, args.mode, { visualAction: args.action });
   if (plan.catalog_errors) {
     for (const e of plan.catalog_errors) console.error(`${e.file}:${e.line}: ${e.message}`);
     return 2;

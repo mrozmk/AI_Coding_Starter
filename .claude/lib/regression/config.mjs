@@ -1,5 +1,5 @@
 // Config library of the opt-in regression kit: loads and validates `.claude/regression.json`
-// (sections `catalog`, `runner`, `environments`) and resolves an environment's base URL
+// (sections `catalog`, `runner`, `environments`, `visual`) and resolves an environment's base URL
 // (`host: "qa-env"` → `.claude/qa-env.json` `base_url`), the environment policy (`envPolicy`:
 // kind, writes, workers, means, pacing, guard, consent — defaults safe for production) and the run
 // target (`resolveTarget`). Library only — `catalog.mjs`, `setup.mjs`, `policy.mjs` and `run.mjs`
@@ -250,6 +250,7 @@ export function validateConfig(cfg) {
       }
     }
   }
+  if ('visual' in cfg) errors.push(...validateVisual(cfg));
   if ('default_env' in cfg) {
     const envs = isObject(cfg.environments) ? cfg.environments : {};
     const d = cfg.default_env;
@@ -331,4 +332,168 @@ export function resolveEnvBaseUrl(root, cfg, name) {
   if (!isBaseUrl(url)) return { error: `${QA_ENV_PATH} base_url is not an http(s) URL without credentials or a trailing /` };
   if (isLoopbackHost(urlHost(url))) return { error: `${QA_ENV_PATH} base_url: a local server is not a regression target (environment ${name})` };
   return { url };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `visual` section (regression.md §13)
+
+export const VISUAL_DEFAULTS = { policy: 'warn', tolerance: { threshold: 0.2, max_diff_pixels: 0 }, max_mask_ratio: 0.25, timezone: 'UTC', mask: [] };
+export const VISUAL_POLICIES = ['warn', 'block'];
+export const VISUAL_DEVICES = ['desktop', 'mobile'];
+export const ROOT_SELECTORS = ['html', 'body', ':root', '*'];
+// The manifest owns update mode, repeats, selection, output, workers and retries: a flag here would
+// bypass the acceptance, the selection, the disjointness check or the confirmed plan.
+export const FORBIDDEN_FLAGS = /(^|\s)(--update-snapshots(=\S*)?|-u|--repeat-each(=\S*)?|--grep(=\S*)?|-g|--project(=\S*)?|--ignore-snapshots|--output(=\S*)?|-o|--workers(=\S*)?|-j|--retries(=\S*)?)(\s|$)/;
+const OUTPUT_FLAGS = /(^|\s)(--output(=\S*)?|-o)(\s|$)/;
+// Playwright sanitises a screenshot name and `{projectName}`: only names that sanitise to themselves.
+export const VISUAL_ID = /^[a-z0-9][a-z0-9-]*$/;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+const VISUAL_STRINGS = ['config', 'spec', 'command', 'report', 'baselines'];
+export const RUNS_DIR_REL = '.agents/regression/runs';
+
+/** A guard host pattern (`host` or `*.domain`) matching a hostname. */
+export function hostMatches(pattern, host) {
+  const p = String(pattern).toLowerCase();
+  const h = String(host).toLowerCase();
+  return p.startsWith('*.') ? h.endsWith(p.slice(1)) : h === p;
+}
+
+const isRepoRel = (v) => isFilled(v) && !path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
+const normRel = (p) => path.posix.normalize(p.replace(/\\/g, '/')).replace(/\/+$/, '') || '.';
+const within = (a, dir) => dir === '.' || a === dir || a.startsWith(`${dir}/`);
+const overlap = (a, b) => within(a, b) || within(b, a);
+
+function validateMasks(at, masks) {
+  if (!Array.isArray(masks)) return [`${at}: must be an array of {selector, reason}`];
+  const errors = [];
+  masks.forEach((m, i) => {
+    if (!isObject(m) || !isFilled(m.selector) || !isFilled(m.reason)) errors.push(`${at}.${i}: must be {selector, reason}, both non-empty`);
+    else if (ROOT_SELECTORS.includes(m.selector.trim())) errors.push(`${at}.${i}.selector: ${m.selector.trim()} would mask the whole page — mask volatile regions only`);
+  });
+  return errors;
+}
+
+function validateRoutes(routes) {
+  if (!Array.isArray(routes)) return ['visual.routes: must be an array of {id, path, title, devices?, mask?, full_page?, wait_for?}'];
+  const errors = [];
+  const seen = new Set();
+  routes.forEach((r, i) => {
+    const at = `visual.routes.${i}`;
+    if (!isObject(r)) { errors.push(`${at}: must be an object`); return; }
+    if (typeof r.id !== 'string' || !VISUAL_ID.test(r.id)) errors.push(`${at}.id: must match ${VISUAL_ID.source}`);
+    else if (seen.has(r.id)) errors.push(`${at}.id: duplicate route id ${r.id}`);
+    else seen.add(r.id);
+    if (typeof r.path !== 'string' || !r.path.startsWith('/') || r.path.startsWith('//')) errors.push(`${at}.path: must be a path starting with / (no scheme, no host)`);
+    if (!isFilled(r.title)) errors.push(`${at}.title: must be a non-empty string`);
+    if ('devices' in r && (!Array.isArray(r.devices) || !r.devices.length || r.devices.some((d) => !VISUAL_DEVICES.includes(d)))) errors.push(`${at}.devices: must be a non-empty array of ${VISUAL_DEVICES.join('|')}`);
+    if ('mask' in r) errors.push(...validateMasks(`${at}.mask`, r.mask));
+    if ('full_page' in r && typeof r.full_page !== 'boolean') errors.push(`${at}.full_page: must be a boolean`);
+    if ('wait_for' in r && r.wait_for !== null && !isFilled(r.wait_for)) errors.push(`${at}.wait_for: must be a selector or null`);
+  });
+  return errors;
+}
+
+/** The hosts a request of environment `name` may reach: `guard.hosts`, else the environment's own URL host. */
+function allowedHosts(entry) {
+  const hosts = Array.isArray(entry?.guard?.hosts) ? entry.guard.hosts.filter((h) => typeof h === 'string') : [];
+  if (hosts.length) return hosts;
+  return entry?.host && entry.host !== 'qa-env' ? [urlHost(entry.host)] : null;
+}
+
+function validateStorybook(sb, envs) {
+  if (!isObject(sb)) return ['visual.storybook: must be an object of <environment>: {url, ready, error?, exclude_tags?, build_sha_url?}'];
+  const errors = [];
+  for (const [env, s] of Object.entries(sb)) {
+    if (docKey(env)) continue;
+    const at = `visual.storybook.${env}`;
+    const entry = envs[env];
+    if (!isObject(entry)) { errors.push(`${at}: names no environment in environments`); continue; }
+    if (envKind(entry) !== 'test') { errors.push(`${at}: storybook is allowed only on a kind: test environment`); continue; }
+    if (!isObject(s)) { errors.push(`${at}: must be an object`); continue; }
+    if (!isBaseUrl(s.url)) errors.push(`${at}.url: must be an http(s) URL without credentials or a trailing /`);
+    else if (isLoopbackHost(urlHost(s.url))) errors.push(`${at}.url: a local server is not a regression target`);
+    else {
+      const hosts = allowedHosts(entry);
+      if (!hosts) errors.push(`${at}: list the storybook host in environments.${env}.guard.hosts`);
+      else if (!hosts.some((p) => hostMatches(p, urlHost(s.url)))) errors.push(`${at}.url: host ${urlHost(s.url)} is not on the environment's allowlist — add it to environments.${env}.guard.hosts`);
+    }
+    if (!isFilled(s.ready)) errors.push(`${at}.ready: required — a selector present only once the story's render and play finished`);
+    if ('error' in s && !isFilled(s.error)) errors.push(`${at}.error: must be a non-empty selector`);
+    if ('exclude_tags' in s && (!Array.isArray(s.exclude_tags) || s.exclude_tags.some((t) => !isFilled(t)))) errors.push(`${at}.exclude_tags: must be an array of tags`);
+    if ('build_sha_url' in s && !isBaseUrl(s.build_sha_url)) errors.push(`${at}.build_sha_url: must be an http(s) URL without credentials or a trailing /`);
+  }
+  return errors;
+}
+
+/** Problems of the `visual` section (and of the names it turns into directories). */
+export function validateVisual(cfg) {
+  const v = cfg.visual;
+  if (!isObject(v)) return ['visual: must be an object'];
+  const errors = [];
+  for (const k of VISUAL_STRINGS) {
+    if (!isFilled(v[k])) errors.push(`visual.${k}: must be a non-empty string`);
+    else if (k !== 'command' && !isRepoRel(v[k])) errors.push(`visual.${k}: must be a repo-relative path without ..`);
+  }
+  if (isFilled(v.command) && FORBIDDEN_FLAGS.test(v.command)) errors.push('visual.command: must not set --update-snapshots, -u, --repeat-each, --grep, -g, --project, --ignore-snapshots, --output, -o, --workers, -j or --retries — the run manifest drives them');
+  if ('policy' in v && !VISUAL_POLICIES.includes(v.policy)) errors.push(`visual.policy: must be ${VISUAL_POLICIES.join('|')}`);
+  if ('tolerance' in v) {
+    const t = v.tolerance;
+    if (!isObject(t)) errors.push('visual.tolerance: must be {threshold, max_diff_pixels}');
+    else {
+      if ('threshold' in t && !(typeof t.threshold === 'number' && t.threshold >= 0 && t.threshold <= 1)) errors.push('visual.tolerance.threshold: must be a number in [0, 1]');
+      if ('max_diff_pixels' in t && !(Number.isInteger(t.max_diff_pixels) && t.max_diff_pixels >= 0)) errors.push('visual.tolerance.max_diff_pixels: must be an integer ≥ 0');
+    }
+  }
+  if ('max_mask_ratio' in v && !(typeof v.max_mask_ratio === 'number' && v.max_mask_ratio > 0 && v.max_mask_ratio <= 1)) errors.push('visual.max_mask_ratio: must be a number in (0, 1]');
+  if ('timezone' in v && !isFilled(v.timezone)) errors.push('visual.timezone: must be a non-empty string');
+  if ('mask' in v) errors.push(...validateMasks('visual.mask', v.mask));
+  if (!('routes' in v)) errors.push('visual.routes: required (an array; may be [] only when storybook names an environment)');
+  else errors.push(...validateRoutes(v.routes));
+  const envs = isObject(cfg.environments) ? cfg.environments : {};
+  const hasStorybook = isObject(v.storybook) && Object.keys(v.storybook).some((k) => !docKey(k));
+  if (Array.isArray(v.routes) && !v.routes.length && !hasStorybook) errors.push('visual.routes: empty — name a route or a storybook environment');
+  if ('storybook' in v) errors.push(...validateStorybook(v.storybook, envs));
+  // Disk-safe names: environments and runner projects become baseline directories.
+  const names = (list, what) => {
+    const seen = new Map();
+    for (const n of list) {
+      if (!SAFE_NAME.test(n)) errors.push(`visual: ${what} ${n} is not a safe directory name (letters, digits and - only)`);
+      else if (seen.has(n.toLowerCase())) errors.push(`visual: ${what} ${n} is not unique case-insensitively (${seen.get(n.toLowerCase())})`);
+      else seen.set(n.toLowerCase(), n);
+    }
+  };
+  names(Object.keys(envs).filter((k) => !docKey(k)), 'environment');
+  const runner = isObject(cfg.runner) ? cfg.runner : null;
+  if (runner && isObject(runner.devices)) names(Object.entries(runner.devices).filter(([k, p]) => !docKey(k) && isFilled(p)).map(([, p]) => p), 'runner project');
+  if (runner && isObject(runner.commands)) {
+    for (const [k, c] of Object.entries(runner.commands)) if (!docKey(k) && typeof c === 'string' && OUTPUT_FLAGS.test(c)) errors.push(`runner.commands.${k}: must not set --output/-o while visual is configured — the output directory must stay where the disjointness check sees it`);
+  }
+  // Path containment (string level; run.mjs resolves symlinks and Playwright's outputDir defaults).
+  if (isRepoRel(v.baselines) && isRepoRel(v.spec)) {
+    const base = normRel(v.baselines);
+    const spec = normRel(v.spec);
+    if (runner && isRepoRel(runner.spec_dir)) {
+      const sd = normRel(runner.spec_dir);
+      if (within(spec, sd)) errors.push(`visual.spec: must not lie inside runner.spec_dir (${sd}) — the functional runner would collect it`);
+      if (within(base, sd)) errors.push(`visual.baselines: must not lie inside runner.spec_dir (${sd})`);
+    }
+    if (within(base, path.posix.dirname(spec))) errors.push(`visual.baselines: must not lie inside the directory of visual.spec (${path.posix.dirname(spec)})`);
+    const dirs = [];
+    if (runner && isRepoRel(runner.report)) dirs.push(['runner.report', path.posix.dirname(normRel(runner.report))]);
+    if (isRepoRel(v.report)) dirs.push(['visual.report', path.posix.dirname(normRel(v.report))]);
+    dirs.push([RUNS_DIR_REL, RUNS_DIR_REL]);
+    for (const [what, d] of dirs) {
+      if (overlap(base, d)) { errors.push(`visual.baselines: overlaps the directory of ${what} (${d})`); break; }
+    }
+  }
+  return errors;
+}
+
+/** The `visual` section merged over VISUAL_DEFAULTS (doc keys dropped). */
+export function visualSettings(cfg) {
+  const v = isObject(cfg?.visual) ? cfg.visual : {};
+  const clean = Object.fromEntries(Object.entries(v).filter(([k]) => !docKey(k)));
+  const tolerance = { ...VISUAL_DEFAULTS.tolerance, ...(isObject(v.tolerance) ? v.tolerance : {}) };
+  const storybook = isObject(v.storybook) ? Object.fromEntries(Object.entries(v.storybook).filter(([k]) => !docKey(k))) : {};
+  return { ...VISUAL_DEFAULTS, ...clean, tolerance, mask: Array.isArray(v.mask) ? v.mask : [], routes: Array.isArray(v.routes) ? v.routes : [], storybook };
 }

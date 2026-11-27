@@ -3,14 +3,20 @@
 // JSON report and the guard's own log only — no model in the loop. Refuses in a team clone and
 // while another run holds the environment or checkout lock; on production it first checks that the
 // runner is guard-integrated and asks for a single-use confirmation token bound to the plan.
-// `status` prints the newest per-machine record per environment.
-// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §12.
+// `visual compare | update` runs the visual lane on its own (regression.md §13), `run full` adds
+// its compare pass after the functional one, `visual accept` is the only writer of baselines.
+// `status` prints the newest per-machine record per environment and mode.
+// Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §12–§13.
 //
 //   node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]
+//   node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]
+//   node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]
 //   node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]
-//   run exit: 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established ·
-//             3 refused (team clone, lock held, not guard-integrated, confirmation required/invalid) ·
-//             4 INCOMPLETE · 5 BLOCKED/ENV          status exit: 0 (2 on usage)
+//   run / visual exit: 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established /
+//             visual not configured / widened tolerance · 3 refused (team clone, lock held, not
+//             guard-integrated, confirmation required/invalid, overlapping baselines; `visual update`:
+//             acceptance required) · 4 INCOMPLETE · 5 BLOCKED/ENV
+//   accept exit: 0 written · 2 usage / config · 3 refused          status exit: 0 (2 on usage)
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,9 +24,14 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey } from './config.mjs';
-import { buildPlan, confirmationText, MODES } from './policy.mjs';
-import { ownerLock, LockError, createLedger, groupAlive, scenarioId } from './guard.mjs';
+import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey, visualSettings } from './config.mjs';
+import { buildPlan, confirmationText, expandTargets, VISUAL_ACTIONS } from './policy.mjs';
+import { ownerLock, LockError, createLedger, groupAlive, scenarioId, guardedFetch } from './guard.mjs';
+import {
+  SOURCES, assertDisjoint, verifyBaselines, treeDigest, readIndex, toleranceCheck, baselinesWatch, readEvidence, readVisualReport,
+  classifyPass, classifyVisual, decideVisual, summaryLine, portability, portabilityLine, evaluateUpdate, hashCandidates,
+  buildOffer, offerLine, issueAcceptToken, acceptOffer,
+} from './visual.mjs';
 
 export const RUNS_DIR = '.agents/regression/runs';
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
@@ -28,6 +39,9 @@ const SHA_KEYS = ['sha', 'commit', 'commit_sha', 'git_sha', 'build_sha', 'revisi
 const HEX_SHA = /^[0-9a-f]{7,40}$/;
 const EXIT = { GREEN: 0, RED: 1, INCOMPLETE: 4, 'BLOCKED/ENV': 5 };
 const GUARD_MODULE = /\.claude\/lib\/regression\/guard\.mjs$/;
+const VISUAL_SPEC_MODULE = /\.claude\/lib\/regression\/visual-spec\.mjs$/;
+// Playwright gives these precedence over the configured report path: never inherited by a runner.
+const REPORTER_ENV = ['PLAYWRIGHT_JSON_OUTPUT_FILE', 'PLAYWRIGHT_JSON_OUTPUT_DIR', 'PLAYWRIGHT_JSON_OUTPUT_NAME'];
 // Calls that install a route of the spec's own: a page or context route a spec adds is matched
 // before the guard's context route, and `continue()` there sends the request unguarded.
 const OWN_ROUTE_CALLS = ['.route(', 'routeFromHAR', '.routeWebSocket('];
@@ -126,28 +140,32 @@ function resolveModule(fromFile, spec) {
   return null;
 }
 
+const moduleLabel = (re) => re.source.replace(/\\/g, '').replace(/\$$/, '');
+
 /**
- * The production pre-flight: the runner config imports `runnerOptions` from guard.mjs, every
- * selected spec imports `test` from a relative fixture module that imports `installGuard` from
- * guard.mjs, none of them sets context defaults the private redirect transport would re-add, and
- * no selected spec or fixture module installs a route of its own (a page route takes precedence
- * over the guard's context route). Returns findings `[{file, reason}]` (empty = integrated).
+ * One runner's pre-flight: the config imports every `configNeeds` binding from its module, every
+ * spec imports `test` from a relative fixture module that imports `installGuard` from guard.mjs,
+ * none of them sets context defaults the private redirect transport would re-add, and no spec or
+ * fixture module installs a route of its own (a page route takes precedence over the guard's
+ * context route). Returns findings `[{file, reason}]` (empty = integrated).
  */
-export function checkIntegration(root, cfg, plan) {
+export function scanIntegration(root, { configFile: configRel, configNeeds, specs }) {
   const findings = [];
   const rel = (f) => posix(path.relative(root, f));
   const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
   const scanned = []; // [file, text, routesChecked]
-  const configFile = path.resolve(root, cfg.runner.config);
+  const configFile = path.resolve(root, configRel);
   const configText = read(configFile);
-  if (configText === null) findings.push({ file: cfg.runner.config, reason: 'runner config absent' });
+  if (configText === null) findings.push({ file: configRel, reason: 'runner config absent' });
   else {
     scanned.push([configFile, configText, false]);
-    const ok = importsOf(configText).some((i) => GUARD_MODULE.test(i.from) && i.bindings.includes('runnerOptions'));
-    if (!ok) findings.push({ file: cfg.runner.config, reason: 'does not import runnerOptions from .claude/lib/regression/guard.mjs' });
+    const imports = importsOf(configText);
+    for (const need of configNeeds) {
+      if (!imports.some((i) => need.module.test(i.from) && i.bindings.includes(need.binding))) findings.push({ file: configRel, reason: `does not import ${need.binding} from ${moduleLabel(need.module)}` });
+    }
   }
   const fixtures = new Set();
-  for (const spec of [...new Set(plan.cases.map((c) => c.spec))]) {
+  for (const spec of [...new Set(specs)]) {
     const file = path.resolve(root, spec);
     const text = read(file);
     if (text === null) { findings.push({ file: spec, reason: 'spec file absent' }); continue; }
@@ -170,6 +188,23 @@ export function checkIntegration(root, cfg, plan) {
     if (!routesChecked) continue;
     // A literal call only: a route installed through a helper or a computed call is not seen (regression.md §11).
     for (const call of OWN_ROUTE_CALLS) if (code.includes(call)) findings.push({ file: rel(file), reason: `installs its own route (${call}) — it would take precedence over the guard` });
+  }
+  return findings;
+}
+
+/** The production pre-flight of a plan: the functional runner (not in a visual-only plan) and the visual one. */
+export function checkIntegration(root, cfg, plan) {
+  const findings = [];
+  if (plan.mode !== 'visual') {
+    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }], specs: plan.cases.map((c) => c.spec) }));
+  }
+  if (plan.visual) {
+    const s = visualSettings(cfg);
+    findings.push(...scanIntegration(root, {
+      configFile: s.config,
+      configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }, { module: VISUAL_SPEC_MODULE, binding: 'visualOptions' }],
+      specs: [s.spec],
+    }));
   }
   return findings;
 }
@@ -374,8 +409,29 @@ export function decideVerdict({ kind, cls, guard, runnerExit, signal, plan, buil
   for (const n of plan.no_device) incomplete.push(`no device for ${n.id} (${n.device})`);
   if (!build.before.sha || !build.after.sha) incomplete.push(`deployed build unknown (${build.before.reason ?? build.after.reason})`);
   else if (build.before.sha !== build.after.sha) incomplete.push(`build changed during the run (${build.before.sha} → ${build.after.sha})`);
+  return combineVerdict({ blocked, red, incomplete, warnings });
+}
+
+/** The verdict of reason lists by precedence BLOCKED/ENV > RED > INCOMPLETE > GREEN (the lists kept as `parts`). */
+export function combineVerdict({ blocked, red, incomplete, warnings }) {
   const verdict = blocked.length ? 'BLOCKED/ENV' : red.length ? 'RED' : incomplete.length ? 'INCOMPLETE' : 'GREEN';
-  return { verdict, reasons: [...blocked, ...red, ...incomplete], warnings, exit: EXIT[verdict] };
+  return { verdict, reasons: [...blocked, ...red, ...incomplete], warnings, exit: EXIT[verdict], parts: { blocked, red, incomplete } };
+}
+
+/**
+ * The guard facts and the lane policy of a visual block over reason lists that already hold the
+ * other passes' (§12 first, under both policies: a production attestation gap BLOCKED/ENV, a
+ * guard-aborted visual test RED; then `warn` / `block`).
+ */
+function applyVisual(parts, block, { production }) {
+  const out = { blocked: [...parts.blocked], red: [...parts.red], incomplete: [...parts.incomplete], warnings: [...parts.warnings] };
+  if (production) out.blocked.push(...block.attestation);
+  out.red.push(...block.guard_red);
+  const dv = decideVisual({ policy: block.policy, block });
+  out.red.push(...dv.red);
+  out.incomplete.push(...dv.incomplete);
+  out.warnings.push(...dv.warnings);
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -417,10 +473,34 @@ function runRunner(root, command, env, locks) {
   });
 }
 
+/** The runner's environment: inherited minus Playwright's reporter output overrides, plus the run's. */
+function runnerEnv(extra) {
+  const env = { ...process.env };
+  for (const k of REPORTER_ENV) delete env[k];
+  return { ...env, ...extra };
+}
+
+/** One runner launch: manifest written, the old report deleted, the runner run, the report read. */
+async function runPass({ root, plan, manifest, manifestFile, command, reportFile, locks }) {
+  fs.mkdirSync(path.dirname(manifestFile), { recursive: true });
+  fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.rmSync(reportFile, { force: true });
+  const runner = await runRunner(root, command, runnerEnv({
+    REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
+  }), locks);
+  let report = null;
+  try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
+  return { runner, report };
+}
+
 function printPlanSummary(plan) {
   console.log(`target: ${plan.env} (${plan.kind}) ${plan.base_url} · mode ${plan.mode} · ${plan.cases.length} cases (${plan.scenarios} scenarios)`);
   for (const e of plan.excluded) console.log(`not run — policy: ${e.id} — ${e.reason}`);
   for (const n of plan.no_device) console.log(`not run — no device: ${n.id} (${n.device})`);
+  if (plan.visual) {
+    console.log(`visual: ${plan.visual.action} · ${plan.visual.cases.length} route cases${plan.visual.storybook ? ' · stories enumerated at run time' : ''} · policy ${plan.visual.policy}`);
+    for (const n of plan.visual.no_device) console.log(`not run — no device: ${n.id} (${n.device})`);
+  }
 }
 
 /**
@@ -442,7 +522,7 @@ function confirmProduction(root, plan, findings, token) {
 }
 
 /** The run record (regression.md §12): digests, devices, results and guard facts — never model output. */
-function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, runner, cls, guard, v }) {
+function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, runner, cls, guard, v, visual = null }) {
   const count = (r) => cls.cases.filter((c) => c.result === r).length;
   return {
     schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
@@ -467,55 +547,254 @@ function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, 
       not_run_policy: plan.excluded.length, no_device: plan.no_device.length, ...plan.counted,
     },
     consent: plan.policy.consent.cookies.length ? plan.policy.consent.strategy : 'not applied',
+    visual,
     verdict: v.verdict, reasons: v.reasons, warnings: v.warnings, exit: v.exit,
   };
 }
 
-async function cmdRun(args) {
-  const root = path.resolve(args.root);
+// ---------------------------------------------------------------------------------------------
+// Visual passes (regression.md §13)
+
+const EMPTY_CLS = { valid: true, report_errors: 0, cases: [], orphans: [], outside_selection: [], interrupted: false, executed: [], runner_version: null };
+
+/** The Storybook build behind story targets: `{sha, reason}`, read through the guard. */
+async function readStoryBuild(manifest, url) {
+  if (!url) return { sha: null, reason: 'no build_sha_url' };
+  try {
+    const r = await guardedFetch(manifest, { url });
+    if (!(r.status >= 200 && r.status <= 299)) return { sha: null, reason: `build_sha_url answered ${r.status}` };
+    const sha = parseBuildSha(r.text());
+    return sha ? { sha, reason: null } : { sha: null, reason: 'build_sha_url returned no recognisable SHA' };
+  } catch (err) { return { sha: null, reason: `build_sha_url unreachable (${err.message})` }; }
+}
+
+/**
+ * The visual passes of one run, inside the caller's locks and run directory: Storybook enumeration
+ * (test environments), then per pass a manifest, a copy of the baselines (compare) or the candidate
+ * directory (capture, stability), the runner, the classification. An interrupted runner or report,
+ * or a guard stop, ends the sequence. Returns the record block and what an offer needs.
+ */
+async function runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifest, watch, verify }) {
+  const s = visualSettings(cfg);
+  const v = plan.visual;
+  const production = plan.kind === 'production';
+  const envDir = path.resolve(root, s.baselines, plan.env);
+  const visualDir = path.join(dir, 'visual');
+  // The accept transaction binds this environment's tree as it was before any runner of the lane.
+  const treeBefore = treeDigest(envDir);
+  const targets = [...v.routes];
+  const cases = [...v.cases];
+  const noDevice = [...v.no_device];
+  const sources = [{ name: 'routes', state: 'ok', count: v.routes.length }];
+  const build = { storybook_index_before: null, storybook_index_after: null, storybook_before: null, storybook_after: null };
+  const sbCfg = v.storybook ? s.storybook[plan.env] : null;
+  const sbManifest = { ...baseManifest, mode: 'visual', selection: [] };
+  if (sbCfg) {
+    const sb = await SOURCES.storybook.enumerate({ cfg, env: plan.env, settings: s, manifest: sbManifest });
+    sources.push({ name: 'storybook', state: sb.state, count: sb.targets.length, ...(sb.reason ? { reason: sb.reason } : {}) });
+    build.storybook_index_before = sb.index_digest;
+    for (const k of sb.skipped) console.log(`visual skipped: story ${k.id} — ${k.reason}`);
+    if (sb.state === 'ok') {
+      const ex = expandTargets(cfg, sb.targets);
+      targets.push(...sb.targets);
+      cases.push(...ex.cases);
+      noDevice.push(...ex.no_device);
+      build.storybook_before = await readStoryBuild(sbManifest, sbCfg.build_sha_url);
+    }
+  }
+  const capDir = path.join(visualDir, 'capture', 'candidates');
+  const reportFile = path.resolve(root, s.report);
+  const passes = {};
+  const runners = {};
+  let interrupted = null;
+  let hashes = {};
+  let rehashes = null;
+  for (const pass of v.passes) {
+    const pdir = path.join(visualDir, pass);
+    fs.mkdirSync(pdir, { recursive: true });
+    let snapshot = capDir;
+    if (pass === 'compare') {
+      snapshot = path.join(pdir, 'expected');
+      if (fs.existsSync(envDir)) fs.cpSync(envDir, snapshot, { recursive: true });
+      else fs.mkdirSync(snapshot, { recursive: true });
+    } else fs.mkdirSync(capDir, { recursive: true });
+    const manifest = {
+      ...baseManifest, mode: 'visual',
+      selection: cases.map(({ id, title, project, file, source }) => ({ id, title, project, spec: s.spec, file, source })),
+      visual: {
+        pass, repeat_each: v.repeat[pass], targets, tolerance: s.tolerance, mask: s.mask, max_mask_ratio: s.max_mask_ratio, timezone: s.timezone,
+        policy: s.policy, snapshot_dir: snapshot, output_dir: path.join(pdir, 'output'),
+        config_dir: path.dirname(path.resolve(root, s.config)), spec_abs: path.resolve(root, s.spec),
+        ...(pass === 'stability' ? { candidate_sha256: hashes } : {}),
+      },
+    };
+    const r = await runPass({ root, plan, manifest, manifestFile: path.join(pdir, 'manifest.json'), command: s.command, reportFile, locks });
+    runners[pass] = r.runner;
+    watch.check(pass);
+    passes[pass] = classifyPass({
+      pass, cases, repeat: v.repeat[pass], evidence: readEvidence(dir, nonce), report: readVisualReport(reportFile), events: createLedger(dir, { nonce }).events(),
+    });
+    if (pass === 'capture') hashes = hashCandidates(capDir, cases);
+    if (pass === 'stability') rehashes = hashCandidates(capDir, cases);
+    if (r.runner.signal) interrupted = `visual runner ended by ${r.runner.signal} (${pass})`;
+    else if (passes[pass].interrupted) interrupted = `visual pass interrupted (${pass})`;
+    else if (fs.existsSync(path.join(dir, 'stop.json'))) interrupted = `guard stop during the ${pass} pass`;
+    if (interrupted) break;
+  }
+  if (sbCfg && sources.find((x) => x.name === 'storybook')?.state === 'ok') {
+    const again = await SOURCES.storybook.enumerate({ cfg, env: plan.env, settings: s, manifest: sbManifest });
+    build.storybook_index_after = again.index_digest;
+    build.storybook_after = await readStoryBuild(sbManifest, sbCfg.build_sha_url);
+  }
+  const storyBuild = !sbCfg ? { ok: true }
+    : !build.storybook_before?.sha || !build.storybook_after?.sha ? { ok: false, reason: build.storybook_before?.reason ?? build.storybook_after?.reason ?? 'no build_sha_url' }
+      : build.storybook_before.sha !== build.storybook_after.sha ? { ok: false, reason: `storybook build changed (${build.storybook_before.sha} → ${build.storybook_after.sha})` } : { ok: true };
+  const baselinesRel = posix(path.relative(root, envDir));
+  const integrityExtra = watch.changed ? [watch.changed] : [];
+  if (v.action === 'compare') {
+    const pass = passes.compare ?? classifyPass({ pass: 'compare', cases, repeat: 1, evidence: [], report: { valid: false, interrupted: false, tests: new Map() }, events: [] });
+    const block = classifyVisual({ settings: s, env: plan.env, cases, noDevice, sources, pass, verify, runner: runners.compare ?? { code: null, signal: null }, integrityExtra, production, baselinesRel });
+    if (interrupted) block.incomplete.push(interrupted);
+    if (sbCfg && build.storybook_index_before && build.storybook_index_after && build.storybook_index_before !== build.storybook_index_after) block.incomplete.push('storybook index changed during the run');
+    if (interrupted || block.incomplete.length || block.integrity.length) block.outcome = 'incomplete';
+    block.build = build;
+    return { block, runners };
+  }
+  // update: capture + stability
+  const capture = passes.capture ?? classifyPass({ pass: 'capture', cases, repeat: 1, evidence: [], report: { valid: false, interrupted: false, tests: new Map() }, events: [] });
+  const stability = passes.stability ?? null;
+  const evals = evaluateUpdate({ cases, capture, stability, hashes, rehashes, storyBuild });
+  const renderers = stability?.renderers ?? capture.renderers;
+  const incomplete = [];
+  for (const e of evals) if (e.kind !== 'stable') incomplete.push(`visual ${e.kind}: ${e.case.id}/${e.case.project} — ${e.reasons.join('; ')}`);
+  for (const [name, p] of Object.entries(passes)) {
+    if (!p.report_valid) incomplete.push(`visual report missing or unparseable (${name})`);
+    for (const proj of p.renderer_conflicts) incomplete.push(`renderer differs between workers of ${proj} (${name})`);
+  }
+  for (const src of sources) if (src.state === 'failed') incomplete.push(`visual source ${src.name} failed — ${src.reason}`);
+  if (interrupted) incomplete.push(interrupted);
+  const attestation = Object.values(passes).flatMap((p) => p.attestation);
+  const integrity = [...verify.integrity, ...integrityExtra];
+  const block = {
+    policy: s.policy, env: plan.env, action: 'update', passes: v.passes, baselines: baselinesRel, index_digest: verify.index_digest,
+    tolerance: s.tolerance, renderers, portability: portability([...new Set(cases.map((c) => c.project))], verify.index, renderers),
+    build, sources,
+    targets: stability ? [...stability.results.values()].flatMap(({ case: c, reps }) => reps.map((e) => ({ id: c.id, source: c.source, project: c.project, repeat: e.repeat, outcome: e.outcome, diff_pixels: e.diff_pixels ?? null, masked_ratio: e.masked_ratio ?? null, diff: e.diff ?? null, reason: e.reason ?? null }))) : [],
+    orphans: [], no_device: noDevice,
+    counts: { stable: evals.filter((e) => e.kind === 'stable').length, unstable: evals.filter((e) => e.kind === 'unstable').length, error: evals.filter((e) => e.kind === 'error').length },
+    differences: [], incomplete, integrity, attestation: production ? attestation : [],
+    guard_red: [...new Set(Object.values(passes).flatMap((p) => p.guard_red))],
+    stability: evals.map((e) => ({ key: e.key, id: e.case.id, project: e.case.project, kind: e.kind, renders: e.renders, differences: e.differences, outcomes: e.outcomes, reasons: e.reasons })),
+    outcome: integrity.length || incomplete.length ? 'incomplete' : 'clean',
+  };
+  return { block, runners, evals, cases, noDevice, sources, renderers, interrupted, capDir, treeBefore };
+}
+
+function printVisual(block) {
+  if (block.action === 'compare') console.log(summaryLine(block));
+  else console.log(`visual: update ${block.outcome} — stable ${block.counts.stable} · unstable ${block.counts.unstable} · error ${block.counts.error}`);
+  for (const p of block.portability) console.log(portabilityLine(p));
+}
+
+/**
+ * The refusals every run and visual command shares (regression.md §12 step 1): `{cfg}` or `{exit}`.
+ * A team clone is refused before anything else is read from the run's inputs.
+ */
+function loadForRun(root) {
   const loaded = loadConfig(root);
-  if (!loaded.adopted) { console.error('regression not adopted'); return 2; }
+  if (!loaded.adopted) { console.error('regression not adopted'); return { exit: 2 }; }
   if (loaded.errors.length) {
     for (const e of loaded.errors) console.error(`run: ${CONFIG_PATH}: ${e}`);
-    return 2;
+    return { exit: 2 };
   }
   const cfg = loaded.config;
-  if (!isObject(cfg.runner) || !isObject(cfg.environments)) { console.error('baseline not established — run /setup:regression baseline'); return 2; }
-  if (isTeamClone(root)) { console.error('refused: a team clone never runs regression (run from your own checkout)'); return 3; }
+  if (!isObject(cfg.runner) || !isObject(cfg.environments)) { console.error('baseline not established — run /setup:regression baseline'); return { exit: 2 }; }
+  if (isTeamClone(root)) { console.error('refused: a team clone never runs regression (run from your own checkout)'); return { exit: 3 }; }
+  return { cfg };
+}
+
+/** Target, plan, disjointness, pre-flight and the production confirmation: `{plan, confirmed}` or `{exit}`. */
+function prepareRun(root, cfg, args, mode, visualAction) {
   const target = resolveTarget(cfg, args.env);
   if (target.error) {
     console.error(`run: ${target.error}`);
     console.log(`environments: ${target.names.join(', ') || '(none)'}`);
-    return 2;
+    return { exit: 2 };
   }
-  const plan = buildPlan(root, cfg, target.name, args.mode);
+  const plan = buildPlan(root, cfg, target.name, mode, { visualAction });
   if (plan.catalog_errors) {
     for (const e of plan.catalog_errors) console.error(`${e.file}:${e.line}: ${e.message}`);
     console.error('run: the catalog is invalid — refusing to run');
-    return 2;
+    return { exit: 2 };
   }
-  if (plan.error) { console.error(`run: ${plan.error}`); return 2; }
-
+  if (plan.error) { console.error(`run: ${plan.error}`); return { exit: 2 }; }
+  // Before any token, lock, report deletion or runner: a runner must never clean the baselines.
+  if (isObject(cfg.visual)) {
+    const overlap = assertDisjoint(root, cfg, RUNS_DIR);
+    if (overlap) { console.error(`refused: ${overlap}`); return { exit: 3 }; }
+  }
   const findings = checkIntegration(root, cfg, plan);
-  let confirmed = false;
   if (plan.kind === 'production') {
     const c = confirmProduction(root, plan, findings, args.confirm);
-    if (c.exit !== undefined) return c.exit;
-    confirmed = true;
-  } else {
-    for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
+    if (c.exit !== undefined) return { exit: c.exit };
+    return { plan, confirmed: true };
   }
+  for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
+  return { plan, confirmed: false };
+}
 
-  const runIdHint = `${plan.env}-pending`;
-  const owner = { pid: process.pid, pgid: null, run_id: runIdHint };
+/** The env and checkout locks of a run: `{locks}` or `{exit}`. */
+function takeRunLocks(root, plan) {
+  const owner = { pid: process.pid, pgid: null, run_id: `${plan.env}-pending` };
   const envLock = acquireLock(`env-${h16(plan.base_url)}`, owner);
-  if (envLock.error) { console.error(`refused: ${envLock.error}`); return 3; }
-  let realRoot = root;
-  try { realRoot = fs.realpathSync(root); } catch { /* keep root */ }
-  const coLock = acquireLock(`checkout-${h16(realRoot)}`, owner);
-  if (coLock.error) { envLock.lock.release(); console.error(`refused: ${coLock.error}`); return 3; }
-  const locks = [envLock.lock, coLock.lock];
+  if (envLock.error) { console.error(`refused: ${envLock.error}`); return { exit: 3 }; }
+  const coLock = acquireLock(`checkout-${h16(realRootOf(root))}`, owner);
+  if (coLock.error) { envLock.lock.release(); console.error(`refused: ${coLock.error}`); return { exit: 3 }; }
+  return { locks: [envLock.lock, coLock.lock] };
+}
+
+const realRootOf = (root) => { try { return fs.realpathSync(root); } catch { return root; } };
+const releaseAll = (locks) => { for (const l of [...locks].reverse()) { try { l.release(); } catch { /* the lock holds its token */ } } };
+
+/** The visual tolerance rule, under the lock and against the index the run reads: null or the exit. */
+function toleranceRefusal(root, cfg, env) {
+  const s = visualSettings(cfg);
+  const why = toleranceCheck(s, readIndex(path.resolve(root, s.baselines, env)).index);
+  if (!why) return null;
+  console.error(`run: ${why}`);
+  return 2;
+}
+
+function baseManifestOf(plan, runId, nonce, dir) {
+  return {
+    run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
+    workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
+    selection: plan.cases, policy: plan.policy.guard, run_dir: dir, accounts: [],
+  };
+}
+
+function printOutcome(root, v, before, after, recordFile) {
+  for (const w of v.warnings) console.log(`warning: ${w}`);
+  for (const r of v.reasons) console.log(`reason: ${r}`);
+  console.log(`build: ${before.sha ?? 'unknown'}${after.sha && after.sha !== before.sha ? ` → ${after.sha}` : ''}`);
+  console.log(`verdict: ${v.verdict}`);
+  console.log(`record: ${posix(path.relative(root, recordFile))}`);
+}
+
+async function cmdRun(args) {
+  const root = path.resolve(args.root);
+  const pre = loadForRun(root);
+  if (pre.exit !== undefined) return pre.exit;
+  const { cfg } = pre;
+  const prep = prepareRun(root, cfg, args, args.mode);
+  if (prep.exit !== undefined) return prep.exit;
+  const { plan, confirmed } = prep;
+  const taken = takeRunLocks(root, plan);
+  if (taken.exit !== undefined) return taken.exit;
+  const { locks } = taken;
   try {
+    const visualOn = isObject(cfg.visual);
+    if (plan.visual) { const t = toleranceRefusal(root, cfg, plan.env); if (t !== null) return t; }
     const { runId, dir } = newRunDir(root, plan.env);
     for (const l of locks) l.update({ run_id: runId });
     const startedAt = new Date().toISOString();
@@ -523,43 +802,149 @@ async function cmdRun(args) {
     const command = cfg.runner.commands[plan.mode];
     const reportFile = path.resolve(root, cfg.runner.report);
     const manifestFile = path.join(dir, 'manifest.json');
-    const manifest = {
-      run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
-      workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
-      selection: plan.cases, policy: plan.policy.guard, run_dir: dir, accounts: [],
-    };
+    const manifest = baseManifestOf(plan, runId, nonce, dir);
     fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     printPlanSummary(plan);
+    const watch = visualOn ? baselinesWatch(root, visualSettings(cfg)) : null;
 
     const before = await fetchBuildSha(root, cfg, plan.env, plan.policy);
     let runner = { code: null, signal: null };
     let report = null;
     if (plan.cases.length) {
-      fs.rmSync(reportFile, { force: true });
-      runner = await runRunner(root, command, {
-        ...process.env, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
-      }, locks);
-      try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
+      ({ runner, report } = await runPass({ root, plan, manifest, manifestFile, command, reportFile, locks }));
+      watch?.check('functional');
     }
-    const after = plan.cases.length ? await fetchBuildSha(root, cfg, plan.env, plan.policy) : before;
-
     const settings = catalogSettings(cfg);
     const cls = classifyReport(report, plan, { idPattern: settings.id_pattern, catalogIds: new Set(plan.catalog_ids), root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
+    // A stopped or interrupted functional pass ends the run's sequence: no visual pass after it.
+    const stopped = fs.existsSync(path.join(dir, 'stop.json'));
+    let visual = null;
+    if (plan.visual && !stopped && !runner.signal && !cls.interrupted) {
+      const verify = verifyBaselines(root, visualSettings(cfg), plan.env);
+      visual = (await runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifest: manifest, watch, verify })).block;
+    }
+    const ranAny = plan.cases.length || visual;
+    const after = ranAny ? await fetchBuildSha(root, cfg, plan.env, plan.policy) : before;
+
     const guard = readGuard(dir, nonce, casesRan(cls));
     failBlockedCases(cls, guard);
-    const v = decideVerdict({ kind: plan.kind, cls, guard, runnerExit: runner.code, signal: runner.signal, plan, build: { before, after } });
-    const record = buildRecord({ root, plan, runId, startedAt, command, confirmed, build: { before, after }, runner, cls, guard, v });
+    const base = decideVerdict({ kind: plan.kind, cls, guard, runnerExit: runner.code, signal: runner.signal, plan, build: { before, after } });
+    let v = base;
+    if (visual) v = combineVerdict(applyVisual({ ...base.parts, warnings: base.warnings }, visual, { production: plan.kind === 'production' }));
+    else if (watch?.changed) {
+      visual = { integrity: [watch.changed] };
+      v = combineVerdict({ ...base.parts, incomplete: [...base.parts.incomplete, watch.changed], warnings: base.warnings });
+    }
+    const record = buildRecord({ root, plan, runId, startedAt, command, confirmed, build: { before, after }, runner, cls, guard, v, visual });
     const recordFile = path.join(dir, 'record.json');
     fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
-    for (const w of v.warnings) console.log(`warning: ${w}`);
-    for (const r of v.reasons) console.log(`reason: ${r}`);
-    console.log(`build: ${before.sha ?? 'unknown'}${after.sha && after.sha !== before.sha ? ` → ${after.sha}` : ''}`);
-    console.log(`verdict: ${v.verdict}`);
-    console.log(`record: ${posix(path.relative(root, recordFile))}`);
+    if (visual?.action) printVisual(visual);
+    printOutcome(root, v, before, after, recordFile);
     if (v.verdict === 'RED') console.log(`next: /regression-tests heal --run ${runId}`);
     return v.exit;
   } finally {
-    for (const l of [...locks].reverse()) { try { l.release(); } catch { /* the lock holds its token */ } }
+    releaseAll(locks);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// visual compare | update | accept
+
+/** The standalone verdict of a visual record: the guard rules of §12, then the lane policy, then the build. */
+function visualVerdict({ plan, guard, block, build }) {
+  const production = plan.kind === 'production';
+  const parts = { blocked: [], red: [], incomplete: [], warnings: [] };
+  if (guard.stop) parts.blocked.push(`guard stop: ${guard.stop.reason}`);
+  if (production) parts.blocked.push(...guard.session); else parts.warnings.push(...guard.session);
+  if (guard.outsideTest) parts.red.push('blocked request outside a test');
+  const out = applyVisual(parts, block, { production });
+  if (block.action === 'compare' && block.counts && !(block.counts.same + block.counts.differs)) out.incomplete.push('visual: nothing compared');
+  if (!build.before.sha || !build.after.sha) out.incomplete.push(`deployed build unknown (${build.before.reason ?? build.after.reason})`);
+  else if (build.before.sha !== build.after.sha) out.incomplete.push(`build changed during the run (${build.before.sha} → ${build.after.sha})`);
+  return combineVerdict(out);
+}
+
+async function cmdVisual(args) {
+  const root = path.resolve(args.root);
+  const pre = loadForRun(root);
+  if (pre.exit !== undefined) return pre.exit;
+  const { cfg } = pre;
+  if (!isObject(cfg.visual)) { console.error('run: visual not configured — see .claude/skills/regression/references/visual.md'); return 2; }
+  const prep = prepareRun(root, cfg, args, 'visual', args.action);
+  if (prep.exit !== undefined) return prep.exit;
+  const { plan, confirmed } = prep;
+  const taken = takeRunLocks(root, plan);
+  if (taken.exit !== undefined) return taken.exit;
+  const { locks } = taken;
+  try {
+    const s = visualSettings(cfg);
+    const verify = verifyBaselines(root, s, plan.env);
+    const tol = toleranceCheck(s, verify.index);
+    if (tol) { console.error(`run: ${tol}`); return 2; }
+    const { runId, dir } = newRunDir(root, plan.env);
+    for (const l of locks) l.update({ run_id: runId });
+    const startedAt = new Date().toISOString();
+    const nonce = randomBytes(8).toString('hex');
+    const manifest = baseManifestOf(plan, runId, nonce, dir);
+    fs.writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    printPlanSummary(plan);
+    const watch = baselinesWatch(root, s);
+    const before = await fetchBuildSha(root, cfg, plan.env, plan.policy);
+    const res = await runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifest: manifest, watch, verify });
+    const after = await fetchBuildSha(root, cfg, plan.env, plan.policy);
+    const guard = readGuard(dir, nonce, []);
+    const v = visualVerdict({ plan, guard, block: res.block, build: { before, after } });
+    const runner = res.runners[plan.visual.passes.at(-1)] ?? Object.values(res.runners).at(-1) ?? { code: null, signal: null };
+    const record = buildRecord({ root, plan, runId, startedAt, command: s.command, confirmed, build: { before, after }, runner, cls: EMPTY_CLS, guard, v, visual: res.block });
+    record.command = s.command;
+    const recordFile = path.join(dir, 'record.json');
+    fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
+    printVisual(res.block);
+    printOutcome(root, v, before, after, recordFile);
+    if (plan.visual.action !== 'update') return v.exit;
+    return offerStep({ root, s, plan, runId, dir, res, verify, v, before, after, guard });
+  } finally {
+    releaseAll(locks);
+  }
+}
+
+/** The offer of a `visual update`: printed lines, then a token (exit 3) or `visual offer: none — <why>`. */
+function offerStep({ root, s, plan, runId, dir, res, verify, v, before, after, guard }) {
+  const none = (why) => { console.log(`visual offer: none — ${why}`); return v.exit; };
+  if (verify.integrity.length) return none(`baselines integrity (${verify.integrity[0]})`);
+  const offer = buildOffer({
+    root, settings: s, env: plan.env, runId, evals: res.evals, verify, treeBefore: res.treeBefore, candidatesDir: res.capDir,
+    sources: res.sources, cases: res.cases, noDevice: res.noDevice, renderers: res.renderers, build: { before: before.sha, after: after.sha },
+  });
+  for (const e of offer.entries) console.log(offerLine(e));
+  if (res.block.integrity.length) return none(res.block.integrity[0]);
+  if (res.interrupted) return none(res.interrupted);
+  if (!before.sha || !after.sha) return none(`deployed build unknown (${before.reason ?? after.reason})`);
+  if (before.sha !== after.sha) return none(`build changed during the run (${before.sha} → ${after.sha})`);
+  if (guard.stop || guard.outsideTest || v.parts.blocked.length || res.block.guard_red.length) return none('the guard found a request it stopped or blocked');
+  if (!offer.writes) return none(offer.entries.some((e) => e.kind === 'unstable' || e.kind === 'error') ? 'no stable target to accept' : 'the baselines already match');
+  fs.writeFileSync(path.join(dir, 'visual', 'offer.json'), `${JSON.stringify(offer, null, 2)}\n`);
+  console.log(`acceptance-required: ${issueAcceptToken(path.resolve(root, RUNS_DIR), plan.env, runId, offer.digest)}`);
+  return 3;
+}
+
+function cmdVisualAccept(args) {
+  const root = path.resolve(args.root);
+  const loaded = loadConfig(root);
+  if (!loaded.adopted) { console.error('regression not adopted'); return 2; }
+  if (loaded.errors.length) { for (const e of loaded.errors) console.error(`run: ${CONFIG_PATH}: ${e}`); return 2; }
+  if (isTeamClone(root)) { console.error('refused: a team clone never writes baselines (accept from your own checkout)'); return 3; }
+  if (!isObject(loaded.config.visual)) { console.error('run: visual not configured — see .claude/skills/regression/references/visual.md'); return 2; }
+  const runsDir = path.resolve(root, RUNS_DIR);
+  if (!fs.existsSync(path.join(runsDir, args.run, 'visual', 'offer.json'))) { console.error(`refused: no offer for run ${args.run} — run visual update first`); return 3; }
+  const co = acquireLock(`checkout-${h16(realRootOf(root))}`, { pid: process.pid, pgid: null, run_id: args.run });
+  if (co.error) { console.error(`refused: ${co.error}`); return 3; }
+  try {
+    const r = acceptOffer({ root, settings: visualSettings(loaded.config), runId: args.run, token: args.token, runsDir });
+    if (r.exit === 0) console.log(r.message); else console.error(r.message);
+    return r.exit;
+  } finally {
+    try { co.lock.release(); } catch { /* the lock holds its token */ }
   }
 }
 
@@ -578,20 +963,25 @@ function cmdStatus(args) {
       let rec;
       try { rec = JSON.parse(fs.readFileSync(path.join(dir, d.name, 'record.json'), 'utf8')); } catch { continue; }
       if (args.env && rec.env !== args.env) continue;
-      const prev = newest.get(rec.env);
-      if (!prev || String(rec.ended_at) > String(prev.ended_at)) newest.set(rec.env, rec);
+      // Newest per environment AND mode: a green visual record never hides a red full run.
+      const key = `${rec.env}\0${rec.mode}`;
+      const prev = newest.get(key);
+      if (!prev || String(rec.ended_at) > String(prev.ended_at)) newest.set(key, rec);
     }
   }
   const envs = isObject(loaded.config?.environments) ? Object.keys(loaded.config.environments).filter((k) => !docKey(k)) : [];
-  const names = args.env ? [args.env] : [...new Set([...envs, ...newest.keys()])];
-  const rows = names.map((env) => {
-    const r = newest.get(env);
-    return r ? { env, verdict: r.verdict, build_sha: r.build_sha, ended_at: r.ended_at, run_id: r.run_id } : { env, verdict: null };
+  const recorded = [...newest.values()];
+  const names = args.env ? [args.env] : [...new Set([...envs, ...recorded.map((r) => r.env)])];
+  const rows = names.flatMap((env) => {
+    const mine = recorded.filter((r) => r.env === env).sort((a, b) => String(a.mode).localeCompare(String(b.mode)));
+    return mine.length
+      ? mine.map((r) => ({ env, mode: r.mode, verdict: r.verdict, build_sha: r.build_sha, ended_at: r.ended_at, run_id: r.run_id }))
+      : [{ env, mode: null, verdict: null }];
   });
   if (args.json) { console.log(JSON.stringify({ adopted: true, runs: rows }, null, 2)); return 0; }
   if (!rows.length) console.log('no run recorded on this machine');
   for (const r of rows) {
-    console.log(r.verdict ? `${r.env} ${r.verdict} ${r.build_sha ?? 'unknown'} ${r.ended_at} ${r.run_id}` : `${r.env} no run recorded on this machine`);
+    console.log(r.verdict ? `${r.env} ${r.mode} ${r.verdict} ${r.build_sha ?? 'unknown'} ${r.ended_at} ${r.run_id}` : `${r.env} no run recorded on this machine`);
   }
   return 0;
 }
@@ -602,23 +992,36 @@ function cmdStatus(args) {
 class UsageError extends Error {}
 const USAGE = [
   'usage: node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]',
   '       node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]',
 ].join('\n');
+const RUN_MODES = ['smoke', 'full'];
 
 function parseArgs(argv) {
-  const [cmd, ...rest] = argv;
-  if (cmd !== 'run' && cmd !== 'status') throw new UsageError(cmd ? `unknown command ${cmd}` : 'a command is required');
-  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false };
-  const flags = cmd === 'run' ? ['--env', '--confirm', '--root'] : ['--env', '--root'];
+  let [cmd, ...rest] = argv;
+  if (!['run', 'status', 'visual'].includes(cmd)) throw new UsageError(cmd ? `unknown command ${cmd}` : 'a command is required');
+  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false, action: undefined, run: undefined, token: undefined };
+  let flags = cmd === 'run' ? ['--env', '--confirm', '--root'] : ['--env', '--root'];
+  if (cmd === 'visual') {
+    const [action, ...more] = rest;
+    if (action === 'accept') flags = ['--run', '--token', '--root'];
+    else if (VISUAL_ACTIONS.includes(action)) flags = ['--env', '--confirm', '--root'];
+    else throw new UsageError(action ? `unknown visual action ${action}` : 'visual needs compare, update or accept');
+    args.action = action;
+    rest = more;
+  }
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (cmd === 'run' && i === 0 && MODES.includes(a)) args.mode = a;
+    // `run` takes smoke|full only: `visual` is never a run mode (the lane runs through `visual …`).
+    if (cmd === 'run' && i === 0 && RUN_MODES.includes(a)) args.mode = a;
     else if (cmd === 'status' && a === '--json') args.json = true;
     else if (flags.includes(a)) {
       if (i + 1 >= rest.length) throw new UsageError(`${a} needs a value`);
       args[a.slice(2)] = rest[++i];
     } else throw new UsageError(`unknown argument ${a}`);
   }
+  if (args.action === 'accept' && (!args.run || !args.token)) throw new UsageError('visual accept needs --run <run id> and --token <token>');
   return args;
 }
 
@@ -629,7 +1032,9 @@ export async function main(argv = process.argv.slice(2)) {
     console.error(`run: ${err.message}\n${USAGE}`);
     return 2;
   }
-  return args.cmd === 'run' ? cmdRun(args) : cmdStatus(args);
+  if (args.cmd === 'run') return cmdRun(args);
+  if (args.cmd === 'visual') return args.action === 'accept' ? cmdVisualAccept(args) : cmdVisual(args);
+  return cmdStatus(args);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

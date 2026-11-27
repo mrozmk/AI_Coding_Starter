@@ -1,0 +1,39 @@
+// Regression visual runner config — copied by /setup:regression (Visual stage) to `visual.config`
+// (never over an existing file). Placeholders:
+//   <guard-module-relative>        the path from this file's directory to .claude/lib/regression/guard.mjs
+//                                  (config e2e/visual/visual.config.ts → '../../.claude/lib/regression/guard.mjs')
+//   <visual-spec-module-relative>  the same for .claude/lib/regression/visual-spec.mjs
+//   <desktop-project>, <mobile-project>  the names in runner.devices
+//   <report-relative>              visual.report relative to this file's directory
+//                                  (e2e/.results/visual-report.json → '../.results/visual-report.json')
+// Everything a pass needs comes from the run manifest run.mjs writes: the test directory and the one
+// spec file collected, the update mode (capture writes candidates, compare and stability never write),
+// repeats, the output directory under the run directory, the snapshot path, tolerance and masks.
+// No `webServer`, no `extraHTTPHeaders`/`httpCredentials`: a production run refuses such a config.
+// Without REGRESSION_RUN this config refuses to load — run it through /regression-tests visual.
+import { defineConfig, devices } from '@playwright/test';
+import { loadRunManifest, runnerOptions } from '<guard-module-relative>';
+import { visualOptions } from '<visual-spec-module-relative>';
+
+const m = loadRunManifest();
+const r = runnerOptions(m);
+const v = visualOptions(m);
+
+export default defineConfig({
+  testDir: v.testDir,
+  testMatch: v.testMatch,
+  ignoreSnapshots: false,
+  retries: 0,
+  workers: r.workers,
+  repeatEach: v.repeatEach,
+  outputDir: v.outputDir,
+  snapshotPathTemplate: v.snapshotPathTemplate,
+  updateSnapshots: v.updateSnapshots,
+  expect: v.expect,
+  reporter: [['json', { outputFile: '<report-relative>' }]],
+  use: { baseURL: process.env.REGRESSION_BASE_URL, ...r.use, ...v.use },
+  projects: [
+    { name: '<desktop-project>', grep: r.grepFor('<desktop-project>'), use: { ...devices['Desktop Chrome'] } },
+    { name: '<mobile-project>', grep: r.grepFor('<mobile-project>'), use: { ...devices['iPhone 13'] } },
+  ],
+});
