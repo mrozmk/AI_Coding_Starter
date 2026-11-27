@@ -316,6 +316,22 @@ test('apply: refuses a live scenario for an unvisited or redirected route', () =
   refused(apply(orders), /^refused: route \/orders\/:id: PDP-002 cites live, but the walk did not see the path work \(walk: no-sample\)$/m);
 });
 
+test('apply: a route the walk did not see work admits code only — a criterion-only block is refused', () => {
+  const ctx = setup();
+  const json = proposalOf(ctx);
+  json.routes['/orders/:id'] = { scenarios: ['PDP-002'] };
+  json.sources['PDP-002'] = { code: null, covered_by: null, submit: null };
+  restage(ctx, { json, md: `${mdOf(ctx)}\n${block('PDP-002', { title: 'Open an order', source: 'E2-3.AC2 [a1b2c3]' })}\n` });
+  refused(apply(ctx), /^refused: route \/orders\/:id: PDP-002 must cite code — the walk did not see the path work \(walk: no-sample\)$/m);
+  const fixed = setup();
+  const json2 = proposalOf(fixed);
+  json2.routes['/orders/:id'] = { scenarios: ['PDP-002'] };
+  json2.sources['PDP-002'] = { code: ['src/routes/orders.ts:1'], covered_by: null, submit: null };
+  restage(fixed, { json: json2, md: `${mdOf(fixed)}\n${block('PDP-002', { title: 'Open an order', source: 'E2-3.AC2 [a1b2c3] · code' })}\n` });
+  const r = apply(fixed);
+  assert.equal(r.status, 0, r.out);
+});
+
 test('apply: refuses a proposal that omits a staged route', () => {
   const ctx = setup();
   const json = proposalOf(ctx);

@@ -270,6 +270,16 @@ function registrations(root, spec) {
     .flatMap((d) => readDrafts(path.join(dir, d.name)).drafts.filter((x) => x.spec === spec));
 }
 
+/**
+ * The draft a claim of `spec` claims: the newest registration that no reject has closed, or
+ * undefined when none is live. A rejected or older registration of the same path never decides
+ * what the claim requires.
+ */
+function liveDraft(root, spec) {
+  return registrations(root, spec).filter((d) => !d.rejected_at)
+    .sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))).at(-1);
+}
+
 /** Run `fn` under the checkout lock; a held lock refuses. */
 function underCheckoutLock(root, owner, fn) {
   const r = withCheckoutLock(root, owner, fn);
@@ -333,7 +343,7 @@ function cmdClaim(root, args) {
     if (critic.id !== id || critic.verdict !== 'pass') refuse(`${id} — no critic pass`);
     const criticStale = changedPart(critic, current);
     if (criticStale) refuse(`${id} — the critic verdict predates a change (${criticStale})`);
-    const fromQa = registrations(root, args.spec).some((d) => d.qa);
+    const fromQa = Boolean(liveDraft(root, args.spec)?.qa);
     if (fromQa || args.provenance) {
       if (!args.provenance) refuse(`${id} — a --from-qa draft needs a provenance pass (--provenance)`);
       const prov = readJson(path.resolve(root, args.provenance), 'provenance verdict');
@@ -366,17 +376,26 @@ function cmdReject(root, args) {
   if (!cfg) throw new UsageError('regression not adopted');
   return underCheckoutLock(root, `reject-${args.id}`, () => {
     const runDir = path.resolve(root, args.run);
-    const draft = readDrafts(runDir).drafts.find((d) => d.id === args.id);
-    if (!draft) refuse(`${args.id} — no draft registered in ${posix(path.relative(root, draftsFile(runDir)))}`);
+    const doc = readDrafts(runDir);
+    const mine = doc.drafts.filter((d) => d.id === args.id);
+    if (!mine.length) refuse(`${args.id} — no draft registered in ${posix(path.relative(root, draftsFile(runDir)))}`);
+    const draft = mine.filter((d) => !d.rejected_at).at(-1);
+    if (!draft) { console.log(`rejected: ${args.id} — already rejected`); return 0; }
     const { blocks } = loadCatalog(root, cfg);
     const b = blocks.find((x) => x.id === args.id);
     if (b && specOf(b) !== null) refuse(`${args.id} — already claimed (Spec: ${b.fields.Spec.value})`);
     if (blocks.some((x) => specOf(x)?.path === draft.spec)) refuse(`${args.id} — ${draft.spec} is referenced by the catalog`);
+    // Close the registration, so a later draft of the same path is judged on its own at claim.
+    const close = () => {
+      draft.rejected_at = new Date().toISOString();
+      writeAtomic(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
+    };
     const src = path.resolve(root, draft.spec);
-    if (!fs.existsSync(src)) { console.log(`rejected: ${args.id} — already gone`); return 0; }
+    if (!fs.existsSync(src)) { close(); console.log(`rejected: ${args.id} — already gone`); return 0; }
     const dest = path.join(runDir, 'rejected', path.basename(draft.spec));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.unlinkSync(src); }
+    close();
     console.log(`rejected: ${args.id} — ${posix(path.relative(root, dest))}`);
     return 0;
   });

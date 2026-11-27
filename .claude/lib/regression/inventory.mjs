@@ -212,7 +212,9 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
       const problem = (() => {
         if (outcome === 'failed') return isLiveBlocked(b) && live ? null : 'must be BLOCKED (live: …) citing live';
         if (outcome === 'ok') return null;
-        return live ? 'cites live, but the walk did not see the path work' : null;
+        // Anything but ok admits code only: no live, and code cited.
+        if (live) return 'cites live, but the walk did not see the path work';
+        return usesWord(b, 'code') ? null : 'must cite code — the walk did not see the path work';
       })();
       if (problem) {
         if (retained.has(id) || !newIds.has(id)) {

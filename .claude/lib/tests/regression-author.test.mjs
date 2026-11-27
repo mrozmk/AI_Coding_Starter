@@ -323,6 +323,38 @@ test('claim: a --from-qa draft is refused without a provenance pass, or when one
   assert.equal(ok.status, 0, ok.out);
 });
 
+test('claim: a rejected --from-qa draft does not hold a later plain draft of the same scenario to a provenance pass', () => {
+  const ctx = setup();
+  const content = read(ctx, SPEC4);
+  fs.rmSync(path.join(ctx.root, SPEC4));
+  const qaRun = '.agents/regression/runs/author-qa';
+  assert.equal(author(ctx, 'draft', 'CART-004', '--run', qaRun, '--qa', 'E2-3.AC2').status, 0);
+  has(author(ctx, 'reject', 'CART-004', '--run', qaRun), /^rejected: CART-004 — /m);
+  assert.ok(JSON.parse(read(ctx, `${qaRun}/drafts.json`)).drafts[0].rejected_at, 'reject closes the registration');
+  has(author(ctx, 'reject', 'CART-004', '--run', qaRun), /^rejected: CART-004 — already rejected$/m);
+  const plainRun = '.agents/regression/runs/author-plain';
+  const d = author(ctx, 'draft', 'CART-004', '--run', plainRun);
+  assert.equal(d.status, 0, d.out);
+  write(ctx, SPEC4, content);
+  const dir = writeVerify(ctx, [{ id: 'CART-004', spec: SPEC4, projects: BOTH }]);
+  const ok = claim(ctx, 'CART-004', SPEC4, dir, writeCritic(ctx, dir, 'CART-004', SPEC4));
+  assert.equal(ok.status, 0, ok.out);
+  has(ok, /^claimed: CART-004 — /m);
+});
+
+test('claim: a live --from-qa draft after a rejected plain draft still needs its provenance pass', () => {
+  const ctx = setup();
+  const content = read(ctx, SPEC4);
+  fs.rmSync(path.join(ctx.root, SPEC4));
+  const plainRun = '.agents/regression/runs/author-plain';
+  assert.equal(author(ctx, 'draft', 'CART-004', '--run', plainRun).status, 0);
+  assert.equal(author(ctx, 'reject', 'CART-004', '--run', plainRun).status, 0);
+  assert.equal(author(ctx, 'draft', 'CART-004', '--run', '.agents/regression/runs/author-qa', '--qa', 'E2-3.AC2').status, 0);
+  write(ctx, SPEC4, content);
+  const dir = writeVerify(ctx, [{ id: 'CART-004', spec: SPEC4, projects: BOTH }]);
+  has(claim(ctx, 'CART-004', SPEC4, dir, writeCritic(ctx, dir, 'CART-004', SPEC4)), /^refused: CART-004 — a --from-qa draft needs a provenance pass \(--provenance\)$/m);
+});
+
 test('claim: two claims in one file keep both', () => {
   const ctx = setup();
   const spec10 = 'e2e/regression/cart/cart-010.spec.ts';

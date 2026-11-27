@@ -117,7 +117,11 @@ regression.md §13. Nothing is committed; the proposal and the walk stay in
    `node .claude/lib/regression/inventory.mjs check-staged --routes <stage>/routes.staged.json` —
    errors go back to the agent once (`PRIOR` = the lines); still failing → report and stop.
 6. **Walk:** `node .claude/lib/regression/run.mjs walk --env <E> --routes <stage>/routes.staged.json`.
-   Exit 3 with `confirmation-required: <token>` → the production confirmation question exactly as in
+   Exit 2 → the walk refused before any traffic and wrote nothing (the route list unreadable or
+   invalid, the walk stub missing, no desktop project, an unknown environment, an invalid catalog or
+   configuration): with `environments:` → the environment was unknown — ask step 3's question again
+   and rerun with its `--env`; `walk stub missing` → do step 2, then rerun; otherwise report the
+   stderr lines and stop. Exit 3 with `confirmation-required: <token>` → the production confirmation question exactly as in
    `/regression-tests` → Run step 3 (`Run` / `Cancel`; `Run` re-runs with `--confirm <token>`);
    `Cancel` → stop, nothing written. Exit 4 (INCOMPLETE) or 5 (BLOCKED/ENV) → report the `reason:`
    lines and stop. Exit 0 → `walk: COMPLETE`, `observations: <file>`, `record: <walk run dir>/walk.json`.
