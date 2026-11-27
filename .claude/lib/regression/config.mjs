@@ -18,6 +18,8 @@ export const DEFAULTS = { path: '.agents/regression/scenarios', id_pattern: '^[A
 export const PRIORITIES = ['P0', 'P1', 'P2'];
 export const ENV_KINDS = ['test', 'production'];
 const AREA_CODE = /^[A-Z][A-Z0-9]{1,9}$/;
+/** A relative path with no `..` segment and no backslash — lexically inside the repository. */
+export const isRepoRelative = (p) => !(path.isAbsolute(p) || p.includes('\\') || p.split('/').includes('..'));
 const RUNNER_STRINGS = ['config', 'spec_dir', 'report'];
 const RUNNER_COMMANDS = ['smoke', 'full'];
 export const TEST_DATA_COMMANDS = ['check', 'provision', 'reset', 'session'];
@@ -217,8 +219,8 @@ export function validateConfig(cfg) {
   if (!isObject(cat)) errors.push('catalog: required object');
   else {
     if ('path' in cat && !isFilled(cat.path)) errors.push('catalog.path: must be a non-empty string');
-    // The lexical half of containment (parseSpec's rule); the symlink half is crosscheck.mjs's.
-    else if ('path' in cat && (path.isAbsolute(cat.path) || cat.path.includes('\\') || cat.path.split('/').includes('..'))) {
+    // The lexical half of containment; the symlink half is crosscheck.mjs's.
+    else if ('path' in cat && !isRepoRelative(cat.path)) {
       errors.push('catalog.path: catalog.path must be a repo-relative path inside the repository');
     }
     if ('areas' in cat) {

@@ -448,6 +448,21 @@ test('crosscheck: --delta reads the base catalog path from the base regression.j
   lacks(r, 'added');
 });
 
+test('crosscheck: --delta reads a ./-prefixed catalog path on the base like the tree', () => {
+  const root = mkRepo({
+    '.claude/regression.json': { version: 1, catalog: { path: `./${CAT}/`, areas: { CART: 'Cart' } } },
+    [`${CAT}/cart.md`]: cat(block('CART-001')),
+  });
+  let r = cli(root, '--delta', 'HEAD');
+  exit(r, 0);
+  lacks(r, 'added');
+  write(root, `${CAT}/cart.md`, cat(block('CART-002')));
+  r = cli(root, '--delta', 'HEAD');
+  exit(r, 1);
+  has(r, 'added CART-002');
+  has(r, 'CART-001: removed — ids are never deleted; mark it DROPPED');
+});
+
 test('crosscheck: a scenario citing two criteria of one ticket covers both', () => {
   const t1 = '[reg P1] Given a guest, when the cart opens, then it is empty.';
   const t2 = '[reg P1] Given a guest, when a line is added, then the badge counts it.';

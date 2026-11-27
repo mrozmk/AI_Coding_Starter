@@ -9,14 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { catalogFiles, parseCatalog, validateCatalog, sourceTokens, extractFingerprintBlock, fingerprint, statusOf } from './catalog.mjs';
-import { CONFIG_PATH, PRIORITIES, catalogSettings } from './config.mjs';
+import { catalogFiles, parseCatalog, validateCatalog, sourceTokens, extractFingerprintBlock, fingerprint, isDropped, posix, BACKLOG, CRITERION_BARE } from './catalog.mjs';
+import { CONFIG_PATH, PRIORITIES, catalogSettings, isRepoRelative } from './config.mjs';
 import { readBacklogFiles, parseBacklog, resolveTask, regressionTag, loadInventory, AC_DEFINITION, criterionText } from '../backlog-check.mjs';
 
-const BACKLOG = '.agents/backlog.md';
 const PLAN_DIRS = ['.agents/plans/active', '.agents/plans/done'];
 const RANK = Object.fromEntries(PRIORITIES.map((p, i) => [p, i]));
-const BACKLOG_ID = /^E\d+-\d+\.AC\d+$/;
 const LOCAL_ID = /^[-*]\s+\*\*(AC-\d+)\*\*\s*[—–\-:]?\s*/;
 const PROOF = /^(\s+)[-*]\s+Proof:\s*([a-z]+)\s*—\s*(.*)$/;
 const SCENARIOS_LINE = /^\*\*Scenarios:\*\*[ \t]*(.*)$/m;
@@ -24,15 +22,14 @@ const SOURCE_LINE = /^\*\*Source spec:\*\*[ \t]*(.*)$/m;
 const PARENT_LINE = /^\*\*Parent:\*\*[ \t]*(.*)$/m;
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-const posix = (p) => p.split(path.sep).join('/');
-const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
+/** A catalog path as `git ls-tree` and the plan headings write it: `./`, `.` and doubled slashes folded, no trailing slash. */
+const catalogDir = (p) => path.posix.normalize(String(p)).replace(/\/+$/, '');
 const tokensOf = (b) => sourceTokens(b.fields.Source?.value ?? '');
 const cites = (b, token) => tokensOf(b).some((t) => t.raw === token);
 const lineOf = (md, re) => { const i = md.split('\n').findIndex((l) => re.test(l)); return i === -1 ? 1 : i + 1; };
 const list = (v) => v.split(',').map((t) => t.trim()).filter((t) => t !== '' && t !== '—');
-const newResult = () => ({ errors: [], warnings: [], lines: [], fatal: false });
-const err = (res, file, line, message) => res.errors.push({ file, line, message });
-const fatal = (res, message) => { res.errors.push({ message }); res.fatal = true; return res; };
+const newResult = () => ({ errors: [], warnings: [], lines: [] });
+const err = (res, file, line, message) => { res.errors.push({ file, line, message }); };
 
 /** First 12 hex of the sha256 of the whitespace-normalised text — the `(Expected <d>)` digest. */
 export const expectedDigest = (text) => crypto.createHash('sha256').update(norm(text)).digest('hex').slice(0, 12);
@@ -61,28 +58,31 @@ function contained(base, rel) {
   try { return within(fs.realpathSync(base), fs.realpathSync(cur)); } catch { return false; }
 }
 
-function guardPaths(res, root, settings, candidate) {
-  if (!contained(root, settings.path)) { fatal(res, `catalog path resolves outside the repository: ${settings.path}`); return false; }
+/** Throws (catalog.mjs prints it, exit 2) when the catalog or the candidate's `regression/` resolves outside. */
+function guardPaths(root, settings, candidate) {
+  if (!contained(root, settings.path)) throw new Error(`catalog path resolves outside the repository: ${settings.path}`);
   if (candidate && !contained(path.resolve(root, candidate), 'regression')) {
-    fatal(res, `catalog path resolves outside the repository: ${posix(path.join(candidate, 'regression'))}`);
-    return false;
+    throw new Error(`catalog path resolves outside the repository: ${posix(path.join(candidate, 'regression'))}`);
   }
-  return true;
 }
 
-/** Working-tree blocks; with a candidate, each `<dir>/regression/<name>` replaces the repo file `<catalog.path>/<name>`. */
+/**
+ * Working-tree blocks; with a candidate, each `<dir>/regression/<name>` replaces the repo file
+ * `<catalog.path>/<name>` (`replaced` its repo paths, `original` the repo blocks it replaces).
+ */
 function treeSide(root, settings, candidate) {
-  const files = catalogFiles(root, settings);
-  if (!candidate) return { blocks: parseCatalog(root, files), replaced: [] };
+  const repo = parseCatalog(root, catalogFiles(root, settings));
+  if (!candidate) return { blocks: repo, replaced: [], original: [] };
   const candRoot = path.resolve(root, candidate);
-  const dir = path.join(candRoot, 'regression');
-  const names = fs.existsSync(dir) && fs.statSync(dir).isDirectory()
-    ? fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.endsWith('.md') && d.name !== 'README.md').map((d) => d.name).sort()
-    : [];
-  const repoPath = (name) => posix(path.join(settings.path, name));
-  const kept = files.filter((f) => !names.includes(path.basename(f)));
-  const overlay = parseCatalog(candRoot, names.map((n) => `regression/${n}`)).map((b) => ({ ...b, file: repoPath(path.basename(b.file)) }));
-  return { blocks: [...parseCatalog(root, kept), ...overlay], replaced: names.map(repoPath) };
+  const candFiles = catalogFiles(candRoot, { path: 'regression' });
+  const repoPath = (file) => posix(path.join(settings.path, path.posix.basename(file)));
+  const replaced = candFiles.map(repoPath);
+  const overlay = parseCatalog(candRoot, candFiles).map((b) => ({ ...b, file: repoPath(b.file) }));
+  return {
+    blocks: [...repo.filter((b) => !replaced.includes(b.file)), ...overlay],
+    replaced,
+    original: repo.filter((b) => replaced.includes(b.file)),
+  };
 }
 
 /** Blocks at `base`, read through the base's own `catalog.path`; no config there = first adoption = none. */
@@ -91,8 +91,9 @@ function baseSide(root, base) {
   if (!cfg.ok) return [];
   let parsed;
   try { parsed = JSON.parse(cfg.out); } catch { return []; }
-  const rel = String(catalogSettings(parsed).path).replace(/\/+$/, '');
-  if (path.isAbsolute(rel) || rel.includes('\\') || rel.split('/').includes('..')) return [];
+  const raw = String(catalogSettings(parsed).path);
+  if (!isRepoRelative(raw)) return [];
+  const rel = catalogDir(raw);
   const ls = git(root, ['ls-tree', '-z', base, '--', `${rel}/`]);
   const files = ls.out.split('\0').map((l) => /^\d+ blob [0-9a-f]+\t(.+)$/.exec(l)?.[1])
     .filter((f) => f && f.endsWith('.md') && path.posix.basename(f) !== 'README.md' && path.posix.dirname(f) === rel);
@@ -162,7 +163,7 @@ export function criteriaOf(md) {
     }
     if (!cur) return;
     const p = PROOF.exec(line);
-    if (p) { proofIndent = p[1].length; cur.proofs.push({ kind: p[2], value: p[3].trim(), line: idx + 1 }); return; }
+    if (p) { proofIndent = p[1].length; cur.proofs.push({ kind: p[2], id: /^(\S+)/.exec(p[3].trim())?.[1] ?? '', line: idx + 1 }); return; }
     if (/^\s+\S/.test(line)) {
       if (proofIndent !== null && line.search(/\S/) > proofIndent) return;
       if (/^\s*[-*]\s+\*\*/.test(line)) { cur = null; return; }
@@ -179,7 +180,7 @@ export function criteriaOf(md) {
     const head = local ? `- ${c.lines[0].slice(local[0].length)}` : c.lines[0];
     const text = criterionText([head, ...c.lines.slice(1)]);
     const tag = regressionTag(text);
-    return { id, backlogId: id && BACKLOG_ID.test(id) ? id : null, text, line: c.line, priority: tag.priority, problem: tag.problem,
+    return { id, backlogId: id && CRITERION_BARE.test(id) ? id : null, text, line: c.line, priority: tag.priority, problem: tag.problem,
       withdrawn: tag.withdrawn, proofs: c.proofs };
   }).filter((c) => !c.withdrawn);
 }
@@ -192,24 +193,29 @@ function tokenOf(c, key, block) {
   return fp ? `${key} [${fp}]` : null;
 }
 
-/** Criteria of one file with their tokens; tag-form, key and ambiguity problems go to `res` when given. */
-function analyse(res, file, md, key, block) {
+/** Criteria of one file with their tokens; a tagged criterion hashing like an earlier one is `ambiguous` (`clash` = that line). */
+function tokenise(md, key, block) {
   const crits = criteriaOf(md);
+  for (const c of crits) c.token = tokenOf(c, key, block);
+  const seen = new Map();
+  for (const c of crits.filter((x) => x.priority && x.token)) {
+    if (!seen.has(c.token)) { seen.set(c.token, c.line); continue; }
+    c.ambiguous = true;
+    c.clash = seen.get(c.token);
+  }
+  return crits;
+}
+
+/** The tag-form, key and ambiguity errors of `tokenise`d criteria; returns them. */
+function reportCriteria(res, file, crits) {
   for (const c of crits) {
-    c.token = tokenOf(c, key, block);
-    if (!res) continue;
     if (c.problem) err(res, file, c.line, c.problem);
     if (!c.token && c.priority) {
       err(res, file, c.line, c.backlogId ? 'fingerprint unavailable — the §7c block failed under bash'
         : 'tagged criterion without a backlog id — pass --key <KEY> (or `key <KEY>` on the **Scenarios:** line)');
     }
   }
-  const seen = new Map();
-  for (const c of crits.filter((x) => x.priority && x.token)) {
-    if (!seen.has(c.token)) { seen.set(c.token, c.line); continue; }
-    if (res) err(res, file, c.line, `ambiguous ${c.token} — criteria at ${seen.get(c.token)}, ${c.line} hash the same; reword one`);
-    c.ambiguous = true;
-  }
+  for (const c of crits) if (c.ambiguous) err(res, file, c.line, `ambiguous ${c.token} — criteria at ${c.clash}, ${c.line} hash the same; reword one`);
   return crits;
 }
 
@@ -231,7 +237,7 @@ function parseScenarios(md) {
   return out;
 }
 
-/** Approved / declined `Expected` changes recorded in a spec's `## Regression scenarios` section. */
+/** id → approved `Expected` digest, from a spec's `## Regression scenarios` section; a later decline removes the id. */
 function approvals(md) {
   const map = new Map();
   let inSection = false;
@@ -239,7 +245,7 @@ function approvals(md) {
     if (/^##\s/.test(line)) { inSection = /^##\s+Regression scenarios\b/i.test(line); continue; }
     if (!inSection) continue;
     for (const m of line.matchAll(/([A-Z][A-Z0-9]*-\d+)(?:\s*\([^)]*\))?\s*—\s*Expected ([0-9a-f]{12}) approved by\b/g)) map.set(m[1], m[2]);
-    for (const m of line.matchAll(/([A-Z][A-Z0-9]*-\d+)\s*—\s*Expected change declined\b/g)) map.set(m[1], 'declined');
+    for (const m of line.matchAll(/([A-Z][A-Z0-9]*-\d+)\s*—\s*Expected change declined\b/g)) map.delete(m[1]);
   }
   return map;
 }
@@ -282,21 +288,21 @@ function resolvePlan(root, rel) {
   return exists(path.resolve(root, swapped)) ? swapped : null;
 }
 
-/** Plans with the same source spec that this branch added or changed since `base`, plus the plan itself. */
-function familyOf(root, base, planRel, spec) {
+/** The `peers` (plans sharing the source spec, the plan included) that this branch added or changed since `base`. */
+function familyOf(root, base, planRel, peers) {
   const touched = new Set([planRel]);
   for (const f of git(root, ['diff', '--name-only', base, '--', '.agents/plans/']).out.split('\n')) if (f) touched.add(f);
   for (const l of git(root, ['status', '--porcelain', '--untracked-files=all', '--', '.agents/plans/']).out.split('\n')) {
     const m = /^\?\? (.+)$/.exec(l);
     if (m) touched.add(m[1]);
   }
-  return allPlans(root).filter((p) => touched.has(p.rel) && (p.rel === planRel || sourceSpecOf(root, p.rel, p.md).spec === spec));
+  return peers.filter((p) => touched.has(p.rel));
 }
 
 /** Ids a plan task will add: `### … UPDATE|CREATE <catalog file>` with an EXPECT `contains — <file> :: ### <ID> — ` → its IMPLEMENT text. */
 function plannedBlocks(md, settings) {
   const out = new Map();
-  const prefix = `${String(settings.path).replace(/\/+$/, '')}/`;
+  const prefix = `${catalogDir(settings.path)}/`;
   const sections = (md ?? '').split(/\n(?=###\s)/);
   for (const sec of sections) {
     const head = /^###\s.*\b(?:UPDATE|CREATE)\s+`?([^\s`]+)`?/.exec(sec);
@@ -335,8 +341,8 @@ function expectedCheck(res, diff, approved, declared) {
     if (!labels.includes('Expected')) continue;
     const b = diff.now.get(id);
     const at = b.fields.Expected?.line ?? b.line;
-    const d = declared === undefined ? approved?.get(id) : declared?.get(id);
-    const ok = d && approved && approved.get(id) === d && d !== 'declined';
+    const d = declared?.get(id);
+    const ok = d && approved?.get(id) === d;
     if (!ok) err(res, b.file, at, `Expected of ${id} changed without the recorded human yes`);
     else if (expectedDigest(b.fields.Expected?.value) !== d) err(res, b.file, at, `Expected of ${id} differs from the approved text`);
   }
@@ -344,34 +350,38 @@ function expectedCheck(res, diff, approved, declared) {
 
 function specMode(res, root, opts, block, live, diff) {
   const md = readRel(root, opts.spec);
-  if (md === null) return err(res, opts.spec, null, `spec ${opts.spec} not found`);
-  const crits = analyse(res, opts.spec, md, opts.key, block);
-  if (crits.some((c) => c.ambiguous)) return undefined;
+  if (md === null) { err(res, opts.spec, null, `spec ${opts.spec} not found`); return; }
+  const crits = reportCriteria(res, opts.spec, tokenise(md, opts.key, block));
+  if (crits.some((c) => c.ambiguous)) return;
   coverage(res, opts.spec, crits, live, (c) => c.priority, () => false);
-  if (diff) expectedCheck(res, diff, approvals(md), undefined);
-  return undefined;
+  // A spec declares nothing: its recorded approvals are both the declaration and the yes.
+  const approved = approvals(md);
+  if (diff) expectedCheck(res, diff, approved, approved);
 }
 
 function planMode(res, root, settings, opts, block, live, diff, base) {
   const planRel = resolvePlan(root, opts.plan);
   const md = planRel ? readRel(root, planRel) : null;
-  if (md === null) return err(res, opts.plan, null, `plan ${opts.plan} not found`);
+  if (md === null) { err(res, opts.plan, null, `plan ${opts.plan} not found`); return; }
   const meta = sourceSpecOf(root, planRel, md);
-  const family = !meta.quick && base ? familyOf(root, base, planRel, meta.spec) : [{ rel: planRel, md }];
+  const peers = meta.quick ? [] : allPlans(root).filter((p) => p.rel === planRel || sourceSpecOf(root, p.rel, p.md).spec === meta.spec);
+  const family = !meta.quick && base ? familyOf(root, base, planRel, peers) : [{ rel: planRel, md }];
   const key = opts.key ?? family.map((p) => parseScenarios(p.md)?.key).find(Boolean) ?? null;
-  const crits = analyse(res, planRel, md, key, block);
-  if (crits.some((c) => c.ambiguous)) return undefined;
+  // One tokenisation per plan file: every token costs a bash run of the §7c block.
+  const memo = new Map([[planRel, tokenise(md, key, block)]]);
+  const tokensOfPlan = (p) => { if (!memo.has(p.rel)) memo.set(p.rel, tokenise(p.md, key, block)); return memo.get(p.rel); };
+  const crits = reportCriteria(res, planRel, memo.get(planRel));
+  if (crits.some((c) => c.ambiguous)) return;
   let specTags = null;
   let specMd = null;
   if (!meta.quick) {
     specMd = readRel(root, meta.spec);
     if (specMd === null) err(res, planRel, lineOf(md, /^\*\*(Source spec|Parent):\*\*/), `source spec ${meta.spec} not found`);
     else {
-      const scrits = analyse(res, meta.spec, specMd, key, block);
+      const scrits = reportCriteria(res, meta.spec, tokenise(specMd, key, block));
       specTags = new Map(scrits.filter((c) => c.token).map((c) => [c.token, c.priority]));
       // Completeness spans every peer on disk: a split's peers each carry only their own criteria.
-      const peerTagged = new Set(allPlans(root).filter((p) => p.rel === planRel || sourceSpecOf(root, p.rel, p.md).spec === meta.spec)
-        .flatMap((p) => analyse(null, p.rel, p.md, key, block).filter((c) => c.priority && c.token).map((c) => c.token)));
+      const peerTagged = new Set(peers.flatMap((p) => tokensOfPlan(p).filter((c) => c.priority && c.token).map((c) => c.token)));
       for (const c of scrits) if (c.priority && c.token && !peerTagged.has(c.token)) err(res, planRel, 1, `tagged criterion ${c.token} missing from the plan`);
       for (const c of crits) {
         if (!c.token || !c.priority || !specTags.has(c.token) || specTags.get(c.token) === c.priority) continue;
@@ -381,32 +391,32 @@ function planMode(res, root, settings, opts, block, live, diff, base) {
   }
   const tagOf = (c) => (specTags?.has(c.token) ? specTags.get(c.token) : c.priority);
   const planned = opts.planning ? plannedBlocks(md, settings) : new Map();
-  const scenarioIds = (c) => c.proofs.filter((p) => p.kind === 'scenario').map((p) => /^(\S+)/.exec(p.value)?.[1]).filter(Boolean);
-  const plannedFor = (c) => c.token && scenarioIds(c).some((id) => planned.get(id)?.includes(c.token));
-  coverage(res, planRel, crits, live, tagOf, plannedFor);
+  const scenarioProofs = (c) => c.proofs.filter((p) => p.kind === 'scenario');
+  // A catalog task of this plan (`--planning`) adds block `id` and its IMPLEMENT cites the criterion's token.
+  const plannedBy = (c, id) => Boolean(c.token && planned.get(id)?.includes(c.token));
+  coverage(res, planRel, crits, live, tagOf, (c) => scenarioProofs(c).some((p) => plannedBy(c, p.id)));
   const proofs = new Set();
   for (const c of crits) {
     const label = c.id ?? c.token ?? `line ${c.line}`;
-    const sp = c.proofs.filter((p) => p.kind === 'scenario');
+    const sp = scenarioProofs(c);
     if (tagOf(c) && c.token && !sp.length) err(res, planRel, c.line, `no Proof: scenario under ${c.token}`);
-    for (const p of sp) {
-      const id = /^(\S+)/.exec(p.value)?.[1] ?? '';
+    for (const { id, line } of sp) {
       proofs.add(id);
       const b = live.find((x) => x.id === id);
       if (!b) {
-        if (!(c.token && planned.get(id)?.includes(c.token))) err(res, planRel, p.line, `Proof: scenario — ${id} under ${label}: no such scenario`);
-      } else if (!c.token || !cites(b, c.token)) err(res, planRel, p.line, `Proof: scenario — ${id} under ${label}: does not cite ${c.token ?? '(no token)'}`);
+        if (!plannedBy(c, id)) err(res, planRel, line, `Proof: scenario — ${id} under ${label}: no such scenario`);
+      } else if (!c.token || !cites(b, c.token)) err(res, planRel, line, `Proof: scenario — ${id} under ${label}: does not cite ${c.token ?? '(no token)'}`);
     }
   }
   for (const id of proofs) res.lines.push(`proof ${id} deferred`);
-  if (!diff) return undefined;
+  if (!diff) return;
   const decl = { added: new Set(), changed: new Map() };
   const lines = family.map((p) => parseScenarios(p.md)).filter(Boolean);
   for (const s of lines) { s.added.forEach((id) => decl.added.add(id)); for (const [id, d] of s.changed) if (!decl.changed.get(id)) decl.changed.set(id, d); }
   expectedCheck(res, diff, meta.quick ? null : approvals(specMd), decl.changed);
-  if (opts.planning) return undefined;
+  if (opts.planning) return;
   const scenLine = parseScenarios(md)?.line ?? 1;
-  const tagged = family.some((p) => analyse(null, p.rel, p.md, key, block).some((c) => tagOf(c)));
+  const tagged = family.some((p) => tokensOfPlan(p).some((c) => tagOf(c)));
   if (tagged && !lines.length) err(res, planRel, 1, 'tagged criteria and no **Scenarios:** line in the plan family');
   for (const id of diff.added) {
     const b = diff.now.get(id);
@@ -421,13 +431,12 @@ function planMode(res, root, settings, opts, block, live, diff, base) {
     if (decl.added.has(id) && diff.was.has(id)) err(res, planRel, scenLine, `declared added but exists on the base ${id}`);
     else if (!diff.added.includes(id) && !diff.changed.has(id)) err(res, planRel, scenLine, `declared but unchanged ${id}`);
   }
-  return undefined;
 }
 
 /** `--delta <rev|none> [--spec <file> [--key <KEY>] | --plan <file> [--planning]]`. */
-export function deltaCheck(root, settings, config, opts = {}) {
+export function deltaCheck(root, settings, opts = {}) {
   const res = newResult();
-  if (!guardPaths(res, root, settings)) return res;
+  guardPaths(root, settings);
   const tree = treeSide(root, settings).blocks;
   const invalid = validateCatalog(tree, settings);
   if (invalid.length) { res.errors.push(...invalid); return res; }
@@ -435,7 +444,7 @@ export function deltaCheck(root, settings, config, opts = {}) {
   if (opts.rev === 'none') res.lines.push('delta: not evaluated — no base');
   else {
     const mb = git(root, ['merge-base', opts.rev, 'HEAD']);
-    if (!mb.ok) return fatal(res, `unknown revision ${opts.rev} — no merge-base with HEAD`);
+    if (!mb.ok) throw new Error(`unknown revision ${opts.rev} — no merge-base with HEAD`);
     base = mb.out.trim();
   }
   const diff = base ? diffSides(res, baseSide(root, base), tree) : null;
@@ -486,12 +495,11 @@ function stateLookup(root, backlog, block) {
 }
 
 /** /update-backlog never deletes an id, never edits `Expected`, and drops a citation only of a retired criterion or flow. */
-function candidateGuards(res, root, settings, side, stateOf) {
+function candidateGuards(res, side, stateOf) {
   const now = byId(side.blocks);
   const key = (t) => `${t.kind}:${t.id ?? t.raw}`;
   const active = (t) => stateOf?.(t)?.active === true;
-  for (const o of parseCatalog(root, catalogFiles(root, settings))) {
-    if (!side.replaced.includes(o.file)) continue;
+  for (const o of side.original) {
     const c = now.get(o.id);
     if (!c) { err(res, o.file, o.line, `${o.id}: candidate removes a scenario — ids are never deleted`); continue; }
     if (norm(o.fields.Expected?.value) !== norm(c.fields.Expected?.value)) {
@@ -507,7 +515,7 @@ function candidateGuards(res, root, settings, side, stateOf) {
 /** `--backlog [--candidate <dir>]`. */
 export function backlogCheck(root, settings, { candidate } = {}) {
   const res = newResult();
-  if (!guardPaths(res, root, settings, candidate)) return res;
+  guardPaths(root, settings, candidate);
   const side = treeSide(root, settings, candidate);
   const invalid = validateCatalog(side.blocks, settings);
   if (invalid.length) { res.errors.push(...invalid); return res; }
@@ -517,7 +525,7 @@ export function backlogCheck(root, settings, { candidate } = {}) {
   const backlog = !parsed || parsed.legacy || parsed.preScope || parsed.preDetail ? null : parsed;
   const fp = extractFingerprintBlock(root);
   const stateOf = backlog ? stateLookup(root, backlog, fp.error ? null : fp.block) : null;
-  if (candidate) candidateGuards(res, root, settings, side, stateOf);
+  if (candidate) candidateGuards(res, side, stateOf);
   if (!backlog) { res.lines.push(`backlog cross-check: n/a — no current-format ${BACKLOG}`); return res; }
   let skippedFlows = false;
   for (const b of side.blocks) {
