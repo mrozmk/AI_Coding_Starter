@@ -57,7 +57,8 @@ function fakePage(site, manifest) {
       const finalUrl = new URL(s.final ?? `${u.pathname}${u.search}${u.hash}`, url).href;
       if (s.sameDocument) { cur = { url: finalUrl, s }; return null; }
       if (production) ledger.record({ kind: 'navigation', url, final: reduceUrl(finalUrl), status: s.status, hops: s.final ? 2 : 1, test: TEST_ID });
-      cur = { url: production ? url : finalUrl, s };
+      // `clientMove`: the page moves itself after load (history.pushState) — no request, no guard event.
+      cur = { url: s.clientMove ? new URL(s.clientMove, url).href : production ? url : finalUrl, s };
       return { status: () => s.status };
     },
     url: () => cur.url,
@@ -138,6 +139,21 @@ test('extractFacts builds the entry list of a form with hidden, disabled, duplic
   const ok = { form: 'filter', action: '/shop/list', method: 'GET', inputs: { csrf: 'x', sort: 'name' } };
   assert.equal(matchSubmit(ok, g, BASE), true);
   assert.equal(submitUrl(BASE, ok), `${BASE}/shop/list?csrf=x&sort=name`);
+});
+
+test('extractFacts leaves out a control disabled by its fieldset and a disabled selected option', () => {
+  const inherited = { matches: (s) => s === ':disabled' }; // what the DOM answers inside a disabled fieldset or optgroup
+  const form = {
+    name: 'search', action: '/search', method: 'GET',
+    elements: [
+      el('q', 'search', { value: 'x', ...inherited }), el('csrf', 'hidden', { value: 'tok' }),
+      el('size', 'select-one', { options: [{ value: 'm', selected: true, disabled: true }] }),
+      el('sort', 'select-one', { options: [{ value: 'price', selected: true, ...inherited }] }),
+    ],
+  };
+  const [f] = extractFacts(fakeDocument(`${BASE}/`, { forms: [form] })).forms;
+  assert.deepEqual(f.entries, [['csrf', 'tok']]);
+  assert.equal(matchSubmit({ form: 'search', action: '/search', method: 'GET', inputs: { q: 'shoes', csrf: 'tok' } }, f, BASE), false, 'q is no successful control');
 });
 
 test('walkGroup submits only a form matching its submit entry and skips a differing one', async () => {
@@ -230,6 +246,13 @@ test("walkGroup records a redirect to another route from the guard's final hop o
   const silent = fakePage({ '/cart': { status: 200 } }, { ...manifest, kind: 'test' });
   const r = await walkGroup({ page: silent, manifest, group, testInfo: { testId: TEST_ID } });
   assert.equal(r.routes[0].outcome, 'unverified', 'production without a guard final hop proves nothing');
+});
+
+test('walkGroup records a client-side move after load on production as a redirect', async () => {
+  const site = { '/account': { status: 200, clientMove: '/login' }, '/cart': { status: 200 } };
+  const w = await walk(site, { kind: 'production', routes: [{ route: '/account', source: 's', sample: '/account' }, { route: '/cart', source: 's', sample: '/cart' }] });
+  assert.deepEqual([w.byRoute('/account').outcome, w.byRoute('/account').reason, w.byRoute('/account').final], ['redirected', 'redirected to /login', '/login'], w.text);
+  assert.equal(w.byRoute('/cart').outcome, 'ok');
 });
 
 test('walkGroup tells two hash routes with the same pathname apart', async () => {

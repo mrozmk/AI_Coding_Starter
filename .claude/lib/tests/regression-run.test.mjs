@@ -1018,7 +1018,7 @@ test('verify: an account-required candidate with case attestations and no sessio
   const old = withAuthoringFiles(copyRoot());
   useRunner(old, 'verify-green-009 session-no-test 0', 'full');
   const o = await cli(['verify', PAIR9, '--root', old]);
-  assert.match(o.stdout, /^not verified: CART-009 — fixture predates per-case sessions — re-copy fixtures\.ts \(regression\.md §11\) 1$/m);
+  assert.match(o.stdout, /^not verified: CART-009 — fixture predates per-case sessions — re-copy fixtures\.ts \(regression\.md §11\)$/m);
 });
 
 test('verify: two projects sharing one account each need their own session evidence', async () => {

@@ -293,6 +293,17 @@ test('apply: refuses a retained READY id on a route the new walk saw fail, and a
   refused(apply(loose), /^refused: unattached block PDP-009$/m);
 });
 
+test('apply: an existing id the proposal maps to a failed submit follows the submit, not the route', () => {
+  const ctx = setup();
+  const failSubmit = obsOf(ctx).map((o) => (o.route === '/search' ? { ...o, submits: [{ ...o.submits[0], outcome: 'failed', status: 500 }] } : o));
+  const json = proposalOf(ctx);
+  json.routes['/search'].scenarios.push('CART-001');
+  json.sources['CART-001'] = { code: null, covered_by: null, submit: 'search' };
+  const md = mdOf(ctx).replace('### SRCH-001 — Search for a product\n- **Priority:** P0 · **Viewport:** desktop · **Status:** READY', '### SRCH-001 — Search for a product\n- **Priority:** P0 · **Viewport:** desktop · **Status:** BLOCKED (live: search answers 500)');
+  restage(ctx, { json, obs: failSubmit, md });
+  refused(apply(ctx), /^refused: route \/search: existing CART-001 conflicts with the walk \(failed\) — must be BLOCKED \(live: …\) citing live$/m);
+});
+
 test('apply: a block for a failed submit must be live BLOCKED', () => {
   const ctx = setup();
   const failSubmit = obsOf(ctx).map((o) => (o.route === '/search' ? { ...o, submits: [{ ...o.submits[0], outcome: 'failed', status: 500 }] } : o));

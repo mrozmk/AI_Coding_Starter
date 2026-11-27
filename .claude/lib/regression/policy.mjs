@@ -297,6 +297,23 @@ export function retriesProblem(root, cfg) {
 }
 
 /**
+ * Why scenario block `b` may not get a spec on this target, or null: not READY, a Spec already, the
+ * environment policy (`policy` null skips it), a viewport with no device project. Shared by
+ * `author.mjs select` and the verify plan.
+ */
+export function candidateProblem(cfg, b, policy, envName) {
+  const [, status] = statusOf(b);
+  if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
+  if (specOf(b) !== null) return 'already has a spec';
+  if (policy) {
+    const reason = exclusionReason({ id: b.id, needs: needsKeys(b.fields.Needs?.value), effect: b.fields.Effect?.value ?? 'read' }, policy, envName);
+    if (reason) return reason;
+  }
+  const noDevice = viewportProjects(cfg, b.fields.Viewport?.value).find((d) => d.project === null);
+  return noDevice ? `no device ${noDevice.device}` : null;
+}
+
+/**
  * The verify plan of candidate specs (`pairs = [{id, spec}]`): three passes of `runner.commands.full`
  * over the cases of READY, spec-less, policy-eligible scenarios whose candidate passes the lint.
  * Refusals in `refused` (the run stops before any confirmation, lock or runner); `scenarios`
@@ -320,16 +337,11 @@ export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG
     let lint = null;
     const why = (() => {
       if (!b) return 'not in the catalog';
-      const [, status] = statusOf(b);
-      if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
-      if (specOf(b) !== null) return 'already has a spec';
+      const candidate = candidateProblem(cfg, b, t.policy, envName);
+      if (candidate) return candidate;
       const dataAccounts = [...String(b.fields.Data?.value ?? '').matchAll(/\baccount:([a-z0-9][a-z0-9_-]*)/g)].map((m) => m[1]);
       const missing = dataAccounts.find((k) => !needs.includes(`account:${k}`));
       if (missing) return `account ${missing} in Data but not in Needs`;
-      const reason = exclusionReason({ id, needs, effect: b.fields.Effect?.value ?? 'read' }, t.policy, envName);
-      if (reason) return reason;
-      const noDevice = devices.find((d) => d.project === null);
-      if (noDevice) return `no device ${noDevice.device}`;
       if (!fs.existsSync(path.resolve(root, spec))) return `spec file absent — ${spec}`;
       if (retries) return retries;
       lint = lintSpec(root, cfg, spec, id);

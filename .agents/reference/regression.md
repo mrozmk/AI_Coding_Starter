@@ -386,7 +386,9 @@ sessions`): re-copy both again.
   production scenarios.
 - The walk reads a collapsed redirect's final hop from the ledger: every guarded navigation records
   a `navigation` event (`url`, `final` reduced to origin + path, `status`, `hops`, `test`), and
-  `redirect-collapsed` carries the same `final`.
+  `redirect-collapsed` carries the same `final`. A page that leaves that URL by itself after load
+  (an SPA guard's `history.pushState`) makes no request and no event: the walk then takes the
+  page's own URL, so such a route is `redirected`, never `ok`.
 
 ## 12. The run
 
@@ -401,7 +403,7 @@ sessions`): re-copy both again.
    confirmation text (environment and host, config and catalog digests, mode, case and scenario
    counts, the `not run — policy` count, budget and worst case, workers, pacing, consent) and a
    single-use 128-bit token bound to the plan digest, valid 10 minutes, stored per machine at
-   `.agents/regression/runs/.confirm/<env>.json`, and exits 3; phase 2 is `--confirm <token>`,
+   `.agents/regression/runs/.confirm/<env>.<lane>.json` (`<lane>`: `run`, `walk` or `verify`), and exits 3; phase 2 is `--confirm <token>`,
    accepted once and only for the same plan. A changed config or catalog invalidates it. **No flag
    and no config key skips it** (unknown flags are usage errors).
 4. **Locks:** `env-<sha256(base URL)[:16]>` (one run per environment on this machine), then

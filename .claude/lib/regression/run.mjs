@@ -114,6 +114,8 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
     const imports = importsOf(configText);
     for (const need of configNeeds) {
       if (!imports.some((i) => need.module.test(i.from) && i.bindings.includes(need.binding))) findings.push({ file: configRel, reason: `does not import ${need.binding} from ${moduleLabel(need.module)}` });
+      // `uses`: what the config must do with the binding it imports (`missing` when it does not).
+      else if (need.uses && !dropCommentLines(configText).includes(need.uses)) findings.push({ file: configRel, reason: need.missing });
     }
   }
   const fixtures = new Set();
@@ -148,14 +150,9 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
 export function checkIntegration(root, cfg, plan) {
   const findings = [];
   if (plan.mode !== 'visual') {
-    const functional = scanIntegration(root, { configFile: cfg.runner.config, configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }], specs: plan.cases.map((c) => c.spec) });
-    findings.push(...functional);
     // Playwright loads every discovered file before grep: without testMatch an unclaimed draft loads too.
-    if (!functional.some((f) => f.file === cfg.runner.config && /runner config absent|runnerOptions/.test(f.reason))) {
-      let text = '';
-      try { text = fs.readFileSync(path.resolve(root, cfg.runner.config), 'utf8'); } catch { /* reported above */ }
-      if (!dropCommentLines(text).includes('opts.testMatch')) findings.push({ file: cfg.runner.config, reason: 'does not set testMatch from runnerOptions' });
-    }
+    const needs = [{ module: GUARD_MODULE, binding: 'runnerOptions', uses: 'opts.testMatch', missing: 'does not set testMatch from runnerOptions' }];
+    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: needs, specs: plan.cases.map((c) => c.spec) }));
   }
   if (plan.visual) findings.push(...visualIntegration(root, cfg));
   return findings;
@@ -482,13 +479,13 @@ function runnerEnv(extra) {
   return { ...env, ...extra };
 }
 
-/** One runner launch: manifest written, the old report deleted, the runner run, the report read. */
-async function runPass({ root, plan, manifest, manifestFile, command, reportFile, locks }) {
+/** One runner launch: manifest written, the old report deleted, the runner run, the report read. `env`: the lane's own variables. */
+async function runPass({ root, plan, manifest, manifestFile, command, reportFile, locks, env = {} }) {
   fs.mkdirSync(path.dirname(manifestFile), { recursive: true });
   fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
   fs.rmSync(reportFile, { force: true });
   const runner = await runRunner(root, command, runnerEnv({
-    REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
+    ...env, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
   }), locks);
   let report = null;
   try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
@@ -769,10 +766,6 @@ function toleranceRefusal(root, cfg, env) {
   return 2;
 }
 
-/** The manifest of a run's functional pass; the visual passes spread it with their own selection. */
-function baseManifestOf(root, plan, runId, nonce, dir) {
-  return manifestOf(root, plan, dir, runId, nonce, plan.cases);
-}
 function printOutcome(root, v, before, after, recordFile) {
   for (const w of v.warnings) console.log(`warning: ${w}`);
   for (const r of v.reasons) console.log(`reason: ${r}`);
@@ -795,7 +788,7 @@ async function cmdRun(args) {
     const command = cfg.runner.commands[plan.mode];
     const manifestFile = path.join(dir, 'manifest.json');
     const reportFile = path.resolve(root, cfg.runner.report);
-    const manifest = baseManifestOf(root, plan, runId, nonce, dir);
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases);
     fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     printPlanSummary(plan);
     const watch = visualOn ? baselinesWatch(root, visualSettings(cfg)) : null;
@@ -840,18 +833,7 @@ async function cmdRun(args) {
   }
 }
 
-/** One runner call of a lane: a fresh report, the manifest, the guard environment. `{runner, report}`. */
-async function runOnce(root, cfg, plan, command, manifestFile, locks, extraEnv = {}) {
-  const reportFile = path.resolve(root, cfg.runner.report);
-  fs.rmSync(reportFile, { force: true });
-  const runner = await runRunner(root, command, runnerEnv({
-    ...extraEnv, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
-  }), locks);
-  let report = null;
-  try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
-  return { runner, report, reportFile };
-}
-
+/** The manifest of one runner pass; the visual passes spread a functional one with their own selection. */
 const manifestOf = (root, plan, dir, runId, nonce, selection, extra = {}) => ({
   run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
   workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
@@ -887,9 +869,12 @@ async function cmdWalk(args) {
     for (const l of locks) l.update({ run_id: runId });
     const nonce = randomBytes(8).toString('hex');
     const manifestFile = path.join(dir, 'manifest.json');
-    fs.writeFileSync(manifestFile, `${JSON.stringify(manifestOf(root, plan, dir, runId, nonce, plan.cases, { walk: plan.walk }), null, 2)}\n`);
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases, { walk: plan.walk });
     printWalkSummary(plan);
-    const { runner, report } = plan.cases.length ? await runOnce(root, cfg, plan, cfg.runner.commands.full, manifestFile, locks) : { runner: { code: null, signal: null }, report: null };
+    let runner = { code: null, signal: null };
+    let report = null;
+    if (plan.cases.length) ({ runner, report } = await runPass({ root, plan, manifest, manifestFile, command: cfg.runner.commands.full, reportFile: path.resolve(root, cfg.runner.report), locks }));
+    else fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     const cls = classifyReport(report, plan, { idPattern: '^WALK[0-9]+$', catalogIds: new Set(plan.cases.map((c) => c.id)), root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
     const guard = readGuard(dir, nonce, casesRan(cls));
 
@@ -961,18 +946,18 @@ function keepAttachment(root, dir, n, rel) {
   return posix(path.relative(root, dest));
 }
 
-/** Why one case does not qualify in a pass, or null. */
-function caseProblem(c, scenario, guard, events) {
-  if (c.result !== 'passed') return `${c.result} in pass`;
-  if (c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0) return 'a retry in pass';
-  if (guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`)) return 'no guard attestation in pass';
+/** Why one case does not qualify in pass `n` — the complete reason — or null. */
+function caseProblem(c, scenario, guard, events, n) {
+  if (c.result !== 'passed') return `${c.result} in pass ${n}`;
+  if (c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0) return `a retry in pass ${n}`;
+  if (guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`)) return `no guard attestation in pass ${n}`;
   const account = accountOf(scenario.needs);
   if (!account) return null;
   const tests = events.filter((e) => e.kind === 'installed' && e.id === c.id && e.project === c.project).map((e) => e.test);
   const starts = events.filter((e) => e.kind === 'session-start' && e.account === account);
   if (starts.length && starts.every((e) => e.test === undefined)) return 'fixture predates per-case sessions — re-copy fixtures.ts (regression.md §11)';
   const signed = tests.some((t) => starts.some((e) => e.test === t) && events.some((e) => e.kind === 'session' && e.account === account && e.test === t));
-  if (!signed || guard.session.includes(`session not guard-attested for ${account}`)) return `no session evidence for account:${account} in pass`;
+  if (!signed || guard.session.includes(`session not guard-attested for ${account}`)) return `no session evidence for account:${account} in pass ${n}`;
   return null;
 }
 
@@ -1005,8 +990,11 @@ async function cmdVerify(args) {
       const selection = plan.cases.filter((c) => live.some((s) => s.id === c.id));
       const nonce = randomBytes(8).toString('hex');
       const manifestFile = path.join(dir, `manifest-${n}.json`);
-      fs.writeFileSync(manifestFile, `${JSON.stringify(manifestOf(root, plan, dir, runId, nonce, selection, { pass: n }), null, 2)}\n`);
-      const { runner, report, reportFile } = await runOnce(root, cfg, plan, cfg.runner.commands.full, manifestFile, locks, { REGRESSION_PASS: String(n) });
+      const reportFile = path.resolve(root, cfg.runner.report);
+      const { runner, report } = await runPass({
+        root, plan, manifest: manifestOf(root, plan, dir, runId, nonce, selection, { pass: n }), manifestFile,
+        command: cfg.runner.commands.full, reportFile, locks, env: { REGRESSION_PASS: String(n) },
+      });
       if (fs.existsSync(reportFile)) fs.copyFileSync(reportFile, path.join(dir, `report-${n}.json`));
       const cls = classifyReport(report, { cases: selection }, { idPattern: catalogSettings(cfg).id_pattern, catalogIds, root, configDir });
       const guard = readGuard(dir, nonce, casesRan(cls));
@@ -1029,7 +1017,7 @@ async function cmdVerify(args) {
       if (guard.stop) { stopped = guard.stop; break; }
       for (const s of live) {
         const cs = cls.cases.filter((c) => c.id === s.id);
-        const problems = whole.length ? whole.map((w) => `pass ${n}: ${w}`) : cs.map((c) => caseProblem(c, s, guard, events)).filter(Boolean).map((w) => `${w} ${n}`);
+        const problems = whole.length ? whole.map((w) => `pass ${n}: ${w}`) : cs.map((c) => caseProblem(c, s, guard, events, n)).filter(Boolean);
         if (cs.length !== s.projects.length) problems.push(`pass ${n}: ${s.projects.length - cs.length} case(s) not reported`);
         if (problems.length) {
           s.reason = problems[0];
@@ -1099,7 +1087,7 @@ async function cmdVisual(args) {
     for (const l of locks) l.update({ run_id: runId });
     const startedAt = new Date().toISOString();
     const nonce = randomBytes(8).toString('hex');
-    const manifest = baseManifestOf(root, plan, runId, nonce, dir);
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases);
     fs.writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     printPlanSummary(plan);
     const watch = baselinesWatch(root, s);

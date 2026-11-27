@@ -121,6 +121,15 @@ test('select --from-qa: joins a PASS row by fingerprint, refuses a FAIL row and 
   assert.doesNotMatch(r.stdout, /eligible: CART-00[89]/);
 });
 
+test('select --from-qa: a carried criterion skips the scenario wherever it stands in the Source', () => {
+  const ctx = withoutSpec4(setup());
+  const cart = '.agents/regression/scenarios/cart.md';
+  write(ctx, cart, read(ctx, cart).replace('**Source:** E2-3.AC2 [a1b2c3] ·', '**Source:** E2-3.AC2 [a1b2c3] · E2-3.AC4 [0a0b0c] ·'));
+  const r = author(ctx, 'select', '--from-qa', QA);
+  has(r, /^skipped: CART-004 — E2-3\.AC4 carried$/m);
+  assert.doesNotMatch(r.stdout, /eligible: CART-004/);
+});
+
 test('select --from-qa: a CITED row next to the observed row lets the observation decide', () => {
   const ctx = withoutSpec4(setup());
   write(ctx, 'cited.md', read(ctx, QA)

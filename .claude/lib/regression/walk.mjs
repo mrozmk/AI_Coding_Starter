@@ -146,6 +146,8 @@ export const submitUrl = (baseOrigin, entry) => `${baseOrigin}${entry.action}?${
  */
 export function extractFacts(doc = document) {
   const SKIP = ['submit', 'button', 'reset', 'image', 'fieldset', 'output', 'object'];
+  // `:disabled` is the effective state: a control in a disabled fieldset, an option in a disabled optgroup.
+  const off = (x) => Boolean(x.disabled) || (typeof x.matches === 'function' && x.matches(':disabled'));
   const forms = Array.from(doc.forms ?? []).map((f) => {
     const fields = [];
     const entries = [];
@@ -153,10 +155,10 @@ export function extractFacts(doc = document) {
       const type = String(el.type ?? '').toLowerCase();
       if (!el.name || SKIP.includes(type)) continue;
       fields.push({ name: el.name, type });
-      if (el.disabled) continue;
+      if (off(el)) continue;
       if ((type === 'checkbox' || type === 'radio') && !el.checked) continue;
       if (type.startsWith('select')) {
-        for (const o of Array.from(el.options ?? [])) if (o.selected) entries.push([el.name, String(o.value ?? '')]);
+        for (const o of Array.from(el.options ?? [])) if (o.selected && !off(o)) entries.push([el.name, String(o.value ?? '')]);
         continue;
       }
       entries.push([el.name, type === 'checkbox' || type === 'radio' ? String(el.value ?? 'on') : String(el.value ?? '')]);
@@ -238,7 +240,11 @@ export async function walkGroup({ page, manifest, group, testInfo }) {
     let observed = null;
     if (production) {
       const nav = ledger.events().slice(mark).find((e) => e.kind === 'navigation' && e.test === testId);
-      if (nav) observed = `${identity(nav.final).split('#')[0]}${facts.hash}`;
+      // The page left the URL its navigation landed on (a client-side move after load, e.g. an SPA
+      // guard's history.pushState): no request, so no guard event — the page's own URL is the truth.
+      const moved = nav && identity(page.url()).split('#')[0] !== identity(nav.url).split('#')[0];
+      if (moved) observed = identity(page.url());
+      else if (nav) observed = `${identity(nav.final).split('#')[0]}${facts.hash}`;
       // A hash-only change is a same-document navigation: no request, so no guard hop and no
       // collapsed redirect to hide — `page.goto` returns null and the page's own URL is the truth.
       else if (!error && resp === null) observed = identity(page.url());

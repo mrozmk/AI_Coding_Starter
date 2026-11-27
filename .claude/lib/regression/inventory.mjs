@@ -94,15 +94,6 @@ function cmdCheck(root) {
 // ---------------------------------------------------------------------------------------------
 // apply
 
-/** Parse `text` as catalog blocks through a temp file in `dir` (parseCatalog reads files). */
-function parseText(dir, text) {
-  const tmp = path.join(dir, `proposal-parse.md.tmp-${process.pid}`);
-  fs.writeFileSync(tmp, text);
-  try {
-    return { blocks: parseCatalog(dir, [tmp]), texts: blockTexts(dir, [tmp]) };
-  } finally { fs.rmSync(tmp, { force: true }); }
-}
-
 /** The whole apply; throws Refusal. Returns the lines to print. */
 function applyInventory(root, { stage, walk, dryRun, expect }) {
   const cfg = loadAdopted(root);
@@ -122,7 +113,6 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   const proposal = readJsonFile(path.join(stageDir, 'proposal.json'), 'proposal.json');
   if (!isObject(proposal) || !isObject(proposal.routes) || !isObject(proposal.sources ?? {})) refuse('proposal.json must hold {routes: {…}, sources: {…}}');
   const sources = proposal.sources ?? {};
-  const proposalMd = fs.readFileSync(path.join(stageDir, 'proposal.md'), 'utf8').replace(/\r/g, '');
   const record = readJsonFile(path.join(walkDir, 'walk.json'), 'walk.json');
   const observations = readJsonFile(path.join(walkDir, 'walk/observations.json'), 'walk/observations.json');
   if (!Array.isArray(observations)) refuse('walk/observations.json must be an array');
@@ -155,8 +145,8 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   const { settings, files, blocks: current } = loadCatalog(root, cfg);
   const currentTexts = blockTexts(root, files);
   const byId = new Map(current.map((b) => [b.id, b]));
-  const parsed = parseText(stageDir, proposalMd);
-  const proposed = parsed.blocks;
+  const proposed = parseCatalog(stageDir, ['proposal.md']);
+  const proposedTexts = blockTexts(stageDir, ['proposal.md']);
   const newBlocks = [];
   const skipped = [];
   const lines = [];
@@ -164,7 +154,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
   for (const b of proposed) {
     const area = areaOf(b.id);
     const old = byId.get(b.id);
-    const text = parsed.texts.get(b.id)?.text;
+    const text = proposedTexts.get(b.id)?.text;
     if (old) {
       if (currentTexts.get(b.id)?.text === text) { skipped.push(b.id); continue; }
       if (statusOf(old)[1] === 'DROPPED') refuse(`reuses DROPPED id ${b.id}`);
@@ -206,8 +196,11 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
     for (const id of ids) {
       const b = merged.get(id);
       const src = sources[id] ?? null;
-      const submit = newIds.has(id) && src?.submit ? (obs.submits ?? []).find((s) => s.form === src.submit) : null;
-      const outcome = newIds.has(id) && src?.submit ? (submit?.outcome === 'failed' ? 'failed' : submit?.outcome === 'submitted' ? 'ok' : 'skipped') : obs.outcome;
+      // A block the proposal maps to this route and ties to a form — new or existing — follows that
+      // submit's outcome; a mapping retained from routes.json keeps the route's.
+      const viaSubmit = Boolean(src?.submit) && (newIds.has(id) || !retained.has(id));
+      const submit = viaSubmit ? (obs.submits ?? []).find((s) => s.form === src.submit) : null;
+      const outcome = viaSubmit ? (submit?.outcome === 'failed' ? 'failed' : submit?.outcome === 'submitted' ? 'ok' : 'skipped') : obs.outcome;
       const live = usesWord(b, 'live');
       const problem = (() => {
         if (outcome === 'failed') return isLiveBlocked(b) && live ? null : 'must be BLOCKED (live: …) citing live';
@@ -301,16 +294,11 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
 function cmdApply(root, args) {
   if (!args.stage || !args.walk) throw new UsageError('apply needs --stage <dir> and --walk <run dir>');
   if (Boolean(args.dryRun) === Boolean(args.expect)) throw new UsageError('apply needs exactly one of --dry-run and --expect-proposal <digest>');
-  try {
-    const r = withCheckoutLock(root, 'inventory-apply', () => applyInventory(root, args));
-    if (r.error) { console.log(`refused: checkout lock held — ${r.error}`); return 1; }
-    for (const l of r.value) console.log(l);
-    return 0;
-  } catch (err) {
-    if (!(err instanceof Refusal)) throw err;
-    console.log(`refused: ${err.message}`);
-    return 1;
-  }
+  // A Refusal from inside the lock reaches main, which prints it.
+  const r = withCheckoutLock(root, 'inventory-apply', () => applyInventory(root, args));
+  if (r.error) refuse(`checkout lock held — ${r.error}`);
+  for (const l of r.value) console.log(l);
+  return 0;
 }
 
 // ---------------------------------------------------------------------------------------------

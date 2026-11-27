@@ -23,8 +23,10 @@ would fail when the scenario's behaviour breaks.
 | `MODE` | omitted = the clause check; `provenance` = the provenance pass (`--from-qa` only) |
 | `QA_SEQUENCE` | `MODE=provenance` only: the recorded QA sequence — the driver script, the MCP step log, or the row text `select` printed |
 
-Read only `SPEC`, the fixtures module it imports `test` from, and (provenance) the `QA_SEQUENCE`
-files. Never browse for other specs or earlier drafts.
+Read only `SPEC`, the fixtures module it imports `test` from, the relative helper modules the spec
+imports (transitively — the closure `author.mjs lint` scanned), and (provenance) the
+`QA_SEQUENCE` files. An assertion or an interaction inside a called helper counts as the spec's, at
+its own `<file>:<line>`. Never browse for other specs or earlier drafts.
 
 ## Clause check (default)
 
@@ -61,16 +63,17 @@ that fails.
 ## MODE=provenance (`--from-qa` only)
 
 The clause check above stays the ticket's (scenario + spec); this is a second, separate
-invocation. Map every interaction in the spec — `goto`, `click`, `fill`, `press`, `selectOption`,
-`check`, `setViewportSize`, … — to the recorded step `k` of `QA_SEQUENCE` it reproduces. An
-interaction no recorded step performed is unmapped.
+invocation. Map every interaction in the spec and in the helpers it calls — `goto`, `click`,
+`fill`, `press`, `selectOption`, `check`, `setViewportSize`, … — to the recorded step `k` of
+`QA_SEQUENCE` it reproduces. An interaction no recorded step performed is unmapped. `file` is the
+helper's path for an interaction inside a helper, else the spec's.
 
 ```json
 {
   "id": "<ID>",
   "mode": "provenance",
   "verdict": "pass | revise",
-  "actions": [ { "line": 12, "action": "click", "qa_step": 3 } ],
+  "actions": [ { "file": "<spec or helper path>", "line": 12, "action": "click", "qa_step": 3 } ],
   "findings": [ { "line": 14, "problem": "…", "fix": "…" } ]
 }
 ```

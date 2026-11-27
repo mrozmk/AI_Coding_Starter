@@ -17,8 +17,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, envPolicy, resolveTarget, isObject, specDir } from './config.mjs';
-import { blockTexts, loadCatalog, parseCatalog, validateCatalog, specOf, awaitsSpec, areaOf, sourceTokens, statusOf, needsKeys, posix } from './catalog.mjs';
-import { exclusionReason, viewportProjects, evidenceKey, changedPart, VERIFY_PASSES } from './policy.mjs';
+import { blockTexts, loadCatalog, parseCatalog, validateCatalog, specOf, awaitsSpec, areaOf, sourceTokens, posix } from './catalog.mjs';
+import { candidateProblem, viewportProjects, evidenceKey, changedPart, VERIFY_PASSES } from './policy.mjs';
 import { withCheckoutLock, ensureRunsDir, RUNS_DIR } from './run.mjs';
 import { lintSpec } from './speclint.mjs';
 import { writeAtomic, parseTables } from '../backlog-check.mjs';
@@ -45,15 +45,8 @@ export function specPathFor(cfg, id) {
 
 /** Why `b` may not get a spec on this target, or null. `policy` null skips the environment check. */
 function selectProblem(root, cfg, b, policy, envName) {
-  const [, status] = statusOf(b);
-  if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
-  if (specOf(b) !== null) return 'already has a spec';
-  if (policy) {
-    const reason = exclusionReason({ id: b.id, needs: needsKeys(b.fields.Needs?.value), effect: b.fields.Effect?.value ?? 'read' }, policy, envName);
-    if (reason) return reason;
-  }
-  const noDevice = viewportProjects(cfg, b.fields.Viewport?.value).find((d) => d.project === null);
-  if (noDevice) return `no device ${noDevice.device}`;
+  const candidate = candidateProblem(cfg, b, policy, envName);
+  if (candidate) return candidate;
   const target = specPathFor(cfg, b.id);
   if (fs.existsSync(path.resolve(root, target))) return `target exists — ${target}`;
   return null;
@@ -135,13 +128,17 @@ export function joinQa(root, blocks, qa) {
     const hits = groups.map((g) => g.find((r) => r.kind === 'fail') ?? g.find((r) => !/^CITED\b/.test(r.disposition)) ?? g[0]);
     for (const r of groups.flat()) cited.add(r);
     if (hits.length) {
+      // Every cited criterion decides, whatever its place in the Source: one not observed PASS in
+      // this run, or one without a recorded sequence, keeps the scenario out.
+      const fail = hits.find((x) => x.kind === 'fail');
+      if (fail) { out.lines.push(`not promoted: ${b.id} — ${fail.id} FAIL`); continue; }
+      const carried = hits.find((x) => x.kind === 'carried');
+      if (carried) { out.lines.push(`skipped: ${b.id} — ${carried.id} carried`); continue; }
+      const other = hits.find((x) => x.kind !== 'pass');
+      if (other) { out.lines.push(`skipped: ${b.id} — ${other.id} ${other.disposition}`); continue; }
+      if (hits.some((x) => !evidence.get(x))) { out.lines.push(`skipped: ${b.id} — no recorded sequence`); continue; }
       const h = hits[0];
-      if (hits.some((x) => x.kind === 'fail')) { out.lines.push(`not promoted: ${b.id} — ${hits.find((x) => x.kind === 'fail').id} FAIL`); continue; }
-      if (h.kind === 'carried') { out.lines.push(`skipped: ${b.id} — ${h.id} carried`); continue; }
-      if (h.kind !== 'pass') { out.lines.push(`skipped: ${b.id} — ${h.id} ${h.disposition}`); continue; }
-      const e = evidence.get(h);
-      if (!e) { out.lines.push(`skipped: ${b.id} — no recorded sequence`); continue; }
-      out.joined.push({ block: b, row: h, evidence: e });
+      out.joined.push({ block: b, row: h, evidence: evidence.get(h) });
       continue;
     }
     // Only a scenario citing no criterion joins by the ticket key.
@@ -181,7 +178,10 @@ function cmdSelect(root, args) {
     else result.eligible.push({ id: b.id, spec: specPathFor(cfg, b.id), ...(qa ? { qa } : {}) });
   };
   if (args.fromQa) {
-    const j = joinQa(root, blocks, readQaFile(root, args.fromQa));
+    let qa;
+    // An unusable working file is the answer of select itself, printed bare.
+    try { qa = readQaFile(root, args.fromQa); } catch (err) { if (!(err instanceof Refusal)) throw err; console.log(err.message); return 1; }
+    const j = joinQa(root, blocks, qa);
     result.lines.push(...j.lines);
     for (const x of j.joined) consider(x.block, { ac_id: x.row.id, sequence: x.evidence.driver, files: x.evidence.files });
     for (const r of j.orphanRows) result.lines.push(`no scenario: ${r.id}`);
@@ -462,11 +462,7 @@ export function main(argv = process.argv.slice(2)) {
     return COMMANDS[args.cmd](root, args);
   } catch (err) {
     if (err instanceof UsageError) { console.error(`author: ${err.message}`); return 2; }
-    if (err instanceof Refusal) {
-      if (args.cmd === 'select' || args.cmd === 'lint') { console.log(err.message); return 1; }
-      console.log(`refused: ${err.message}`);
-      return 1;
-    }
+    if (err instanceof Refusal) { console.log(`refused: ${err.message}`); return 1; }
     throw err;
   }
 }
