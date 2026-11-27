@@ -15,3 +15,5 @@ c78d12d585c063b61ffd1a64878baf3794c9b602:.claude/lib/tests/touches-test.sh:curl-
 351a323c3c8d2a6235a36e024246d7068571b3b5:.claude/lib/tests/fixtures/egress-denied-fixtures.txt:generic-api-key:22
 351a323c3c8d2a6235a36e024246d7068571b3b5:.claude/lib/tests/fixtures/egress-denied-fixtures.txt:generic-api-key:23
 351a323c3c8d2a6235a36e024246d7068571b3b5:.claude/lib/tests/team-smoke-17.sh:generic-api-key:66
+# #322 round 2: placeholder tokens in the token-in-URL deny tests (synthetic, never real).
+1986fdbe3714c810d04eaf7393353b13eb27870e:.claude/lib/tests/guard-team-egress-test.sh:generic-api-key:1067
