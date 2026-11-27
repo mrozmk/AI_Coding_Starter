@@ -39,7 +39,7 @@ export function loadRunManifest(file = process.env.REGRESSION_RUN) {
   return manifest;
 }
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The scenario id of a test title `<ID> — <title>` (the text before the separator), or null. */
 export const scenarioId = (title) => (typeof title === 'string' && title.includes(TITLE_SEP) ? title.split(TITLE_SEP)[0].trim() : null);

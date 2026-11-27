@@ -87,7 +87,7 @@ reports `Git LFS pointer — run git lfs pull`.
   seen by the config check; the per-boundary digest of the baselines tree reports a loss after the
   fact (`baselines changed during the run`) and `git restore` recovers committed baselines.
 - A functional `outputDir` set through an imported module cannot be resolved statically — re-copy
-  `playwright.config.ts.template` (it uses `runnerOptions().outputDir`, under the run directory).
+  `playwright.config.ts.template` (it uses `opts.outputDir` from `runnerOptions(…)`, under the run directory).
 
 ## 8. Troubleshooting by reason line
 
@@ -96,7 +96,8 @@ reports `Git LFS pointer — run git lfs pull`.
 | `visual not configured` | Run the Visual stage of `/setup:regression`. |
 | `visual.tolerance widened over the accepted baselines` | Restore the tolerance, or have a human edit `index.json` in a reviewed commit. |
 | `visual.baselines overlaps …` | Move the baselines out of report, output and run directories. |
-| `cannot resolve the functional outputDir` | Use a string literal or `runnerOptions().outputDir`. |
+| `cannot resolve the functional outputDir` | Use a string literal, `runnerOptions(…).outputDir` or a variable holding `runnerOptions(…)` (`opts.outputDir`, as the template does). |
+| `file not part of the baselines` | Remove the file (a `.DS_Store`, a README) from `<baselines>/<env>/` — only `index.json` and accepted PNGs live there. |
 | `baseline altered outside visual accept` / `baseline not accepted` | `git restore` the baselines, or accept a new set through `visual update`. |
 | `interrupted accept: …` | Do what the line says (remove the staging dir, or rename the previous dir back), then rerun `visual update`. |
 | `baselines changed during the run (<pass>)` | Something wrote under the baselines during a runner — find the writer (outputDir, wrapper flag). |

@@ -905,6 +905,59 @@ test('a capture without attestation or with a teardown failure is never offered'
   assert.equal(acceptTokenOf(u), undefined, 'nothing stable, nothing to accept');
 });
 
+test('a pass without a report or with split renderers is never offered', async () => {
+  for (const scenario of ['no-report@capture', 'no-report@stability', 'split-renderer@stability']) {
+    const root = copyRoot();
+    knownBuild(root);
+    useVisual(root, scenario);
+    const u = await run(['visual', 'update', '--root', root]);
+    // The fake runner splits the renderer of the first project only; a missing report hits every case.
+    assert.doesNotMatch(u.stdout, /^visual offer: new desktop-chrome\//m, `${scenario}: ${u.out}`);
+    assert.match(u.stdout, /^visual offer: unstable desktop-chrome\/routes--home\.png — .*(the report does not show the test passed|renderer differs between workers)/m, scenario);
+    if (scenario.startsWith('no-report')) assert.equal(acceptTokenOf(u), undefined, `${scenario}: ${u.out}`);
+    else assert.match(u.stdout, /^visual offer: new mobile-safari\/routes--home\.png /m, scenario);
+  }
+});
+
+test('a renderer change with the same pixels rewrites the index and compare is comparable again', async () => {
+  const root = copyRoot();
+  knownBuild(root);
+  await acceptBaselines(root);
+  useVisual(root, 'renderer:browser_version');
+  let r = await run(['visual', 'compare', '--root', root]);
+  assert.equal(recordOf(root, r).visual.counts.not_comparable, 3, r.out);
+  const before = fs.readFileSync(path.join(root, BASE, 'test/desktop-chrome/routes--home.png'));
+  const { update } = await acceptBaselines(root);
+  assert.match(update.stdout, /^visual offer: changed desktop-chrome\/routes--home\.png .*— same pixels, renderer changed$/m);
+  assert.deepEqual(fs.readFileSync(path.join(root, BASE, 'test/desktop-chrome/routes--home.png')), before);
+  r = await run(['visual', 'compare', '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stdout, /^visual: clean — same 3 · differs 0 · missing 0 · orphan 0 · error 0 · not comparable 0$/m);
+});
+
+test('a stray non-png file in the baselines blocks the offer with its cause', async () => {
+  const root = copyRoot();
+  knownBuild(root);
+  await acceptBaselines(root);
+  fs.writeFileSync(path.join(root, BASE, 'test/.DS_Store'), 'finder');
+  const u = await run(['visual', 'update', '--root', root]);
+  assert.notEqual(u.status, 3, u.out);
+  assert.match(u.stdout, /^visual offer: none — baselines integrity \(file not part of the baselines: e2e\/visual-baselines\/test\/\.DS_Store\)$/m);
+});
+
+test('a functional outputDir from runnerOptions is resolved statically', async () => {
+  const { assertDisjoint } = await lib('visual');
+  const root = copyRoot();
+  const config = path.join(root, 'e2e/playwright.config.ts');
+  const text = fs.readFileSync(config, 'utf8');
+  for (const value of ['runnerOptions(loadRunManifest()).outputDir', 'opts.outputDir']) {
+    fs.writeFileSync(config, text.replace("testDir: './regression',", `testDir: './regression',\n  outputDir: ${value},`));
+    assert.equal(assertDisjoint(root, readConfig(root), RUNS), null, value);
+  }
+  fs.writeFileSync(config, text.replace("testDir: './regression',", "testDir: './regression',\n  outputDir: path.join(x),"));
+  assert.match(assertDisjoint(root, readConfig(root), RUNS), /cannot resolve the functional outputDir .* — set it to a string literal or runnerOptions\(…\)\.outputDir/);
+});
+
 test('an interrupted report stops the next pass', async () => {
   const root = copyRoot();
   knownBuild(root);

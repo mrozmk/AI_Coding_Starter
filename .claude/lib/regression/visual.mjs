@@ -13,7 +13,7 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { isObject, docKey, visualSettings, VISUAL_DEFAULTS, VISUAL_ID } from './config.mjs';
 import { digestJson, canonicalJson, visualPlan } from './policy.mjs';
-import { guardedFetch } from './guard.mjs';
+import { guardedFetch, scenarioId, escapeRe } from './guard.mjs';
 
 export const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const LFS_PREFIX = 'version https://git-lfs';
@@ -134,8 +134,8 @@ function functionalOutputDirs(root, cfg) {
     const value = m[1].trim();
     const lit = /^(['"`])([^'"`$]*)\1$/.exec(value);
     if (lit) dirs.push(path.resolve(configDir, lit[2]));
-    // `opts.outputDir` from runnerOptions: the run directory, owned by run.mjs.
-    else if (!/^\w+\.outputDir$/.test(value)) return { error: `cannot resolve the functional outputDir in ${cfg.runner.config} (${value}) — set it to a string literal or runnerOptions().outputDir` };
+    // `opts.outputDir` or `runnerOptions(…).outputDir`: the run directory, owned by run.mjs.
+    else if (!/^(\w+|runnerOptions\(.*\))\.outputDir$/.test(value)) return { error: `cannot resolve the functional outputDir in ${cfg.runner.config} (${value}) — set it to a string literal or runnerOptions(…).outputDir (or opts.outputDir as in playwright.config.ts.template)` };
   }
   return { dirs };
 }
@@ -183,7 +183,7 @@ const validKey = (k) => typeof k === 'string' && !path.isAbsolute(k) && k.split(
 function interruptedAccepts(baseAbs, env) {
   let names = [];
   try { names = fs.readdirSync(baseAbs); } catch { return []; }
-  const parse = (kind) => names.map((n) => new RegExp(`^\\.${env.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.${kind}-(.+)$`).exec(n)).filter(Boolean).map((m) => m[0]);
+  const parse = (kind) => names.map((n) => new RegExp(`^\\.${escapeRe(env)}\\.${kind}-(.+)$`).exec(n)).filter(Boolean).map((m) => m[0]);
   const staging = parse('staging');
   const previous = parse('previous');
   const envExists = fs.existsSync(path.join(baseAbs, env));
@@ -234,7 +234,11 @@ export function verifyBaselines(root, settings, env) {
       targetErrors.set(key, 'baseline altered outside visual accept');
     }
   }
-  for (const f of files) if (f.file && f.rel.endsWith('.png') && !(f.rel in indexed)) integrity.push(`baseline not accepted: ${rel(f.abs)}`);
+  for (const f of files) {
+    if (!f.file || f.rel === INDEX_FILE) continue;
+    if (!f.rel.endsWith('.png')) integrity.push(`file not part of the baselines: ${rel(f.abs)}`);
+    else if (!(f.rel in indexed)) integrity.push(`baseline not accepted: ${rel(f.abs)}`);
+  }
   return { integrity, images, index: idx.index, index_digest: idx.digest, target_errors: targetErrors };
 }
 
@@ -274,19 +278,21 @@ export function readEvidence(runDir, nonce) {
     .filter((e) => e && e.nonce === nonce);
 }
 
+const invalidReport = () => ({ valid: false, interrupted: false, tests: new Map() });
+
 /** A visual pass report: `{valid, interrupted, tests: Map<id\0project, test[]>}` (one entry per repeat). */
 export function readVisualReport(file) {
   let doc;
-  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { valid: false, interrupted: false, tests: new Map() }; }
-  if (!isObject(doc) || !Array.isArray(doc.suites)) return { valid: false, interrupted: false, tests: new Map() };
+  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return invalidReport(); }
+  if (!isObject(doc) || !Array.isArray(doc.suites)) return invalidReport();
   const tests = new Map();
   let interrupted = false;
   const visit = (suite) => {
     for (const spec of suite.specs ?? []) {
-      const id = String(spec.title ?? '').split(' — ')[0].trim();
+      const id = scenarioId(spec.title) ?? String(spec.title ?? '').trim();
       for (const t of spec.tests ?? []) {
         if ((t.results ?? []).some((r) => r.status === 'interrupted')) interrupted = true;
-        const k = `${id}\0${t.projectName ?? ''}`;
+        const k = keyOf({ id, project: t.projectName ?? '' });
         tests.set(k, [...(tests.get(k) ?? []), t]);
       }
     }
@@ -383,6 +389,10 @@ export function orphanKeys({ index, cases, sources, noDeviceFiles }) {
 }
 
 const emptyCounts = () => ({ same: 0, differs: 0, missing: 0, orphan: 0, error: 0, not_comparable: 0 });
+const targetRow = (c, e) => ({ id: c.id, source: c.source, project: c.project, repeat: e.repeat, outcome: e.outcome, diff_pixels: e.diff_pixels ?? null, masked_ratio: e.masked_ratio ?? null, diff: e.diff ?? null, reason: e.reason ?? null });
+
+/** The classification of a pass that never ran (or left no report): every case `no outcome`. */
+export const emptyPass = (pass, cases) => classifyPass({ pass, cases, repeat: 1, evidence: [], report: invalidReport(), events: [] });
 
 /**
  * The record block of a compare pass: targets with their outcomes (renderer-checked), orphans,
@@ -404,7 +414,7 @@ export function classifyVisual({ settings, env, cases, noDevice, sources, pass, 
       const d = fingerprintDiff(entry.renderer, pass.renderers[c.project]);
       if (d.length) { outcome = 'not-comparable'; reason = `renderer differs in ${d.join(',')}`; }
     }
-    targets.push({ id: c.id, source: c.source, project: c.project, repeat: 0, outcome, diff_pixels: e.diff_pixels ?? null, masked_ratio: e.masked_ratio ?? null, diff: e.diff ?? null, reason });
+    targets.push(targetRow(c, { ...e, repeat: 0, outcome, reason }));
     if (outcome === 'same') counts.same += 1;
     else if (outcome === 'differs') { counts.differs += 1; differences.push(`visual differs: ${c.id}/${c.project}${e.diff_pixels ? ` (${e.diff_pixels} pixels)` : ''}`); }
     else if (outcome === 'missing') { counts.missing += 1; differences.push(`visual baseline missing: ${c.id}/${c.project}`); }
@@ -433,6 +443,41 @@ export function classifyVisual({ settings, env, cases, noDevice, sources, pass, 
   };
 }
 
+/**
+ * The record block of a `visual update` (capture + stability): per-case stability evaluation,
+ * targets of the stability pass, the incomplete-pass reasons, the integrity reasons and the outcome.
+ * `{block, evals}`.
+ */
+export function classifyUpdate({ settings, env, cases, noDevice, sources, passes, actionPasses, hashes, rehashes, storyBuild, verify, integrityExtra = [], production = false, baselinesRel, build, interrupted }) {
+  const capture = passes.capture ?? emptyPass('capture', cases);
+  const stability = passes.stability ?? null;
+  const evals = evaluateUpdate({ cases, capture, stability, hashes, rehashes, storyBuild });
+  const renderers = stability?.renderers ?? capture.renderers;
+  const incomplete = [];
+  for (const e of evals) if (e.kind !== 'stable') incomplete.push(`visual ${e.kind}: ${e.case.id}/${e.case.project} — ${e.reasons.join('; ')}`);
+  for (const [name, p] of Object.entries(passes)) {
+    if (!p.report_valid) incomplete.push(`visual report missing or unparseable (${name})`);
+    for (const proj of p.renderer_conflicts) incomplete.push(`renderer differs between workers of ${proj} (${name})`);
+  }
+  for (const src of sources) if (src.state === 'failed') incomplete.push(`visual source ${src.name} failed — ${src.reason}`);
+  if (interrupted) incomplete.push(interrupted);
+  const attestation = Object.values(passes).flatMap((p) => p.attestation);
+  const integrity = [...verify.integrity, ...integrityExtra];
+  const block = {
+    policy: settings.policy, env, action: 'update', passes: actionPasses, baselines: baselinesRel, index_digest: verify.index_digest,
+    tolerance: settings.tolerance, renderers, portability: portability([...new Set(cases.map((c) => c.project))], verify.index, renderers),
+    build, sources,
+    targets: stability ? [...stability.results.values()].flatMap(({ case: c, reps }) => reps.map((e) => targetRow(c, e))) : [],
+    orphans: [], no_device: noDevice,
+    counts: { stable: evals.filter((e) => e.kind === 'stable').length, unstable: evals.filter((e) => e.kind === 'unstable').length, error: evals.filter((e) => e.kind === 'error').length },
+    differences: [], incomplete, integrity, attestation: production ? attestation : [],
+    guard_red: [...new Set(Object.values(passes).flatMap((p) => p.guard_red))],
+    stability: evals.map((e) => ({ key: e.key, id: e.case.id, project: e.case.project, kind: e.kind, renders: e.renders, differences: e.differences, outcomes: e.outcomes, reasons: e.reasons })),
+    outcome: integrity.length || incomplete.length ? 'incomplete' : 'clean',
+  };
+  return { block, evals };
+}
+
 /** The image file of a target id (`route:<id>` → `routes--<id>.png`, `story:<id>` → `storybook--<id>.png`). */
 const fileOfTarget = (id) => (id.startsWith('route:') ? `routes--${id.slice(6)}.png` : id.startsWith('story:') ? `storybook--${id.slice(6)}.png` : null);
 const noDeviceFilesOf = (noDevice) => noDevice.map((n) => fileOfTarget(n.id)).filter(Boolean);
@@ -446,7 +491,6 @@ export function decideVisual({ policy, block }) {
   return { red: [], incomplete: [...integ], warnings: [...diffs, ...inc] };
 }
 
-/** The summary line of a block. */
 export function summaryLine(block) {
   const c = block.counts;
   return `visual: ${block.outcome} — same ${c.same} · differs ${c.differs} · missing ${c.missing} · orphan ${c.orphan} · error ${c.error} · not comparable ${c.not_comparable}`;
@@ -463,14 +507,20 @@ export function evaluateUpdate({ cases, capture, stability, hashes, rehashes, st
   return cases.map((c) => {
     const k = keyOf(c);
     const key = imageKey(c);
-    const cap = capture.results.get(k)?.reps[0] ?? { outcome: 'error', reason: 'no outcome', attested: false };
+    const cap = capture.results.get(k)?.reps[0] ?? { outcome: 'error', reason: 'no outcome', ran: false, attested: false };
     const st = stability?.results.get(k)?.reps ?? [];
     const reasons = [];
     let kind = 'stable';
     // `error` only for a render error the evidence states; a report or attestation gap is `unstable`.
-    const renderError = (e) => e.outcome === 'error' && !e.report_failed && e.reason !== 'no outcome';
+    const renderError = (e) => e.outcome === 'error' && e.ran && !e.report_failed;
     if (cap.outcome !== 'captured') { kind = renderError(cap) ? 'error' : 'unstable'; reasons.push(`capture: ${cap.reason ?? cap.outcome}`); }
     else if (!cap.attested) reasons.push(`guard not attested for ${c.id}/${c.project}/capture#0`);
+    // A pass whose report is absent or unparseable proves no test passed; a worker split proves no renderer.
+    for (const [name, p] of [['capture', capture], ['stability', stability]]) {
+      if (!p) continue;
+      if (p.results.get(k)?.report_ok === null) reasons.push(`${name}: the report does not show the test passed`);
+      if (p.renderer_conflicts.includes(c.project)) reasons.push(`${name}: renderer differs between workers of ${c.project}`);
+    }
     if (!hashes[key]) reasons.push('no candidate file');
     const outcomes = st.map((e) => e.outcome);
     const differences = st.filter((e) => e.outcome !== 'same').length;
@@ -516,9 +566,13 @@ export function buildOffer({ root, settings, env, runId, evals, verify, treeBefo
     if (e.kind !== 'stable') { entries.push({ kind: e.kind, key: e.key, reason: e.reasons.join('; ') }); continue; }
     const cand = path.join(candidatesDir, e.case.project, e.case.file);
     const prev = old[e.key];
-    const kind = prev ? (prev.sha256 === e.sha256 ? 'unchanged' : 'changed') : 'new';
+    const renderer = renderers[e.case.project] ?? null;
+    // Same pixels on another renderer still rewrite the index entry: compare checks the entry's renderer.
+    const samePixels = prev && prev.sha256 === e.sha256;
+    const kind = prev ? (samePixels && canonicalJson(prev.renderer ?? null) === canonicalJson(renderer) ? 'unchanged' : 'changed') : 'new';
     const entry = { kind, key: e.key, candidate: rel(cand) };
     if (prev) entry.baseline = rel(path.join(envDir, ...e.key.split('/')));
+    if (kind === 'changed' && samePixels) entry.reason = 'same pixels, renderer changed';
     entries.push(entry);
     if (kind === 'unchanged') continue;
     candidates[e.key] = cand;
@@ -526,7 +580,7 @@ export function buildOffer({ root, settings, env, runId, evals, verify, treeBefo
     images[e.key] = {
       project: e.case.project, sha256: e.sha256, run_id: runId, build_sha: build.before,
       stability: { renders: e.renders, differences: e.differences, build_before: build.before, build_after: build.after },
-      masked_ratio: e.masked_ratio, renderer: renderers[e.case.project] ?? null,
+      masked_ratio: e.masked_ratio, renderer,
     };
   }
   for (const k of orphanKeys({ index: verify.index, cases, sources, noDeviceFiles: noDeviceFilesOf(noDevice) })) {
@@ -565,12 +619,6 @@ export function consumeAcceptToken(runsDir, env, runId, token, digest) {
   return null;
 }
 
-function writeAtomic(file, text) {
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
-}
-
 /**
  * Write the offered baselines: verify the token against a recomputed offer digest, stage the next
  * tree beside `<env>`, verify it byte by byte against the offered index, then swap by two renames.
@@ -606,7 +654,8 @@ export function acceptOffer({ root, settings, runId, token, runsDir, afterVerify
       fs.mkdirSync(path.dirname(path.join(staging, k)), { recursive: true });
       fs.copyFileSync(p, path.join(staging, k));
     }
-    writeAtomic(path.join(staging, INDEX_FILE), `${JSON.stringify(offer.next_index, null, 2)}\n`);
+    // Staging is private until the directory rename below publishes it.
+    fs.writeFileSync(path.join(staging, INDEX_FILE), `${JSON.stringify(offer.next_index, null, 2)}\n`);
     const staged = walk(staging).filter((f) => f.rel !== INDEX_FILE);
     const want = Object.keys(offer.next_index.images).sort();
     const ok = staged.every((f) => f.file) && canonicalJson(staged.map((f) => f.rel).sort()) === canonicalJson(want)

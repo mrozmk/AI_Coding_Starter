@@ -9,9 +9,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isIP } from 'node:net';
+import { hostAllowed } from './guard.mjs';
 
 export const CONFIG_PATH = '.claude/regression.json';
 export const QA_ENV_PATH = '.claude/qa-env.json';
+export const RUNS_DIR = '.agents/regression/runs';
 export const DEFAULTS = { path: '.agents/regression/scenarios', id_pattern: '^[A-Z][A-Z0-9]{1,9}-[0-9]{3}$', smoke: ['P0'] };
 export const PRIORITIES = ['P0', 'P1', 'P2'];
 export const ENV_KINDS = ['test', 'production'];
@@ -337,6 +339,9 @@ export function resolveEnvBaseUrl(root, cfg, name) {
 // ---------------------------------------------------------------------------------------------
 // The `visual` section (regression.md §13)
 
+/** The device → runner project map of the config (doc keys and empty projects dropped). */
+export const runnerDevices = (cfg) => (isObject(cfg?.runner?.devices) ? Object.fromEntries(Object.entries(cfg.runner.devices).filter(([k, v]) => !docKey(k) && typeof v === 'string' && v !== '')) : {});
+
 export const VISUAL_DEFAULTS = { policy: 'warn', tolerance: { threshold: 0.2, max_diff_pixels: 0 }, max_mask_ratio: 0.25, timezone: 'UTC', mask: [] };
 export const VISUAL_POLICIES = ['warn', 'block'];
 export const VISUAL_DEVICES = ['desktop', 'mobile'];
@@ -349,14 +354,6 @@ const OUTPUT_FLAGS = /(^|\s)(--output(=\S*)?|-o)(\s|$)/;
 export const VISUAL_ID = /^[a-z0-9][a-z0-9-]*$/;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const VISUAL_STRINGS = ['config', 'spec', 'command', 'report', 'baselines'];
-export const RUNS_DIR_REL = '.agents/regression/runs';
-
-/** A guard host pattern (`host` or `*.domain`) matching a hostname. */
-export function hostMatches(pattern, host) {
-  const p = String(pattern).toLowerCase();
-  const h = String(host).toLowerCase();
-  return p.startsWith('*.') ? h.endsWith(p.slice(1)) : h === p;
-}
 
 const isRepoRel = (v) => isFilled(v) && !path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
 const normRel = (p) => path.posix.normalize(p.replace(/\\/g, '/')).replace(/\/+$/, '') || '.';
@@ -415,7 +412,7 @@ function validateStorybook(sb, envs) {
     else {
       const hosts = allowedHosts(entry);
       if (!hosts) errors.push(`${at}: list the storybook host in environments.${env}.guard.hosts`);
-      else if (!hosts.some((p) => hostMatches(p, urlHost(s.url)))) errors.push(`${at}.url: host ${urlHost(s.url)} is not on the environment's allowlist — add it to environments.${env}.guard.hosts`);
+      else if (!hostAllowed({ hosts: hosts.map((p) => String(p).toLowerCase()) }, s.url)) errors.push(`${at}.url: host ${urlHost(s.url)} is not on the environment's allowlist — add it to environments.${env}.guard.hosts`);
     }
     if (!isFilled(s.ready)) errors.push(`${at}.ready: required — a selector present only once the story's render and play finished`);
     if ('error' in s && !isFilled(s.error)) errors.push(`${at}.error: must be a non-empty selector`);
@@ -481,7 +478,7 @@ export function validateVisual(cfg) {
     const dirs = [];
     if (runner && isRepoRel(runner.report)) dirs.push(['runner.report', path.posix.dirname(normRel(runner.report))]);
     if (isRepoRel(v.report)) dirs.push(['visual.report', path.posix.dirname(normRel(v.report))]);
-    dirs.push([RUNS_DIR_REL, RUNS_DIR_REL]);
+    dirs.push([RUNS_DIR, RUNS_DIR]);
     for (const [what, d] of dirs) {
       if (overlap(base, d)) { errors.push(`visual.baselines: overlaps the directory of ${what} (${d})`); break; }
     }

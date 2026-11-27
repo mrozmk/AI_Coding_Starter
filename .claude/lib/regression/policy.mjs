@@ -15,7 +15,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
-  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey, envKind, visualSettings,
+  CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey, envKind, visualSettings, runnerDevices,
 } from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf } from './catalog.mjs';
 
@@ -69,8 +69,6 @@ export function exclusionReason(scenario, policy, envName) {
   return null;
 }
 
-/** The device → runner project map of the config (doc keys dropped). */
-const runnerDevices = (cfg) => (isObject(cfg?.runner?.devices) ? Object.fromEntries(Object.entries(cfg.runner.devices).filter(([k, v]) => !docKey(k) && typeof v === 'string' && v !== '')) : {});
 
 /**
  * Targets × runner projects: `{cases: [{id, title, project, spec, file, source}], no_device: [{id, device}]}`.
@@ -136,7 +134,7 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
   const catalogErrors = validateCatalog(blocks, settings);
   if (catalogErrors.length) return { catalog_errors: catalogErrors };
 
-  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
+  const devices = runnerDevices(cfg);
   const cases = [];
   const excluded = [];
   const noDevice = [];
@@ -156,7 +154,7 @@ export function buildPlan(root, cfg, envName, mode = 'smoke', { configPath = CON
     if (reason) { excluded.push({ id: b.id, reason }); continue; }
     for (const device of VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []) {
       const project = devices[device];
-      if (typeof project !== 'string' || project === '') noDevice.push({ id: b.id, device });
+      if (!project) noDevice.push({ id: b.id, device });
       else cases.push({ ...scenario, project });
     }
   }

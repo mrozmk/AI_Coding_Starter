@@ -20,7 +20,7 @@ import {
   CONFIG_PATH, DEFAULTS, TEST_DATA_COMMANDS, isObject, docKey, loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl, visualSettings,
 } from './config.mjs';
 import { catalogFiles, parseCatalog, validateCatalog } from './catalog.mjs';
-import { scanIntegration } from './run.mjs';
+import { visualIntegration } from './run.mjs';
 
 const BASELINE_SECTIONS = ['runner', 'environments'];
 const INTERPRETERS = new Set(['node', 'bash', 'sh', 'python3', 'npx']);
@@ -211,14 +211,7 @@ function visualGaps(root, cfg) {
     gaps.push(`visual.${k}: ${f} not found`);
     return false;
   });
-  if (present.length === 2) {
-    const findings = scanIntegration(root, {
-      configFile: s.config,
-      configNeeds: [{ module: /\.claude\/lib\/regression\/guard\.mjs$/, binding: 'runnerOptions' }, { module: /\.claude\/lib\/regression\/visual-spec\.mjs$/, binding: 'visualOptions' }],
-      specs: [s.spec],
-    });
-    for (const f of findings) gaps.push(`visual: ${f.file}: ${f.reason}`);
-  }
+  if (present.length === 2) for (const f of visualIntegration(root, cfg)) gaps.push(`visual: ${f.file}: ${f.reason}`);
   if (!insideRoot(root, s.baselines)) gaps.push(`visual.baselines: ${s.baselines} not found — created by the first visual accept`);
   for (const env of Object.keys(s.storybook)) {
     const r = resolveEnvBaseUrl(root, cfg, env);

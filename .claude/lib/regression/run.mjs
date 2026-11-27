@@ -24,16 +24,16 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey, visualSettings } from './config.mjs';
+import { CONFIG_PATH, QA_ENV_PATH, RUNS_DIR, loadConfig, resolveTarget, catalogSettings, isObject, docKey, visualSettings } from './config.mjs';
 import { buildPlan, confirmationText, expandTargets, VISUAL_ACTIONS } from './policy.mjs';
 import { ownerLock, LockError, createLedger, groupAlive, scenarioId, guardedFetch } from './guard.mjs';
 import {
   SOURCES, assertDisjoint, verifyBaselines, treeDigest, readIndex, toleranceCheck, baselinesWatch, readEvidence, readVisualReport,
-  classifyPass, classifyVisual, decideVisual, summaryLine, portability, portabilityLine, evaluateUpdate, hashCandidates,
+  classifyPass, classifyVisual, classifyUpdate, emptyPass, decideVisual, summaryLine, portabilityLine, hashCandidates,
   buildOffer, offerLine, issueAcceptToken, acceptOffer,
 } from './visual.mjs';
 
-export const RUNS_DIR = '.agents/regression/runs';
+export { RUNS_DIR };
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
 const SHA_KEYS = ['sha', 'commit', 'commit_sha', 'git_sha', 'build_sha', 'revision'];
 const HEX_SHA = /^[0-9a-f]{7,40}$/;
@@ -198,15 +198,18 @@ export function checkIntegration(root, cfg, plan) {
   if (plan.mode !== 'visual') {
     findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }], specs: plan.cases.map((c) => c.spec) }));
   }
-  if (plan.visual) {
-    const s = visualSettings(cfg);
-    findings.push(...scanIntegration(root, {
-      configFile: s.config,
-      configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }, { module: VISUAL_SPEC_MODULE, binding: 'visualOptions' }],
-      specs: [s.spec],
-    }));
-  }
+  if (plan.visual) findings.push(...visualIntegration(root, cfg));
   return findings;
+}
+
+/** The static scan of the visual config and spec (the pre-flight and `setup check` share it). */
+export function visualIntegration(root, cfg) {
+  const s = visualSettings(cfg);
+  return scanIntegration(root, {
+    configFile: s.config,
+    configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }, { module: VISUAL_SPEC_MODULE, binding: 'visualOptions' }],
+    specs: [s.spec],
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -407,9 +410,16 @@ export function decideVerdict({ kind, cls, guard, runnerExit, signal, plan, buil
   if (signal) incomplete.push(`runner ended by ${signal}`);
   else if (runnerExit !== 0 && runnerExit !== null && !red.length) incomplete.push(`runner exit ${runnerExit}`);
   for (const n of plan.no_device) incomplete.push(`no device for ${n.id} (${n.device})`);
-  if (!build.before.sha || !build.after.sha) incomplete.push(`deployed build unknown (${build.before.reason ?? build.after.reason})`);
-  else if (build.before.sha !== build.after.sha) incomplete.push(`build changed during the run (${build.before.sha} → ${build.after.sha})`);
+  const b = buildProblem(build);
+  if (b) incomplete.push(b);
   return combineVerdict({ blocked, red, incomplete, warnings });
+}
+
+/** null when the deployed build was read before and after the run and did not change, else the reason. */
+function buildProblem({ before, after }) {
+  if (!before.sha || !after.sha) return `deployed build unknown (${before.reason ?? after.reason})`;
+  if (before.sha !== after.sha) return `build changed during the run (${before.sha} → ${after.sha})`;
+  return null;
 }
 
 /** The verdict of reason lists by precedence BLOCKED/ENV > RED > INCOMPLETE > GREEN (the lists kept as `parts`). */
@@ -652,7 +662,7 @@ async function runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifes
   const baselinesRel = posix(path.relative(root, envDir));
   const integrityExtra = watch.changed ? [watch.changed] : [];
   if (v.action === 'compare') {
-    const pass = passes.compare ?? classifyPass({ pass: 'compare', cases, repeat: 1, evidence: [], report: { valid: false, interrupted: false, tests: new Map() }, events: [] });
+    const pass = passes.compare ?? emptyPass('compare', cases);
     const block = classifyVisual({ settings: s, env: plan.env, cases, noDevice, sources, pass, verify, runner: runners.compare ?? { code: null, signal: null }, integrityExtra, production, baselinesRel });
     if (interrupted) block.incomplete.push(interrupted);
     if (sbCfg && build.storybook_index_before && build.storybook_index_after && build.storybook_index_before !== build.storybook_index_after) block.incomplete.push('storybook index changed during the run');
@@ -660,34 +670,10 @@ async function runVisualPasses({ root, cfg, plan, dir, nonce, locks, baseManifes
     block.build = build;
     return { block, runners };
   }
-  // update: capture + stability
-  const capture = passes.capture ?? classifyPass({ pass: 'capture', cases, repeat: 1, evidence: [], report: { valid: false, interrupted: false, tests: new Map() }, events: [] });
-  const stability = passes.stability ?? null;
-  const evals = evaluateUpdate({ cases, capture, stability, hashes, rehashes, storyBuild });
-  const renderers = stability?.renderers ?? capture.renderers;
-  const incomplete = [];
-  for (const e of evals) if (e.kind !== 'stable') incomplete.push(`visual ${e.kind}: ${e.case.id}/${e.case.project} — ${e.reasons.join('; ')}`);
-  for (const [name, p] of Object.entries(passes)) {
-    if (!p.report_valid) incomplete.push(`visual report missing or unparseable (${name})`);
-    for (const proj of p.renderer_conflicts) incomplete.push(`renderer differs between workers of ${proj} (${name})`);
-  }
-  for (const src of sources) if (src.state === 'failed') incomplete.push(`visual source ${src.name} failed — ${src.reason}`);
-  if (interrupted) incomplete.push(interrupted);
-  const attestation = Object.values(passes).flatMap((p) => p.attestation);
-  const integrity = [...verify.integrity, ...integrityExtra];
-  const block = {
-    policy: s.policy, env: plan.env, action: 'update', passes: v.passes, baselines: baselinesRel, index_digest: verify.index_digest,
-    tolerance: s.tolerance, renderers, portability: portability([...new Set(cases.map((c) => c.project))], verify.index, renderers),
-    build, sources,
-    targets: stability ? [...stability.results.values()].flatMap(({ case: c, reps }) => reps.map((e) => ({ id: c.id, source: c.source, project: c.project, repeat: e.repeat, outcome: e.outcome, diff_pixels: e.diff_pixels ?? null, masked_ratio: e.masked_ratio ?? null, diff: e.diff ?? null, reason: e.reason ?? null }))) : [],
-    orphans: [], no_device: noDevice,
-    counts: { stable: evals.filter((e) => e.kind === 'stable').length, unstable: evals.filter((e) => e.kind === 'unstable').length, error: evals.filter((e) => e.kind === 'error').length },
-    differences: [], incomplete, integrity, attestation: production ? attestation : [],
-    guard_red: [...new Set(Object.values(passes).flatMap((p) => p.guard_red))],
-    stability: evals.map((e) => ({ key: e.key, id: e.case.id, project: e.case.project, kind: e.kind, renders: e.renders, differences: e.differences, outcomes: e.outcomes, reasons: e.reasons })),
-    outcome: integrity.length || incomplete.length ? 'incomplete' : 'clean',
-  };
-  return { block, runners, evals, cases, noDevice, sources, renderers, interrupted, capDir, treeBefore };
+  const { block, evals } = classifyUpdate({
+    settings: s, env: plan.env, cases, noDevice, sources, passes, actionPasses: v.passes, hashes, rehashes, storyBuild, verify, integrityExtra, production, baselinesRel, build, interrupted,
+  });
+  return { block, runners, evals, cases, noDevice, sources, renderers: block.renderers, interrupted, capDir, treeBefore };
 }
 
 function printVisual(block) {
@@ -859,8 +845,8 @@ function visualVerdict({ plan, guard, block, build }) {
   if (guard.outsideTest) parts.red.push('blocked request outside a test');
   const out = applyVisual(parts, block, { production });
   if (block.action === 'compare' && block.counts && !(block.counts.same + block.counts.differs)) out.incomplete.push('visual: nothing compared');
-  if (!build.before.sha || !build.after.sha) out.incomplete.push(`deployed build unknown (${build.before.reason ?? build.after.reason})`);
-  else if (build.before.sha !== build.after.sha) out.incomplete.push(`build changed during the run (${build.before.sha} → ${build.after.sha})`);
+  const b = buildProblem(build);
+  if (b) out.incomplete.push(b);
   return combineVerdict(out);
 }
 
@@ -919,8 +905,8 @@ function offerStep({ root, s, plan, runId, dir, res, verify, v, before, after, g
   for (const e of offer.entries) console.log(offerLine(e));
   if (res.block.integrity.length) return none(res.block.integrity[0]);
   if (res.interrupted) return none(res.interrupted);
-  if (!before.sha || !after.sha) return none(`deployed build unknown (${before.reason ?? after.reason})`);
-  if (before.sha !== after.sha) return none(`build changed during the run (${before.sha} → ${after.sha})`);
+  const b = buildProblem({ before, after });
+  if (b) return none(b);
   if (guard.stop || guard.outsideTest || v.parts.blocked.length || res.block.guard_red.length) return none('the guard found a request it stopped or blocked');
   if (!offer.writes) return none(offer.entries.some((e) => e.kind === 'unstable' || e.kind === 'error') ? 'no stable target to accept' : 'the baselines already match');
   fs.writeFileSync(path.join(dir, 'visual', 'offer.json'), `${JSON.stringify(offer, null, 2)}\n`);
