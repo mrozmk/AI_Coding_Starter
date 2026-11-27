@@ -81,9 +81,9 @@ function specifiersOf(code) {
 
 // Every scanned module but the fixtures one: nothing reaches the network or the process but the guard.
 const NETWORK_CALLS = ['fetch(', 'require(', 'import(', 'XMLHttpRequest', 'WebSocket(', 'newContext(', 'launch(', 'connect(', 'process.env'];
-// The spec only: waits, locators, skip markers and retries the spec rules forbid.
-/** The needles that set retries in a spec — verify reports them as `retries are not 0 — spec`. */
+/** The needles that set retries in a spec or its helpers — verify reports them as `retries are not 0 — spec`. */
 export const RETRY_NEEDLES = ['describe.configure(', 'retries'];
+// The spec only: waits, locators, skip markers and retries the spec rules forbid.
 const SPEC_CALLS = [
   'waitForTimeout(', 'setTimeout(', ".locator('", '.locator("', '.locator(`', '$(', '$$(', '$eval(', 'xpath=',
   'test.skip', 'test.fixme', 'test.fail', 'test.only', '.skip(', ...RETRY_NEEDLES,
@@ -165,6 +165,8 @@ export function lintSpec(root, cfg, specPath, id) {
       else if (!visited.has(mod)) queue.push(mod);
     }
     scanCommon(c, rel(file), add, { network: true });
+    // A helper can set retries too; the spec's own needles were matched with SPEC_CALLS above.
+    if (file !== specFile) for (const o of occurrences(c, RETRY_NEEDLES)) add(rel(file), o.line, `forbidden ${o.needle}`, o.needle);
   }
   if (fixtures) {
     try { scanCommon(stripComments(fs.readFileSync(fixtures, 'utf8')), rel(fixtures), add, { network: false }); } catch { add(rel(fixtures), 0, 'unreadable'); }

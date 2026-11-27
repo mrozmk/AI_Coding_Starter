@@ -480,10 +480,10 @@ lock lifetime: the proposal's digest (sha256 of `proposal.md`, NUL, `proposal.js
 the walk must be `COMPLETE`, run on exactly the staged bytes (`routes_digest`) and complete per
 group. The best outcome of each route over its groups decides every id mapped to it — new,
 existing or retained from `routes.json`: `failed` → only `BLOCKED (live: …)` citing `live`;
-`ok` → `live` READY or BLOCKED, or `code`; anything else → `code` only (cited, and never `live`). A block describing a submit
-path follows its submit's outcome. New blocks: a configured area, `Spec: —`, never a rewrite of an
-existing block (byte-identical text is `skipped: <id> (already applied)`, a DROPPED id is never
-reused), every new block reachable from a route. The merged catalog is validated before any
+`ok` → `live` READY or BLOCKED, or `code`; anything else → `code` only (cited, and never
+`live`). A block describing a submit path follows its submit's outcome. New blocks: a configured
+area, `Spec: —`, never a rewrite of an existing block (byte-identical text is
+`skipped: <id> (already applied)`, a DROPPED id is never reused), every new block reachable from a route. The merged catalog is validated before any
 rename; `routes.json` is written last. A sample that needed redaction is never committed. A
 re-apply of the same proposal changes nothing.
 
@@ -530,12 +530,14 @@ with its `/regression-tests author --area <codes>` line.
 - **Claim** (`author.mjs claim`, under the checkout lock): the verify record names this spec, is
   qualified with `passes_ok [1, 2, 3]` over three passes with distinct nonces and a single passed
   attempt on each of the scenario's projects; the three digests equal the current files; the lint
-  is clean; the critic verdict — and for a `--from-qa` draft the provenance verdict — is `pass` on
-  the same three digests. Then the block's `Spec: —` becomes `<spec> › <title>`, only inside that
-  block's span, and the catalog is re-validated before the rename.
+  is clean; the critic verdict — and for a `--from-qa` draft (the newest registration of the spec
+  that no reject has closed carries `qa`) the provenance verdict — is `pass` on the same three
+  digests. Then the block's `Spec: —` becomes `<spec> › <title>`, only inside that block's span,
+  and the catalog is re-validated before the rename.
 - **Reject** (`author.mjs reject`, under the lock): moves a registered, unclaimed draft into
   `<run>/rejected/` — on every exit, `Cancel` at a confirmation included; a claimed draft is never
-  moved.
+  moved. It closes the draft's `drafts.json` registration (`rejected_at`); a repeated reject prints
+  `already rejected`.
 - **`--from-qa`** joins a `/qa-verify` working file's record (`qa-evidence-families.md` §7b) onto
   the catalog: a criterion token with the same fingerprint as a fresh `PASS` row whose matrix row
   carries a recorded sequence (`driver: script` + an existing script, `driver: mcp` + an existing

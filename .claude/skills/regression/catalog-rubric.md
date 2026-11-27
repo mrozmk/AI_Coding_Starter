@@ -16,8 +16,8 @@ observation it contradicts in `evidence`. The rubric judges **judgement calls**.
 in `PRIOR` as known context): the block grammar and `validateCatalog`, an unknown area code, a new
 block with a `Spec`, a rewrite of an existing block or a reused DROPPED id, a staged route with
 neither a scenario nor an exclusion, an unattached block, a READY or `code`-only block on a route
-the walk saw fail, a `live` block on a route the walk did not see work, a failed submit path that is
-not `BLOCKED (live: …)`, a `code` block without `sources.<id>.code`.
+the walk saw fail, a `live` block or a block not citing `code` on a route the walk did not see work,
+a failed submit path that is not `BLOCKED (live: …)`, a `code` block without `sources.<id>.code`.
 
 ---
 

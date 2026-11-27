@@ -144,7 +144,8 @@ export function joinQa(root, blocks, qa) {
       out.joined.push({ block: b, row: h, evidence: e });
       continue;
     }
-    if (qa.ticket && tokens.some((t) => t.kind === 'tracker' && t.id === qa.ticket)) {
+    // Only a scenario citing no criterion joins by the ticket key.
+    if (!crit.length && qa.ticket && tokens.some((t) => t.kind === 'tracker' && t.id === qa.ticket)) {
       if (withEvidence.length === 1) {
         const h = withEvidence[0];
         cited.add(h);
@@ -238,6 +239,7 @@ function cmdSuggest(root, args) {
 
 const draftsFile = (runDir) => path.join(runDir, 'drafts.json');
 const readDrafts = (runDir) => { try { return JSON.parse(fs.readFileSync(draftsFile(runDir), 'utf8')); } catch { return { drafts: [] }; } };
+const writeDrafts = (runDir, doc) => writeAtomic(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
 
 function cmdDraft(root, args) {
   const cfg = loadAdopted(root);
@@ -257,7 +259,7 @@ function cmdDraft(root, args) {
   }
   const doc = readDrafts(runDir);
   doc.drafts.push({ id: args.id, spec, run: posix(path.relative(root, runDir)), created_at: new Date().toISOString(), ...(args.qa ? { qa: args.qa } : {}) });
-  writeAtomic(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
+  writeDrafts(runDir, doc);
   console.log(`draft: ${args.id} ${spec}`);
   return 0;
 }
@@ -385,18 +387,17 @@ function cmdReject(root, args) {
     const b = blocks.find((x) => x.id === args.id);
     if (b && specOf(b) !== null) refuse(`${args.id} — already claimed (Spec: ${b.fields.Spec.value})`);
     if (blocks.some((x) => specOf(x)?.path === draft.spec)) refuse(`${args.id} — ${draft.spec} is referenced by the catalog`);
-    // Close the registration, so a later draft of the same path is judged on its own at claim.
-    const close = () => {
-      draft.rejected_at = new Date().toISOString();
-      writeAtomic(draftsFile(runDir), `${JSON.stringify(doc, null, 2)}\n`);
-    };
     const src = path.resolve(root, draft.spec);
-    if (!fs.existsSync(src)) { close(); console.log(`rejected: ${args.id} — already gone`); return 0; }
+    const gone = !fs.existsSync(src);
     const dest = path.join(runDir, 'rejected', path.basename(draft.spec));
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.unlinkSync(src); }
-    close();
-    console.log(`rejected: ${args.id} — ${posix(path.relative(root, dest))}`);
+    if (!gone) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.unlinkSync(src); }
+    }
+    // Close the registration, so a later draft of the same path is judged on its own at claim.
+    draft.rejected_at = new Date().toISOString();
+    writeDrafts(runDir, doc);
+    console.log(`rejected: ${args.id} — ${gone ? 'already gone' : posix(path.relative(root, dest))}`);
     return 0;
   });
 }

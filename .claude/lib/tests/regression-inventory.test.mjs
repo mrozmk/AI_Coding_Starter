@@ -287,7 +287,7 @@ test('apply: two applies from the same route list keep both additions', () => {
 test('apply: refuses a retained READY id on a route the new walk saw fail, and an unattached new block', () => {
   const ctx = setup();
   failedWalk(ctx, '/cart');
-  refused(apply(ctx), /^refused: route \/cart: retained CART-001 conflicts with the walk \(failed\) — the block cannot be rewritten; set it BLOCKED or DROPPED by hand$/m);
+  refused(apply(ctx), /^refused: route \/cart: retained CART-001 conflicts with the walk \(failed\) — must be BLOCKED \(live: …\) citing live; apply cannot rewrite the block — fix it by hand, or remove CART-001 from this route in \.agents\/regression\/routes\.json$/m);
   const loose = setup();
   restage(loose, { md: `${mdOf(loose)}\n${block('PDP-009', { title: 'Nowhere' })}\n` });
   refused(apply(loose), /^refused: unattached block PDP-009$/m);

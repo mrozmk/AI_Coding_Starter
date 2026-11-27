@@ -60,7 +60,8 @@ account key for a signed-in route. No `scenarios`, no `exclusion` in a staged li
 - A route whose walk outcome is `failed` → `Status: BLOCKED (live: <the observed reason>)`, citing
   `live`, or an exclusion. Never READY.
 - A route that was `redirected`, `unverified`, `no-sample` or `not-walked` → a block from the code
-  (`Source: code`, `sources.<id>.code` set) or an exclusion. Never `live`.
+  (`Source: code`, `sources.<id>.code` set) or an exclusion. Never `live`. An existing id goes on
+  such a route only when its `Source` cites `code`.
 - A path ending in a write is split: a `read` block up to the submit (`live`) and a `write` block
   from the submit on, always from the code with `file:line`.
 - `submit` entries only for GET search, filter and sort forms whose every control the code shows;

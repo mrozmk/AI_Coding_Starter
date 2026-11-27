@@ -218,7 +218,7 @@ function applyInventory(root, { stage, walk, dryRun, expect }) {
       })();
       if (problem) {
         if (retained.has(id) || !newIds.has(id)) {
-          if (retained.has(id)) refuse(`route ${r.route}: retained ${id} conflicts with the walk (${outcome}) — the block cannot be rewritten; set it BLOCKED or DROPPED by hand`);
+          if (retained.has(id)) refuse(`route ${r.route}: retained ${id} conflicts with the walk (${outcome}) — ${problem}; apply cannot rewrite the block — fix it by hand, or remove ${id} from this route in ${ROUTES_PATH}`);
           refuse(`route ${r.route}: existing ${id} conflicts with the walk (${outcome}) — ${problem}`);
         }
         refuse(`route ${r.route}: ${id} ${problem} (walk: ${outcome}${src?.submit ? `, submit ${src.submit}` : ''})`);

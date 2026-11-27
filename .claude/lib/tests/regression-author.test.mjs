@@ -150,6 +150,18 @@ test('select --from-qa: a producer-shaped ticket=12 record joins a scenario citi
   has(r, /^eligible: SRCH-001 e2e\/regression\/srch\/srch-001\.spec\.ts qa: E2-3\.AC6 \(row\)$/m);
 });
 
+test('select --from-qa: a scenario citing a criterion besides the ticket never joins by the ticket alone', () => {
+  const ctx = setup();
+  const text = read(ctx, QA)
+    .replace(/^- E2-3\.AC2 .*\n/m, '').replace(/^- E2-3\.AC4 .*\n/m, '').replace(/^- E2-3\.AC5 .*\n/m, '');
+  write(ctx, '.agents/handoffs/qa-issue-12-ac-matrix-2.md', text);
+  const srch = '.agents/regression/scenarios/srch.md';
+  write(ctx, srch, read(ctx, srch).replace('**Source:** #12 ·', '**Source:** E2-3.AC9 [abcdef] · #12 ·'));
+  const r = author(ctx, 'select', '--from-qa', '.agents/handoffs/qa-issue-12-ac-matrix-2.md');
+  assert.doesNotMatch(r.stdout, /SRCH-001/);
+  has(r, /^no scenario: E2-3\.AC6$/m);
+});
+
 test('select --from-qa: reordered matrix columns and AC-3 in the matrix against AC3 in the record still join', () => {
   const ctx = setup();
   fs.appendFileSync(path.join(ctx.root, CAT, 'srch.md'), '\n### SRCH-002 — Filter the results\n- **Priority:** P1 · **Viewport:** desktop · **Status:** READY · **Effect:** read\n- **Goal:** Filter.\n- **Steps:**\n  1. Filter.\n- **Expected:** The list narrows.\n- **Source:** CS-79 · **Spec:** —\n');

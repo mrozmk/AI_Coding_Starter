@@ -25,7 +25,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, QA_ENV_PATH, loadConfig, resolveTarget, catalogSettings, isObject, docKey, specDir } from './config.mjs';
-import { accountOf } from './catalog.mjs';
+import { accountOf, posix } from './catalog.mjs';
 import { buildPlan, buildWalkPlan, buildVerifyPlan, confirmationText, MODES } from './policy.mjs';
 import { validateRouteList } from './walk.mjs';
 import { ownerLock, LockError, createLedger, groupAlive, scenarioId } from './guard.mjs';
@@ -39,7 +39,6 @@ const EXIT = { GREEN: 0, RED: 1, INCOMPLETE: 4, 'BLOCKED/ENV': 5 };
 
 const h16 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 const now = () => (process.env.REGRESSION_NOW ? new Date(process.env.REGRESSION_NOW) : new Date());
-const posix = (p) => p.split(path.sep).join('/');
 
 // ---------------------------------------------------------------------------------------------
 // Refusals and inputs

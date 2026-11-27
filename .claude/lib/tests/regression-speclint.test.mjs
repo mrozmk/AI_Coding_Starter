@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { lintSpec } from '../regression/speclint.mjs';
+import { lintSpec, RETRY_NEEDLES } from '../regression/speclint.mjs';
 import { checkIntegration } from '../regression/run.mjs';
 import { loadConfig } from '../regression/config.mjs';
 
@@ -93,6 +93,14 @@ test('lint: scans a relative helper module the spec imports and rejects a networ
   assert.ok(r.files.includes('e2e/regression/cart/helpers/cart.ts'));
   const fixtures = copyRoot();
   assert.deepEqual(lint(fixtures).violations, [], 'the fixtures module uses process.env and @playwright/test and is exempt');
+});
+
+test('lint: rejects retries set in a relative helper module', () => {
+  const root = copyRoot();
+  write(root, 'e2e/regression/cart/helpers/cart.ts', `${read(root, 'e2e/regression/cart/helpers/cart.ts')}\nexport const flaky = (t) => t.describe.configure({ retries: 2 });\n`);
+  const r = lint(root);
+  const v = r.violations.filter((x) => x.file === 'e2e/regression/cart/helpers/cart.ts' && RETRY_NEEDLES.includes(x.needle));
+  assert.deepEqual(v.map((x) => x.needle).sort(), ['describe.configure(', 'retries'], JSON.stringify(r.violations));
 });
 
 test('lint: follows a second-level import, handles a cycle and rejects an unresolvable import', () => {

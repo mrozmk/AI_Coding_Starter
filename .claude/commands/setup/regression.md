@@ -121,9 +121,11 @@ regression.md §13. Nothing is committed; the proposal and the walk stay in
    invalid, the walk stub missing, no desktop project, an unknown environment, an invalid catalog or
    configuration): with `environments:` → the environment was unknown — ask step 3's question again
    and rerun with its `--env`; `walk stub missing` → do step 2, then rerun; otherwise report the
-   stderr lines and stop. Exit 3 with `confirmation-required: <token>` → the production confirmation question exactly as in
-   `/regression-tests` → Run step 3 (`Run` / `Cancel`; `Run` re-runs with `--confirm <token>`);
-   `Cancel` → stop, nothing written. Exit 4 (INCOMPLETE) or 5 (BLOCKED/ENV) → report the `reason:`
+   stderr lines and stop. Exit 3 with `confirmation-required: <token>` → the production
+   confirmation question exactly as in `/regression-tests` → Run step 3 (`Run` / `Cancel`; `Run`
+   re-runs with `--confirm <token>`); `Cancel` → stop, nothing written. Exit 3 otherwise (a team
+   clone, a runner not guard-integrated, a held lock, an invalid confirmation) → report the stderr
+   lines and stop. Exit 4 (INCOMPLETE) or 5 (BLOCKED/ENV) → report the `reason:`
    lines and stop. Exit 0 → `walk: COMPLETE`, `observations: <file>`, `record: <walk run dir>/walk.json`.
 7. **Scenarios.** `MODE=gaps` when `.agents/backlog.md` exists or a catalog scenario cites a
    criterion, else `MODE=full`. Spawn `@regression-inventory` with `PHASE=scenarios`, `MODE`,
