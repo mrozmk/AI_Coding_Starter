@@ -486,7 +486,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (args.json) {
     console.log(JSON.stringify({ adopted: true, catalog: { path: settings.path, files }, errors, scenarios: rows, counts }, null, 2));
   } else if (!ok) {
-    for (const e of errors) console.log(`${e.file}:${e.line}: ${e.message}`);
+    for (const e of errors) console.log(errorLine(e));
   } else if (args.status) {
     console.log(renderStatus(counts, files.length, rows.length, rows));
   } else {

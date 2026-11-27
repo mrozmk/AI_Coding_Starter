@@ -292,7 +292,7 @@ test('crosscheck: --delta --plan binds each Proof: scenario to its criterion', (
   exit(cli(root, '--delta', 'none', '--plan', PLAN), 0);
 });
 
-test('crosscheck: --delta --plan requires the source spec\'s tagged criteria', () => {
+test("crosscheck: --delta --plan requires the source spec's tagged criteria", () => {
   const root = mkRepo({
     [SPEC]: spec([`- **E1-1.AC1** — ${A1}`, `- **E1-2.AC1** — ${B1}`]),
     [`${CAT}/cart.md`]: cat(block('CART-001', { source: T1 }), block('CART-002', { priority: 'P1', source: T2 })),
@@ -325,7 +325,7 @@ test('crosscheck: --delta --plan --planning accepts an id a catalog task adds', 
   has(r, 'Proof: scenario — CART-005 under E1-1.AC1: no such scenario');
 });
 
-test('crosscheck: --delta checks the covering scenario\'s priority against the tag', () => {
+test("crosscheck: --delta checks the covering scenario's priority against the tag", () => {
   const root = mkRepo({ [SPEC]: spec([`- **E1-1.AC1** — ${A1}`]), [`${CAT}/cart.md`]: cat(block('CART-001', { priority: 'P2', source: T1 })) });
   let r = cli(root, '--delta', 'none', '--spec', SPEC);
   exit(r, 1);
@@ -337,7 +337,7 @@ test('crosscheck: --delta checks the covering scenario\'s priority against the t
   lacks(r, 'priority');
 });
 
-test('crosscheck: --delta uses the plan family\'s declarations', () => {
+test("crosscheck: --delta uses the plan family's declarations", () => {
   const crits = [crit(`- **E1-1.AC2** — ${U1}`, 'manual — the cart')];
   const root = mkRepo({
     [SPEC]: spec([`- **E1-1.AC2** — ${U1}`]),
@@ -487,7 +487,7 @@ test('crosscheck: a catalog path outside the repository is refused', () => {
   }
 });
 
-test('crosscheck: nested Proof lines do not change a criterion\'s token', () => {
+test("crosscheck: nested Proof lines do not change a criterion's token", () => {
   const head = '[reg P0] Given one line in the cart, when the quantity is raised,';
   const cont = 'then the line total follows.';
   const root = mkRepo({ [SPEC]: spec([`- **E1-1.AC1** — ${head}`, `  ${cont}`]) });
@@ -510,7 +510,7 @@ test('crosscheck: --backlog --candidate refuses dropping a citation of an active
   has(r, `CART-001: candidate drops a scenario still citing active ${T2}`);
 });
 
-test('crosscheck: completeness spans the split\'s peer plans', () => {
+test("crosscheck: completeness spans the split's peer plans", () => {
   const root = mkRepo({
     [SPEC]: spec([`- **E1-1.AC1** — ${A1}`, `- **E1-2.AC1** — ${B1}`]),
     [`${CAT}/cart.md`]: cat(block('CART-001', { source: T1 }), block('CART-002', { priority: 'P1', source: T2 })),
@@ -559,7 +559,7 @@ test('crosscheck: a plain sub-bullet stays in the criterion text for every reade
   has(cli(root, '--delta', 'none', '--plan', PLAN), `uncovered ${want}`);
 });
 
-test('crosscheck: the plan\'s tag must equal the source spec\'s', () => {
+test("crosscheck: the plan's tag must equal the source spec's", () => {
   const root = mkRepo({ [SPEC]: spec([`- **E1-1.AC1** — ${A1}`]), [`${CAT}/cart.md`]: cat(block('CART-001', { priority: 'P2', source: T1 })) });
   write(root, PLAN, plan({ criteria: [crit(`- **E1-1.AC1** — ${A1.replace('[reg P0]', '[reg P2]')}`, 'scenario — CART-001')] }));
   const r = cli(root, '--delta', 'none', '--plan', PLAN);
@@ -567,7 +567,7 @@ test('crosscheck: the plan\'s tag must equal the source spec\'s', () => {
   has(r, `tag of ${T1} is P2 in the plan, P0 in the source spec`);
 });
 
-test('crosscheck: a merge of the line into the branch attributes only the Task\'s own changes', () => {
+test("crosscheck: a merge of the line into the branch attributes only the Task's own changes", () => {
   const crits = [crit(`- **E1-1.AC2** — ${U1}`, 'manual — the cart')];
   const root = mkRepo({ [SPEC]: spec([`- **E1-1.AC2** — ${U1}`]), [`${CAT}/cart.md`]: cat(block('CART-001')) });
   git(root, 'checkout', '-qb', 'task');

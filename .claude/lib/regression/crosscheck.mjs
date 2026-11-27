@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { catalogFiles, parseCatalog, validateCatalog, sourceTokens, extractFingerprintBlock, fingerprint, isDropped, posix, BACKLOG, CRITERION_BARE } from './catalog.mjs';
 import { CONFIG_PATH, PRIORITIES, catalogSettings, isRepoRelative } from './config.mjs';
-import { readBacklogFiles, parseBacklog, resolveTask, regressionTag, loadInventory, AC_DEFINITION, criterionText } from '../backlog-check.mjs';
+import { readBacklogFiles, parseBacklog, resolveTask, regressionTag, loadInventory, AC_DEFINITION, AC_SECTION_HEADING, criterionText } from '../backlog-check.mjs';
 
 const PLAN_DIRS = ['.agents/plans/active', '.agents/plans/done'];
 const RANK = Object.fromEntries(PRIORITIES.map((p, i) => [p, i]));
@@ -32,7 +32,7 @@ const newResult = () => ({ errors: [], warnings: [], lines: [] });
 const err = (res, file, line, message) => { res.errors.push({ file, line, message }); };
 
 /** First 12 hex of the sha256 of the whitespace-normalised text — the `(Expected <d>)` digest. */
-export const expectedDigest = (text) => crypto.createHash('sha256').update(norm(text)).digest('hex').slice(0, 12);
+const expectedDigest =(text) => crypto.createHash('sha256').update(norm(text)).digest('hex').slice(0, 12);
 
 function git(root, args) {
   const r = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
@@ -68,11 +68,11 @@ function guardPaths(root, settings, candidate) {
 
 /**
  * Working-tree blocks; with a candidate, each `<dir>/regression/<name>` replaces the repo file
- * `<catalog.path>/<name>` (`replaced` its repo paths, `original` the repo blocks it replaces).
+ * `<catalog.path>/<name>` (`original` = the repo blocks it replaces).
  */
 function treeSide(root, settings, candidate) {
   const repo = parseCatalog(root, catalogFiles(root, settings));
-  if (!candidate) return { blocks: repo, replaced: [], original: [] };
+  if (!candidate) return { blocks: repo, original: [] };
   const candRoot = path.resolve(root, candidate);
   const candFiles = catalogFiles(candRoot, { path: 'regression' });
   const repoPath = (file) => posix(path.join(settings.path, path.posix.basename(file)));
@@ -80,7 +80,6 @@ function treeSide(root, settings, candidate) {
   const overlay = parseCatalog(candRoot, candFiles).map((b) => ({ ...b, file: repoPath(b.file) }));
   return {
     blocks: [...repo.filter((b) => !replaced.includes(b.file)), ...overlay],
-    replaced,
     original: repo.filter((b) => replaced.includes(b.file)),
   };
 }
@@ -144,14 +143,14 @@ function diffSides(res, baseBlocks, tree) {
  * indented lines `specCriteria` appends, minus nested `- Proof: …` lines (collected per criterion).
  * A `Technical checks` sub-list or sub-heading is no criterion.
  */
-export function criteriaOf(md) {
+function criteriaOf(md) {
   const raw = [];
   let inSection = false;
   let skip = false;
   let cur = null;
   let proofIndent = null;
   (md ?? '').replace(/\r/g, '').split('\n').forEach((line, idx) => {
-    if (/^##\s/.test(line)) { inSection = /^##\s+acceptance criteria\b/i.test(line); cur = null; skip = false; return; }
+    if (/^##\s/.test(line)) { inSection = AC_SECTION_HEADING.test(line); cur = null; skip = false; return; }
     if (!inSection) return;
     if (/^#{3,}\s/.test(line)) { cur = null; skip = /technical checks/i.test(line); return; }
     if (skip) return;
