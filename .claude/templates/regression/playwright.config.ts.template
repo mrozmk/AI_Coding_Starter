@@ -9,8 +9,11 @@
 //                        (config e2e/playwright.config.ts → '../.claude/lib/regression/guard.mjs')
 // No `webServer` on purpose: a regression run targets a deployed environment only (REGRESSION_BASE_URL,
 // resolved from .claude/regression.json `environments`), never an app this run starts itself.
-// Workers, the per-project selection grep, slowMo and blocked service workers come from the run
-// manifest; without REGRESSION_RUN this config refuses to load — run specs through /regression-tests.
+// Workers, the per-project selection grep, the selected spec files (testMatch: Playwright loads every
+// discovered file before it applies grep, so an unclaimed draft would load too), slowMo and blocked
+// service workers come from the run manifest; without REGRESSION_RUN this config refuses to load —
+// run specs through /regression-tests. A production run, a walk and a verify refuse a config
+// without testMatch (an older copy: re-copy this template, regression.md §11).
 // Never add `extraHTTPHeaders` or `httpCredentials` here: a production run refuses such a config.
 import { defineConfig, devices } from '@playwright/test';
 import { loadRunManifest, runnerOptions } from '<guard-module-relative>';
@@ -19,6 +22,7 @@ const opts = runnerOptions(loadRunManifest());
 
 export default defineConfig({
   testDir: '<spec-dir-relative>',
+  testMatch: opts.testMatch,
   retries: 0,
   workers: opts.workers,
   reporter: [['json', { outputFile: '<report-relative>' }]],

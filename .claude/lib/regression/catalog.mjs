@@ -23,7 +23,8 @@ const OPTIONAL = ['Data', 'Needs'];
 const ENUMS = { Priority: PRIORITIES, Viewport: ['desktop', 'mobile', 'both'], Effect: ['read', 'write'] };
 export const STATUSES = ['READY', 'BLOCKED', 'DROPPED'];
 const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
-const BLOCKED_REF = /^(E\d+-\d+|[A-Z][A-Z0-9]+-\d+|#\d+)$/;
+// `live: <reason>`: an inventoried path that fails on the live app (regression.md §13).
+const BLOCKED_REF = /^(E\d+-\d+|[A-Z][A-Z0-9]+-\d+|#\d+|live: \S.*)$/;
 const CRITERION = /^E\d+-\d+\.AC\d+ \[[0-9a-f]{6}\]$/;
 const CRITERION_BARE = /^E\d+-\d+\.AC\d+$/;
 const FLOW = /^FL-\d+(\.A\d+)?$/;
@@ -32,7 +33,9 @@ const WORDS = new Set(['live', 'code']);
 const SPEC = /^(\S+) › (.+)$/;
 const FIELD_SPLIT = / · (?=\*\*[A-Za-z]+:\*\*)/;
 const FIELD = /^\*\*([A-Za-z]+):\*\*\s*(.*)$/;
-const HEADER = /^\s*\/\/ regression: (\S+) · source: (.+)$/;
+export const HEADER = /^\s*\/\/ regression: (\S+) · source: (.+)$/;
+/** A spec's note that one `Expected` clause cannot be asserted in a browser: `<ID> · <clause> — <reason>`. */
+export const UNOBSERVABLE = /^\s*\/\/ regression-unobservable: (\S+) · (.+?) — (.+)$/;
 const FP_BEGIN = '<!-- qa-fingerprint:begin -->';
 const FP_END = '<!-- qa-fingerprint:end -->';
 export const FP_REFERENCE = '.agents/reference/qa-evidence-families.md';
@@ -41,7 +44,7 @@ const BACKLOG = '.agents/backlog.md';
 const isEmpty = (v) => v === undefined || /^\s*(—|-)?\s*$/.test(v);
 const posix = (p) => p.split(path.sep).join('/');
 // A single-value field wrapped onto continuation lines reads as one line (the header copies it on one).
-const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
+export const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
 /** `[match, status, ref]` of a block's Status, `[]` when it does not parse. */
 export const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
 const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
@@ -99,6 +102,46 @@ export function parseCatalog(root, files) {
   return blocks;
 }
 
+/**
+ * The exact text of every block: `Map<id, {file, line, text}>` — the raw lines from its `###` line
+ * up to the next `#`–`###` heading, trailing blank lines dropped. A duplicate id keeps the first.
+ * One helper for verify, claim and apply, so they all hash and compare the same bytes.
+ */
+export function blockTexts(root, files) {
+  const out = new Map();
+  for (const file of files) {
+    const lines = fs.readFileSync(path.resolve(root, file), 'utf8').replace(/\r/g, '').split('\n');
+    let cur = null;
+    const close = () => {
+      if (!cur) return;
+      while (cur.lines.length && cur.lines[cur.lines.length - 1].trim() === '') cur.lines.pop();
+      if (!out.has(cur.id)) out.set(cur.id, { file, line: cur.line, text: cur.lines.join('\n') });
+      cur = null;
+    };
+    lines.forEach((line, idx) => {
+      if (/^#{1,3}\s/.test(line)) {
+        close();
+        const m = /^###\s+(\S+)/.exec(line);
+        if (m) cur = { id: m[1], line: idx + 1, lines: [line] };
+        return;
+      }
+      if (cur) cur.lines.push(line);
+    });
+    close();
+  }
+  return out;
+}
+
+/** `[{clause, reason}]` of the spec's `// regression-unobservable:` lines for `id`. */
+function unobservableOf(root, b) {
+  const spec = parseSpec(b.fields.Spec?.value ?? '—', b.id);
+  if (!spec || spec.error) return [];
+  let text;
+  try { text = fs.readFileSync(path.resolve(root, spec.path), 'utf8'); } catch { return []; }
+  return text.replace(/\r/g, '').split('\n').map((l) => UNOBSERVABLE.exec(l))
+    .filter((m) => m && m[1] === b.id).map((m) => ({ clause: m[2].trim(), reason: m[3].trim() }));
+}
+
 /** Tokens of a `Source` value (` · `-separated): `{kind, raw, id, fp}`; kind `bad` when no grammar matches. */
 export function sourceTokens(value) {
   return oneLine(value).split(' · ').map((t) => t.trim()).filter((t) => t !== '').map((raw) => {
@@ -151,7 +194,7 @@ export function validateCatalog(blocks, settings) {
     if (st) {
       if (!status) err(b, st.line, `unknown Status value ${st.value || '(empty)'} — expected READY | BLOCKED (<ref>) | DROPPED (<reason>)`);
       else if (status === 'READY' && ref !== undefined) err(b, st.line, 'READY takes no parenthesis');
-      else if (status === 'BLOCKED' && !BLOCKED_REF.test((ref ?? '').trim())) err(b, st.line, 'BLOCKED without a reference — expected BLOCKED (<Task id | tracker key | #n>)');
+      else if (status === 'BLOCKED' && !BLOCKED_REF.test((ref ?? '').trim())) err(b, st.line, 'BLOCKED without a reference — expected BLOCKED (<Task id | tracker key | #n | live: <reason>>)');
       else if (status === 'DROPPED' && !(ref ?? '').trim()) err(b, st.line, 'DROPPED without a reason — expected DROPPED (<reason or D-n>)');
     }
     if (status === 'READY') {
@@ -291,6 +334,7 @@ export function scenarioRow(root, b, ctx) {
     source: b.fields.Source?.value ?? null, spec: isEmpty(spec) ? null : spec,
     needs: needsKeys(b.fields.Needs?.value),
     automation: a.state, automation_reason: a.reason,
+    unobservable: unobservableOf(root, b),
   };
 }
 
@@ -329,7 +373,7 @@ export function statusReport(root, rows, ctx = {}) {
   };
 }
 
-function renderStatus(counts, nFiles, nScenarios) {
+function renderStatus(counts, nFiles, nScenarios, rows = []) {
   const out = [`catalog ok — ${nScenarios} scenarios in ${nFiles} files`, 'by status × priority:'];
   for (const s of STATUSES) out.push(`  ${s.padEnd(8)} ${PRIORITIES.map((p) => `${p}=${counts.by_status_priority[s][p]}`).join(' ')}`);
   out.push('coverage (planned / written / automated):');
@@ -339,6 +383,7 @@ function renderStatus(counts, nFiles, nScenarios) {
   }
   out.push(`without spec (READY, automation missing): ${counts.without_spec.join(', ') || 'none'}`);
   out.push(`stale: ${counts.stale.join(', ') || 'none'}`);
+  for (const r of rows) for (const u of r.unobservable ?? []) out.push(`unobservable: ${r.id} — ${u.clause} — ${u.reason}`);
   return out.join('\n');
 }
 
@@ -390,7 +435,7 @@ export function main(argv = process.argv.slice(2)) {
   } else if (!ok) {
     for (const e of errors) console.log(`${e.file}:${e.line}: ${e.message}`);
   } else if (args.status) {
-    console.log(renderStatus(counts, files.length, rows.length));
+    console.log(renderStatus(counts, files.length, rows.length, rows));
   } else {
     console.log(`catalog ok — ${rows.length} scenarios in ${files.length} files`);
   }

@@ -1,0 +1,24 @@
+// Regression inventory walk — copied by /setup:regression (inventory step) to <spec_dir>/_walk.spec.ts
+// (never over an existing file). Placeholders:
+//   <fixtures-relative>      the path from this file to the fixtures module, without extension (e.g. '../fixtures')
+//   <guard-module-relative>  the path from this file's directory to .claude/lib/regression/guard.mjs
+//   <walk-module-relative>   the path from this file's directory to .claude/lib/regression/walk.mjs
+// It registers one test per walk group of the run manifest (`WALK<k> — <account | anonymous>`); an
+// ordinary run's manifest carries no walk, so it registers nothing there. Every navigation goes
+// through the guard the fixtures install: this file never adds a route or a context default of its
+// own, and it never submits a form through the page (regression.md §13).
+import { test } from '<fixtures-relative>';
+import { loadRunManifest } from '<guard-module-relative>';
+import { walkGroup } from '<walk-module-relative>';
+
+const manifest = loadRunManifest();
+
+for (const group of manifest.walk?.groups ?? []) {
+  test.describe(() => {
+    test.use({ account: group.account });
+    test(`${group.key} — ${group.account ?? 'anonymous'}`, async ({ page }, testInfo) => {
+      test.setTimeout(manifest.walk.timeout_ms);
+      await walkGroup({ page, manifest, group, testInfo });
+    });
+  });
+}

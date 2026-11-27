@@ -1,0 +1,8 @@
+[
+  { "route": "/cart", "group": "WALK1", "account": null, "outcome": "ok", "reason": null, "sample": "/cart", "final": "/cart", "status": 200, "title": "Cart", "headings": ["Your cart"], "aria": "- heading \"Your cart\" [level=1]", "links": ["/p/42"], "forms": [], "submits": [] },
+  { "route": "/search", "group": "WALK1", "account": null, "outcome": "ok", "reason": null, "sample": "/search", "final": "/search", "status": 200, "title": "Search", "headings": ["Search"], "aria": "- searchbox \"Search\"", "links": [], "forms": [{ "name": "search", "action": "/search", "method": "GET", "fields": [{ "name": "q", "type": "search" }] }], "submits": [{ "form": "search", "outcome": "submitted", "status": 200, "final": "/search", "title": "Results", "headings": ["Results"], "aria": "- heading \"Results\" [level=1]" }] },
+  { "route": "/checkout", "group": "WALK1", "account": null, "outcome": "failed", "reason": "status 500", "sample": "/checkout", "final": "/checkout", "status": 500, "title": "Error", "headings": [], "aria": "", "links": [], "forms": [], "submits": [] },
+  { "route": "/account", "group": "WALK1", "account": null, "outcome": "redirected", "reason": "redirected to /login", "sample": "/account", "final": "/login", "status": 200, "title": "Sign in", "headings": ["Sign in"], "aria": "", "links": [], "forms": [], "submits": [] },
+  { "route": "/p/:id", "group": "WALK1", "account": null, "outcome": "ok", "reason": null, "sample": "/p/42", "final": "/p/42", "status": 200, "title": "Product", "headings": ["Shoe"], "aria": "- heading \"Shoe\" [level=1]", "links": [], "forms": [], "submits": [] },
+  { "route": "/orders/:id", "group": "WALK1", "account": null, "outcome": "no-sample", "reason": "no sample", "sample": null }
+]

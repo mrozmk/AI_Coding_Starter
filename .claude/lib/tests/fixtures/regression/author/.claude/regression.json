@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "catalog": {
+    "path": ".agents/regression/scenarios",
+    "areas": { "CART": "Cart", "SRCH": "Search" },
+    "smoke": ["P0"]
+  },
+  "runner": {
+    "config": "e2e/playwright.config.ts",
+    "spec_dir": "e2e/regression",
+    "devices": { "desktop": "desktop-chrome", "mobile": "mobile-safari" },
+    "commands": { "smoke": "true", "full": "true" },
+    "report": "e2e/.results/report.json",
+    "test_data": {
+      "check": "e2e/test-data/adapter.sh check",
+      "provision": "e2e/test-data/adapter.sh provision",
+      "reset": "e2e/test-data/adapter.sh reset",
+      "session": "e2e/test-data/adapter.sh session"
+    }
+  },
+  "default_env": "test",
+  "environments": {
+    "test": { "host": "https://test.shop.example.com", "kind": "test", "writes": "allowed", "means": ["account:shopper"] },
+    "prod": { "host": "https://shop.example.com", "writes": "refuse", "means": ["account:shopper"] }
+  }
+}

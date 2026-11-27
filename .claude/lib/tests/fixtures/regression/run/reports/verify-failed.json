@@ -1,0 +1,60 @@
+{
+  "config": {
+    "version": "1.64.0",
+    "rootDir": "e2e/regression"
+  },
+  "suites": [
+    {
+      "title": "cart/cart-008.spec.ts",
+      "file": "cart/cart-008.spec.ts",
+      "specs": [
+        {
+          "title": "CART-008 — See the cart summary",
+          "file": "cart/cart-008.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "unexpected",
+              "results": [
+                {
+                  "status": "failed",
+                  "duration": 100,
+                  "retry": 0,
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "test-results/x/error-context.md"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "CART-008 — See the cart summary",
+          "file": "cart/cart-008.spec.ts",
+          "tests": [
+            {
+              "projectName": "mobile-safari",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [],
+  "stats": {}
+}

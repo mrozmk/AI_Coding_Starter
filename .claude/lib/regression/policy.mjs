@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 import {
   CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, catalogSettings, isObject, docKey,
 } from './config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf } from './catalog.mjs';
+import { catalogFiles, parseCatalog, validateCatalog, needsKeys, parseSpec, statusOf, blockTexts } from './catalog.mjs';
+import { lintSpec, stripComments } from './speclint.mjs';
+import { redactedSamples } from './walk.mjs';
 
 export const MODES = ['smoke', 'full'];
 const VIEWPORT_DEVICES = { desktop: ['desktop'], mobile: ['mobile'], both: ['desktop', 'mobile'] };
@@ -140,6 +142,155 @@ export function confirmationText(plan) {
     `consent: ${p.consent.strategy}${p.consent.cookies.length ? '' : ' (not applied — no cookies declared)'}`,
   ];
   return lines.join('\n');
+}
+
+/** Target, policy and budget shared by every plan builder, or `{error}`. */
+function targetOf(root, cfg, envName) {
+  const entry = isObject(cfg?.environments) ? cfg.environments[envName] : undefined;
+  if (!isObject(entry) || docKey(envName)) return { error: `unknown environment ${envName}` };
+  const base = resolveEnvBaseUrl(root, cfg, envName);
+  if (base.error) return { error: base.error };
+  const policy = envPolicy(entry);
+  if (!policy.guard.hosts.length) policy.guard.hosts = [new URL(base.url).hostname];
+  const operations = Object.fromEntries(Object.entries(policy.guard.operations)
+    .filter(([, o]) => o.cost !== undefined)
+    .map(([k, o]) => [k, { cost: o.cost, backend_calls: o.backend_calls ?? null }]));
+  const budget = { ceiling: policy.guard.budget, operations, worst_case_backend_calls: worstCaseBackendCalls(policy.guard.budget, operations) };
+  return { base_url: base.url, policy, budget };
+}
+
+/**
+ * The walk plan of a staged route list: one case `WALK<k>` per account group on the desktop
+ * project (anonymous routes in one group, each `account` in its own), a group whose account is not
+ * a declared means of the environment excluded by policy. `{error}` on a target or device problem.
+ */
+export function buildWalkPlan(root, cfg, envName, routesDoc, routesFile, { configPath = CONFIG_PATH } = {}) {
+  const t = targetOf(root, cfg, envName);
+  if (t.error) return { error: t.error };
+  const project = isObject(cfg.runner?.devices) ? cfg.runner.devices.desktop : undefined;
+  if (typeof project !== 'string' || project === '') return { error: 'no desktop device project — the walk runs on desktop' };
+  const routes = routesDoc.routes;
+  const accounts = [...new Set(routes.map((r) => r.account ?? null))].sort((a, b) => (a === null ? -1 : b === null ? 1 : a < b ? -1 : 1));
+  const groups = [];
+  const excluded = [];
+  const cases = [];
+  const specDir = String(cfg.runner.spec_dir).replace(/\/+$/, '');
+  accounts.forEach((account, i) => {
+    const key = `WALK${i + 1}`;
+    const keys = routes.filter((r) => (r.account ?? null) === account).map((r) => r.route);
+    const g = { key, account, routes: keys };
+    if (account !== null && !t.policy.means.includes(`account:${account}`)) {
+      const reason = `account:${account} not declared for ${envName}`;
+      excluded.push({ group: key, account, reason, routes: keys });
+      groups.push({ ...g, excluded: reason });
+      return;
+    }
+    groups.push({ ...g, excluded: null });
+    cases.push({ id: key, title: `${key} — ${account ?? 'anonymous'}`, project, spec: `${specDir}/_walk.spec.ts`, effect: 'read', needs: account ? [`account:${account}`] : [] });
+  });
+  const submits = routes.flatMap((r) => (r.submit ?? []).map((s) => ({ route: r.route, form: s.form, action: s.action, inputs: Object.keys(s.inputs ?? {}) })));
+  const settings = catalogSettings(cfg);
+  const files = catalogFiles(root, settings);
+  const digests = {
+    config: sha256(fs.readFileSync(path.resolve(root, configPath))),
+    catalog: digestFiles(root, files),
+    routes: sha256(fs.readFileSync(path.resolve(root, routesFile))),
+  };
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'walk', config: digests.config, routes: digests.routes, cases, budget: t.budget });
+  const walked = groups.filter((g) => !g.excluded).map(({ key, account, routes: r }) => ({ key, account, routes: r }));
+  return {
+    env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'walk',
+    cases, scenarios: cases.length, groups, excluded: excluded.map((e) => ({ id: e.group, reason: e.reason })), excluded_groups: excluded,
+    no_device: [], submits, redacted_samples: redactedSamples(routes, t.policy.redact),
+    budget: t.budget, digests, policy: t.policy, catalog_ids: cases.map((c) => c.id),
+    walk: { groups: walked, routes, redact: t.policy.redact, caps: { aria_chars: 8000, links: 200 }, timeout_ms: Math.max(60000, routes.length * 20000) },
+    textFn: walkConfirmationText,
+  };
+}
+
+/** `retries are not 0 — <config|command>`, or null: every retries in the runner config is a literal 0. */
+export function retriesProblem(root, cfg) {
+  let text = '';
+  try { text = stripComments(fs.readFileSync(path.resolve(root, cfg.runner.config), 'utf8')); } catch { text = ''; }
+  const values = [...text.matchAll(/\bretries\s*:\s*([^,}\n]*)/g)].map((m) => m[1].trim());
+  if (values.some((v) => v !== '0')) return 'retries are not 0 — config';
+  if (/--retries\b/.test(String(cfg.runner.commands?.full ?? ''))) return 'retries are not 0 — command';
+  return null;
+}
+
+/**
+ * The verify plan of candidate specs (`pairs = [{id, spec}]`): three passes of `runner.commands.full`
+ * over the cases of READY, spec-less, policy-eligible scenarios whose candidate passes the lint.
+ * Refusals in `refused` (the run stops before any confirmation, lock or runner); `scenarios`
+ * carries the evidence key `{spec_sha256, inputs_sha256, block_sha256}` bound into the digest.
+ */
+export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG_PATH } = {}) {
+  const t = targetOf(root, cfg, envName);
+  if (t.error) return { error: t.error };
+  const settings = catalogSettings(cfg);
+  const files = catalogFiles(root, settings);
+  const blocks = parseCatalog(root, files);
+  const catalogErrors = validateCatalog(blocks, settings);
+  if (catalogErrors.length) return { catalog_errors: catalogErrors };
+  const texts = blockTexts(root, files);
+  const devices = isObject(cfg.runner?.devices) ? cfg.runner.devices : {};
+  const refused = [];
+  const cases = [];
+  const scenarios = [];
+  const retries = retriesProblem(root, cfg);
+  for (const { id, spec } of pairs) {
+    const b = blocks.find((x) => x.id === id);
+    const why = (() => {
+      if (!b) return 'not in the catalog';
+      const [, status] = statusOf(b);
+      if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
+      if (parseSpec(b.fields.Spec?.value ?? '—', id) !== null) return 'already has a spec';
+      const needs = needsKeys(b.fields.Needs?.value);
+      const dataAccounts = [...String(b.fields.Data?.value ?? '').matchAll(/\baccount:([a-z0-9][a-z0-9_-]*)/g)].map((m) => m[1]);
+      const missing = dataAccounts.find((k) => !needs.includes(`account:${k}`));
+      if (missing) return `account ${missing} in Data but not in Needs`;
+      const reason = exclusionReason({ id, needs, effect: b.fields.Effect?.value ?? 'read' }, t.policy, envName);
+      if (reason) return reason;
+      for (const d of VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []) if (typeof devices[d] !== 'string' || devices[d] === '') return `no device ${d}`;
+      if (!fs.existsSync(path.resolve(root, spec))) return `spec file absent — ${spec}`;
+      if (retries) return retries;
+      const lint = lintSpec(root, cfg, spec, id);
+      const r = lint.violations.find((v) => /retries|describe\.configure/.test(v.rule));
+      if (r) return 'retries are not 0 — spec';
+      if (lint.violations.length) return `lint: ${lint.violations[0].rule}`;
+      return null;
+    })();
+    if (why) { refused.push({ id, reason: why }); continue; }
+    const lint = lintSpec(root, cfg, spec, id);
+    const projects = (VIEWPORT_DEVICES[b.fields.Viewport?.value] ?? []).map((d) => devices[d]);
+    const needs = needsKeys(b.fields.Needs?.value);
+    for (const project of projects) cases.push({ id, title: b.title, project, spec, effect: b.fields.Effect?.value ?? 'read', needs });
+    scenarios.push({
+      id, spec, projects, needs,
+      spec_sha256: sha256(fs.readFileSync(path.resolve(root, spec))),
+      inputs_sha256: digestFiles(root, lint.files),
+      block_sha256: sha256(texts.get(id).text),
+    });
+  }
+  const digests = { config: sha256(fs.readFileSync(path.resolve(root, configPath))), catalog: digestFiles(root, files) };
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'verify', config: digests.config, catalog: digests.catalog, cases, scenarios, budget: t.budget, repeats: 3 });
+  return {
+    env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'verify',
+    cases, scenarios_list: scenarios, scenarios: scenarios.length, refused, excluded: [], no_device: [], repeats: 3,
+    budget: t.budget, digests, policy: t.policy, catalog_ids: blocks.map((x) => x.id),
+    textFn: verifyConfirmationText,
+  };
+}
+
+/** The walk's confirmation: the run lines plus routes, groups and every submit entry. */
+export function walkConfirmationText(plan) {
+  const submits = plan.submits.map((s) => `${s.route} ${s.form} ${s.action} ${s.inputs.join(',')}`).join(' · ') || 'none';
+  return `${confirmationText(plan)}\nroutes: ${plan.walk.routes.length} · groups: ${plan.cases.map((c) => c.id).join(',') || 'none'} · submit entries: ${submits}`;
+}
+
+/** The verify confirmation: the run lines plus the three passes it covers. */
+export function verifyConfirmationText(plan) {
+  return `${confirmationText(plan)}\nrepeats: ${plan.repeats} passes over ${plan.cases.length} cases (${plan.scenarios_list.map((s) => s.id).join(', ')})`;
 }
 
 function renderPlan(plan) {

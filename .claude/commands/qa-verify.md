@@ -26,7 +26,7 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 **Is NOT:**
 
 - **not an AC oracle** — the auto-verdict is *evidence*, not acceptance. The human signs off by moving the ticket; the command never transitions it.
-- **not a regression-test author** — no command writes regression tests yet (one is planned); promoting this run's recorded interaction sequence into a test is the human-requested procedure in `.agents/reference/qa-to-regression-test.md`.
+- **not a regression-test author** — `/regression-tests author` writes specs (`--from-qa <working file>` starts from this run's recorded sequences); QA never writes tests itself.
 - **not a code-quality gate** — that is `/check-implementation` and `/gates:verify-implementation`. This command cites their result; it never reproduces it.
 - **not a fixer** — see the second hard gate.
 
@@ -810,7 +810,8 @@ Print, per ticket, the verdict line's text — `Acceptable — move the ticket y
 - `F<n> is charged here — verify it in a group run with <keys>` (a carried row: `F<n>@<group id>`; a conflicting copy: `F<n>@<group id>~<KEY>`) per charged feature-path `FAIL`, `<keys>` from the row's `(group <id>)`;
 - `do not trust the newest verdict line of <SRC> — re-check it` after a sibling result (Deferral results);
 - `smoke failed at <target> — <error>; check it before you move it` when the ticket's light smoke failed (Phase 2 → The light run) — the full run that followed verified the criteria, not the failure;
-- `nothing was observed or carried — verify by hand before you move it` when no row is `PASS`, `FAIL` or `CITED` (carried included). The one-pass decision changes a disposition, never adds an observation, so an all-`DEFERRED` ticket gets this line too.
+- `nothing was observed or carried — verify by hand before you move it` when no row is `PASS`, `FAIL` or `CITED` (carried included). The one-pass decision changes a disposition, never adds an observation, so an all-`DEFERRED` ticket gets this line too;
+- once per ticket, after its working file exists: `node .claude/lib/regression/author.mjs suggest --from-qa <working file>` — print its `suggest:` line verbatim (`/regression-tests author …` for the ticket's READY scenarios without a spec); with no output (regression not adopted, no record, nothing to suggest), print nothing.
 
 After the last group, print **`Environment defects`** once for the run — built from the working files' saved `## Environment defects` sections, deduplicated by cause across the run, failed readiness checks included even when no row depended on them; each cause with its evidence, its waiting rows and its draft ticket text. An interrupted session keeps what finished groups wrote. The command creates no ticket and posts none of these texts.
 

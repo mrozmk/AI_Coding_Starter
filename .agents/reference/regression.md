@@ -52,8 +52,8 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 | `/plan-feature`, `/execute` | The catalog change lands with the code; no spec is written, no app is started. | (not yet shipped) |
 | `/check-implementation` | The catalog validates; every tagged criterion has a scenario citing its current fingerprint. | (not yet shipped) |
 | `/setup:regression`, baseline stage | The `runner` and `environments` sections; Playwright config, fixtures and the test-data adapter from the templates; `@playwright/mcp` pinned. | yes |
-| Inventory of an existing app | The whole catalog from the routes in the code and the live app (`Source: live` / `code`). | (not yet shipped) |
-| `/regression-tests author` | A spec per READY scenario without one; the `Spec` field written back. | (not yet shipped) |
+| Inventory of an existing app (`/setup:regression --inventory`) | The whole catalog from the routes in the code and a guarded walk of the live app (`Source: live` / `code`), a critic, a proposed baseline split (§13). | yes |
+| `/regression-tests author` | A spec per READY scenario without one — three green passes, a critic — and the `Spec` field written back (§14). | yes |
 | `/regression-tests run [smoke\|full] [--env <name>]` | A per-machine run record for one environment and one build (§12). | yes |
 | `/regression-tests status` | The catalog status matrix and the newest run record per environment. | yes |
 | `/regression-tests heal`, `visual` | Repairs, baselines. | (not yet shipped) |
@@ -75,7 +75,7 @@ the repo root), `environments.<name>` (`host`: an `http(s)://` URL without crede
 `"qa-env"` = `base_url` of `.claude/qa-env.json`; a local server — `localhost`, `*.localhost`,
 `127.0.0.0/8`, `::1`, `0.0.0.0`, from either source — is refused, a `.local` host is allowed;
 `kind`: `test | production`, absent = `production`; the policy keys `writes`, `workers`, `means`,
-`pacing`, `guard`, `consent`, `build_sha_url` of §10; unknown keys are accepted for forward
+`pacing`, `guard`, `consent`, `build_sha_url`, `redact` of §10; unknown keys are accepted for forward
 compatibility), and the optional top-level `default_env` (it may name only a `kind: test`
 environment).
 
@@ -106,8 +106,10 @@ One block per scenario (normative):
 - **Required:** `Priority` (`P0|P1|P2`), `Viewport` (`desktop|mobile|both`), `Status`, `Effect`
   (`read|write`), `Goal`, `Steps`, `Expected`, `Source`, `Spec`. **Optional:** `Data`, `Needs`.
   `Steps` and `Expected` may be `—` unless `Status: READY`.
-- **`Status`:** `READY` · `BLOCKED (<Task id | tracker key | #n>)` · `DROPPED (<reason or D-n>)`.
-  `BLOCKED` without a reference and `DROPPED` without a reason are rejected.
+- **`Status`:** `READY` · `BLOCKED (<Task id | tracker key | #n>)` · `BLOCKED (live: <reason>)` ·
+  `DROPPED (<reason or D-n>)`. `BLOCKED (live: <reason>)` is an inventoried path that fails on the
+  live app (§13): the reason quotes the walk's observation (`500 on /checkout`). `BLOCKED` without a
+  reference, `BLOCKED (live: )` without a reason and `DROPPED` without a reason are rejected.
 - **`Effect`:** `write` = anything that outlasts the browser session or reaches a person or a third
   party — an order, a payment, a new or changed account, any email, a subscription toggle, a review.
   `read` = navigation, search, filters, and state that dies with an anonymous session (a guest
@@ -179,7 +181,30 @@ node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <
   3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
 node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]
   exit 0
+node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]
+  exit 0 COMPLETE · 2 usage / route list / no walk stub · 3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
+node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]
+  exit 0 every scenario verified · 1 some not verified · 2 usage / config · 3 refused (a candidate,
+  retries, team clone, lock, not guard-integrated, confirmation) · 5 guard stop
+node .claude/lib/regression/inventory.mjs stage [--root <dir>]
+node .claude/lib/regression/inventory.mjs check-staged --routes <file> [--root <dir>]
+node .claude/lib/regression/inventory.mjs check [--root <dir>]
+node .claude/lib/regression/inventory.mjs apply --stage <dir> --walk <run dir> (--dry-run | --expect-proposal <digest>) [--root <dir>]
+node .claude/lib/regression/inventory.mjs split [--root <dir>]
+  exit 0 ok · 1 refused / gaps · 2 usage / config
+node .claude/lib/regression/author.mjs select (<ID>… | --area <CODE[,CODE]> | --pending | --from-qa <file>) [--env <n>] [--json] [--root <dir>]
+node .claude/lib/regression/author.mjs lint <spec> --id <ID> [--root <dir>]
+node .claude/lib/regression/author.mjs draft <ID> --run <run dir> [--qa <ac_id>] [--root <dir>]
+node .claude/lib/regression/author.mjs claim <ID> --spec <path> --verify <run dir> --critic <file> [--provenance <file>] [--root <dir>]
+node .claude/lib/regression/author.mjs reject <ID> --run <run dir> [--root <dir>]
+node .claude/lib/regression/author.mjs suggest --from-qa <file> [--root <dir>]
+  exit 0 ok · 1 none eligible / violations / refused · 2 usage / config / no target (prints `environments:`)
 ```
+
+- `walk.mjs` (the walk of one group, the route-list grammar) and `speclint.mjs` (the static spec
+  scan shared with the run's pre-flight, and `lintSpec`) are libraries without a CLI.
+- `catalog.mjs --status` also prints one `unobservable: <ID> — <clause> — <reason>` line per
+  `// regression-unobservable:` line of a scenario's spec (`--json`: `unobservable` on the row).
 
 - `policy.mjs` is a read-only dry run of the selection (§10): it prints the cases, the
   `not run — policy` reasons and, for production, the confirmation text — never a token.
@@ -231,6 +256,7 @@ the production-safe default:
 | `guard.stop` | `statuses`, `watch_4xx` (url regexes), `challenge` (regexes on headers + body), `error_signals` (`{url, body}`) | `statuses: [403, 429]` |
 | `consent` | `{strategy: decline \| accept \| none, cookies: [{name, value, domain, path?}]}` — cookies set before the first navigation (`path` defaults to `/`) | `decline`, no cookies (`consent: not applied` in the record) |
 | `build_sha_url` | the endpoint the deployed build SHA is read from (`host: "qa-env"` falls back to `qa-env.json` `build_sha_url`) | none |
+| `redact` | regexes (strings that compile) whose matches the inventory walk replaces with `‹redacted›` in every observation it persists, a sample route matching one is never committed (§13) | `[]` |
 
 A `Needs` key may not be both a means and an operation name of one environment (config error).
 `default_env` may name only a `kind: test` environment.
@@ -315,12 +341,17 @@ relative fixture module that imports `installGuard` from it, and none of those f
 `extraHTTPHeaders` or `httpCredentials` (context defaults the guard's own redirect transport would
 re-add on a cross-origin hop), and no selected spec or fixture module installs a route of its own
 (`.route(`, `routeFromHAR`, `.routeWebSocket(` — a page route is matched before the guard's context
-route, and its `continue()` would send the request unguarded). On a test environment the same
-finding is a warning.
+route, and its `continue()` would send the request unguarded), and `runner.config` sets
+`testMatch: opts.testMatch` (Playwright loads every discovered file before it applies grep; without
+the selected files an unclaimed draft beside them would load). On a test environment the same
+finding is a warning for a run — a walk and a verify refuse it on both kinds (§13, §14).
 
 **Migrating a #330 installation.** The copied config and fixtures are project code and never
 synced: re-copy both templates (`/setup:regression` baseline, Step 2, fills `<guard-module-relative>`)
-and drop any `--grep` from `runner.commands` — the manifest selects the cases.
+and drop any `--grep` from `runner.commands` — the manifest selects the cases. A config copied
+before #332 lacks `testMatch: opts.testMatch`, and a fixtures file from before it signs in without
+the case's test id (a verify of an account scenario then refuses: `fixture predates per-case
+sessions`): re-copy both again.
 
 **What it cannot see — stated limitations.**
 
@@ -337,6 +368,9 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
   installed through a helper module they import, or through a computed call (`page[name](…)`), is
   not seen — and such a route takes precedence over the guard. Keep request mocking out of
   production scenarios.
+- The walk reads a collapsed redirect's final hop from the ledger: every guarded navigation records
+  a `navigation` event (`url`, `final` reduced to origin + path, `status`, `hops`, `test`), and
+  `redirect-collapsed` carries the same `final`.
 
 ## 12. The run
 
@@ -394,4 +428,119 @@ and drop any `--grep` from `runner.commands` — the manifest selects the cases.
 Exit codes: `0` GREEN · `1` RED · `2` usage / config / invalid catalog / baseline not established ·
 `3` refused (team clone, lock held, not guard-integrated, confirmation required or invalid) · `4`
 INCOMPLETE · `5` BLOCKED/ENV. `status` prints the newest record per environment (`env verdict
-build_sha ended_at run_id`, or `no run recorded on this machine`), exit 0.
+build_sha ended_at run_id`, or `no run recorded on this machine`), exit 0. Only `record.json`
+counts: a walk writes `walk.json` and a verify `verify.json`, so neither shows as a run.
+
+## 13. Inventory of an existing app
+
+`/setup:regression --inventory` gives an app that already runs its first catalog. Models read code
+and observations and write text; scripts touch the environment and the catalog. Nothing commits.
+
+**The route list.** `.agents/regression/routes.json` (committed): `{schema: 1, routes: [{route,
+source, sample?, match?, account?, submit?, scenarios?, exclusion?}]}` — `route` a unique key,
+`source` the code that defines it (`file:line`), `sample` a path starting `/` (no query once
+committed), `match` a regex for a parametric route, `account` a test-data account key, `submit[]`
+`{form, action, method: 'GET', inputs: {name: value}}` (any other method: `only GET forms may be
+allow-listed`). A committed entry has `scenarios[]` (ids) and/or a non-empty `exclusion`;
+`inventory.mjs check` reports `route <r>: no scenario and no exclusion` and unknown or DROPPED ids.
+
+**Staging.** `inventory.mjs stage` creates `.agents/regression/runs/inventory-<UTC>-<hex>/` (per
+machine). It holds `routes.staged.json` (the staged list: no `scenarios`, no `exclusion`;
+`check-staged` validates it), then `proposal.md` (the new blocks) and `proposal.json`
+(`{routes: {<route>: {scenarios, exclusion?}}, sources: {<id>: {code, covered_by, submit}}}`).
+
+**The walk** (`run.mjs walk --routes <staged file>`): the same refusals, target, policy, locks and
+production confirmation as a run (the confirmation also names the routes, the groups and every
+submit entry), with the pre-flight **strict on both kinds**. Desktop only. One test per group
+`WALK<k> — <account | anonymous>` in the stub `<spec_dir>/_walk.spec.ts`
+(`walk.spec.ts.template`): the anonymous group walks the routes without an `account`, each account
+group its own; a group whose `account:<key>` is not a declared means is excluded by policy and its
+routes are `not-walked`. Per route (static routes first, then parametric ones, whose sample is the
+first same-host link path seen earlier that matches): status, final route, title, h1–h3, the ARIA
+snapshot (capped, text-entry values removed), same-host link paths (capped), form shapes (control
+names and types, never a value). Route identity is pathname + fragment; on production the final
+route comes from this visit's `navigation` event (§11). Outcomes: `ok`, `failed` (status ≥ 400, a
+navigation error, a guard block → `guard: <reason>`), `redirected` (`redirected to <path>`),
+`unverified` (production without a final hop), `no-sample`, `not-walked` (the run stopped). An
+allow-listed form of an `ok` route is submitted only when the deployed form matches its entry
+exactly — name, GET, action on the base origin, and the complete entry list (hidden and prefilled
+controls included) equal to the entry's inputs — and then by a native GET navigation the walk
+builds itself, never `requestSubmit()`; a differing form is `skipped — form differs`. Every
+persisted text is sanitized: no query string, no fragment in free text, no match of the
+environment's `redact` patterns. The walk writes `walk/<key>.json` per group (`done: false` first),
+`walk/observations.json` (one entry per route and group) and `walk.json` (`schema, run_id, env,
+kind, base_url, routes_file, routes_digest, redacted_samples, groups, excluded, guard, verdict,
+reasons`): `COMPLETE` (exit 0), `INCOMPLETE` (4 — a group not done, a route or a case missing, an
+orphan, report errors, a block outside a test) or `BLOCKED/ENV` (5 — a guard stop, a missing case
+or session attestation).
+
+**Apply** (`inventory.mjs apply`) — under the checkout lock a run takes, every read and write in one
+lock lifetime: the proposal's digest (sha256 of `proposal.md`, NUL, `proposal.json`) must equal
+`--expect-proposal` (only a digest a critic round reviewed is published; `--dry-run` prints it);
+the walk must be `COMPLETE`, run on exactly the staged bytes (`routes_digest`) and complete per
+group. The best outcome of each route over its groups decides every id mapped to it — new,
+existing or retained from `routes.json`: `failed` → only `BLOCKED (live: …)` citing `live`;
+`ok` → `live` READY or BLOCKED, or `code`; anything else → `code` only. A block describing a submit
+path follows its submit's outcome. New blocks: a configured area, `Spec: —`, never a rewrite of an
+existing block (byte-identical text is `skipped: <id> (already applied)`, a DROPPED id is never
+reused), every new block reachable from a route. The merged catalog is validated before any
+rename; `routes.json` is written last. A sample that needed redaction is never committed. A
+re-apply of the same proposal changes nothing.
+
+**The critic and the split.** `@start-critic` grades the proposal against
+`.claude/skills/regression/catalog-rubric.md`, at most two rounds, no human gate; the open findings
+of round 2 and every `C9` finding make up the suspicious list the report names (read once).
+`inventory.mjs split` proposes 1–3 `[regression:baseline]` Tasks: N = READY scenarios whose `Spec`
+is `—`, k = min(3, ceil(N / 30), areas with N > 0), areas assigned whole, largest first, each part
+with its `/regression-tests author --area <codes>` line.
+
+## 14. The author lane
+
+`/regression-tests author (<ID>… | --area <CODE> | --pending | --from-qa <file>)` — procedure:
+`.claude/skills/regression/references/author.md`; spec rules: `references/spec-rules.md`.
+
+- **Select** (`author.mjs select`) refuses a scenario that is not READY, already has a `Spec`, is
+  excluded by the environment's policy (a `write` under `writes: refuse`, a need not declared), has
+  a viewport without a device project, or whose target file `<spec_dir>/<area>/<id>.spec.ts`
+  exists. `draft` creates the target exclusively and registers it in `<run>/drafts.json`.
+- **Lint** (`author.mjs lint`, `speclint.mjs` `lintSpec`): one `test(` titled `<ID> — `, the header
+  equal to the catalog `Source`, `@regression` (`@smoke` exactly for a smoke priority), `test` from
+  the relative fixtures module, the account from `Needs`, no non-relative import, no network or
+  process access, no fixed wait, no CSS or XPath locator, no skip marker, no own route, no
+  retries — over the spec and the transitive closure of its relative imports (the fixtures module
+  exempt from the network rules). The closure is the candidate's executable surface.
+- **Verify** (`run.mjs verify ID=spec…`): the run's refusals and confirmation (one token covers the
+  verify's three passes), the pre-flight strict on both kinds, and refusals before the runner
+  starts — a candidate's lint, `retries` other than a literal `0` anywhere in `runner.config` or
+  `--retries` in `commands.full`, an account in `Data` that `Needs` lacks. Three passes of
+  `commands.full`, each with its own nonce and manifest, the selection narrowed to the scenarios
+  still qualifying. A case qualifies in a pass only with a `passed` result at its first attempt
+  (`retry 0`), its own guard attestation and — for an account scenario — a `session-start` and a
+  `session` event carrying its test id. A pass with report errors, an invalid report, a signal, an
+  orphan or outside-selection entry, a block outside a test or an unexplained runner exit
+  disqualifies every case of it; exit 1 with an identified failed case is explained, so a passing
+  sibling goes on. `verify.json`: the passes, and per scenario `spec_sha256`, `inputs_sha256`
+  (the lint closure), `block_sha256` (its catalog text), `projects`, `qualified`, `passes_ok`,
+  `reason`, `context` (the failed results' attachments); `guard` aggregates every pass's nonce.
+- **The critic** (`@regression-critic`): per `Expected` clause the assertion that would fail if the
+  clause were false, or an accepted `// regression-unobservable:` line; at most two rounds, each
+  re-verified, at most four verify rounds in total. `--from-qa` adds the provenance pass
+  (`MODE=provenance`): every interaction of the spec maps to a recorded QA step.
+- **Claim** (`author.mjs claim`, under the checkout lock): the verify record names this spec, is
+  qualified with `passes_ok [1, 2, 3]` over three passes with distinct nonces and a single passed
+  attempt on each of the scenario's projects; the three digests equal the current files; the lint
+  is clean; the critic verdict — and for a `--from-qa` draft the provenance verdict — is `pass` on
+  the same three digests. Then the block's `Spec: —` becomes `<spec> › <title>`, only inside that
+  block's span, and the catalog is re-validated before the rename.
+- **Reject** (`author.mjs reject`, under the lock): moves a registered, unclaimed draft into
+  `<run>/rejected/` — on every exit, `Cancel` at a confirmation included; a claimed draft is never
+  moved.
+- **`--from-qa`** joins a `/qa-verify` working file's record (`qa-evidence-families.md` §7b) onto
+  the catalog: a criterion token with the same fingerprint as a fresh `PASS` row whose matrix row
+  carries a recorded sequence (`driver: script` + an existing script, `driver: mcp` + an existing
+  `.mcp.md` log, or a `qa-runtime-ui` row) → eligible; a `FAIL` row → `not promoted:`; a carried
+  `PASS` → `skipped:`; a scenario citing only the ticket joins only when exactly one such row
+  exists, else `ambiguous:`. `/qa-verify` prints `author.mjs suggest --from-qa`'s line.
+- **Unobservable.** A clause a browser cannot observe is written
+  `// regression-unobservable: <ID> · <clause> — <reason>` in the spec; `catalog.mjs --status`
+  lists it.

@@ -370,7 +370,7 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete and, when a backlog exists, marks the Task `DONE`. `/execute codex` has Codex write the code while Claude supervises.
 
-> E2E regression tests: `/regression-tests` runs them against a named deployed environment and records a deterministic verdict (production only after a confirmation each time — [regression.md](../../.agents/reference/regression.md) §12). No command writes the specs yet — one is planned. Today they come from the Operator's QA run (`/qa-verify`), promoted by hand with [the regression-test procedure](../../.agents/reference/qa-to-regression-test.md).
+> E2E regression tests: `/regression-tests` runs them against a named deployed environment and records a deterministic verdict (production only after a confirmation each time — [regression.md](../../.agents/reference/regression.md) §12). An existing app gets its first catalog from `/setup:regression --inventory` (routes from the code, a guarded walk, a critic — §13). `/regression-tests author` writes the specs: a spec is claimed only after three green passes with zero retries and a critic pass (§14); `--from-qa <working file>` starts from a `/qa-verify` run's recorded sequences.
 
 ### 10. Check the implementation
 

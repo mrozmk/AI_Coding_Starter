@@ -131,7 +131,7 @@ that line matters: on a `full` backlog the adoption turns every untagged critica
 | Marker | Command | Kind | Size | Planned |
 |---|---|---|---|---|
 | `[regression:foundation]` | `/setup:regression` (baseline stage) + the test-data adapter | regression | `H` (`XH` with a sandbox integration) | always when adopted |
-| `[regression:baseline]` | — (specs by hand until the author lane ships) | regression | `H` | 1–3 when adopted: b = min(3, max(1, ceil(P / 160))) |
+| `[regression:baseline]` | `/regression-tests author --area <codes>` | regression | `H` | 1–3 when adopted: b = min(3, max(1, ceil(P / 160))) |
 | `[regression:smoke]` | — | regression | `M` | optional — an early P0 smoke set |
 
 Row fields as quality Tasks: `Type` `tech` · `Scope` `MUST` · `Node` `—` · `Traces` `—`; Epic

@@ -106,6 +106,8 @@ export function envPolicy(entry) {
         : [],
     },
     build_sha_url: isFilled(e.build_sha_url) ? e.build_sha_url : null,
+    // Patterns the walk replaces in every observation it persists (regression.md §13).
+    redact: Array.isArray(e.redact) ? e.redact.filter((r) => typeof r === 'string') : [],
   };
 }
 
@@ -128,6 +130,9 @@ function validateEnvPolicy(name, entry) {
   if ('guard' in entry) errors.push(...validateGuard(at, entry.guard, { means, production: envKind(entry) === 'production' }));
   if ('consent' in entry) errors.push(...validateConsent(at, entry.consent));
   if ('build_sha_url' in entry && !isHttpUrl(entry.build_sha_url)) errors.push(`${at('build_sha_url')}: must be an http(s) URL without credentials`);
+  if ('redact' in entry && (!Array.isArray(entry.redact) || entry.redact.some((r) => typeof r !== 'string' || !compiles(r)))) {
+    errors.push(`${at('redact')}: must be an array of compilable regexes`);
+  }
   return errors;
 }
 

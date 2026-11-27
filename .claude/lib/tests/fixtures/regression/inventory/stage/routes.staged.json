@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "routes": [
+    { "route": "/cart", "source": "app/cart.tsx", "sample": "/cart" },
+    { "route": "/p/:id", "source": "app/product.tsx", "match": "^/p/[0-9]+$" },
+    { "route": "/search", "source": "app/search.tsx", "sample": "/search", "submit": [{ "form": "search", "action": "/search", "method": "GET", "inputs": { "q": "shoes" } }] },
+    { "route": "/checkout", "source": "app/checkout.tsx", "sample": "/checkout" },
+    { "route": "/account", "source": "app/account.tsx", "sample": "/account" },
+    { "route": "/orders/:id", "source": "app/orders.tsx", "match": "^/orders/[0-9]+$" }
+  ]
+}
