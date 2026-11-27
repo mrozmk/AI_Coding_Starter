@@ -18,6 +18,7 @@ lead nobody answers questions and the tool is disabled.
    code only through the plan. In round 1, run `/execute {{PLAN}}`. In a later round (a rework
    ordered by the TeamLead), the plan is already done: read `{{REWORK}}` and fix exactly its items,
    nothing else.
+   - When `.claude/regression.json` exists (regression.md §16.6): catalog changes only — no spec under `runner.spec_dir`, no app started; an `Expected` change of a scenario on the base branch is a material decision: ask, the lead escalates.
    - The `guard-memory.sh` hook may block your first code edit in a domain: delegate the
      distillation subagent it asks for, touch the marker it prints, and continue.
    - Routine decisions: decide and log them under `## Unattended decisions` in

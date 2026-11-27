@@ -368,7 +368,9 @@ one line per active criterion in the gate's order, `- <id> — <verdict> — <cr
 takes the k-th active criterion with that id in plan order and keeps its decorated id in the
 ledger, `Warnings:` and the PR. A `deferred` row ends `manual check:
 <the plan's what-and-where, or its Proof: none reason>`; on a plan without `Proof:` lines,
-`manual check: no procedure in the plan — <the gate's evidence>`. Every ledger line starts with
+`manual check: no procedure in the plan — <the gate's evidence>`. A `deferred` row from a
+`Proof: scenario` line ends `manual check: regression scenario <ID> — /regression-tests author, then run`
+(only with `.claude/regression.json`, regression.md §16.6). Every ledger line starts with
 `- `, so none reads as a keyed line. An escalated attempt copies the final gate pass's rows
 verbatim with their effect; when that pass stopped before §6 it copies the final
 `not evaluated — …` status instead, never an earlier pass's rows.

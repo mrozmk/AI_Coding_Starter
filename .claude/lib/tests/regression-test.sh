@@ -19,4 +19,6 @@ if [ "$RC" -ne 0 ] || grep -q '^not ok ' "$T" || ! grep -q '^ok ' "$T"; then
   echo "regression-test: FAIL (node exit $RC)"
   exit 1
 fi
+# Every named case in the suite log (skip markers included): the gate needs per-case evidence.
+grep -E '^(ok|not ok) ' "$T"
 echo "regression-test: OK ($(grep -c '^ok ' "$T") checks)"

@@ -64,7 +64,7 @@ mandatory. A worker handoff alone never means this workflow is complete.
   - `## STEP-BY-STEP TASKS` — one `### {ACTION} <path>` per file, each with `- [ ]`, `- **IMPLEMENT**:`, `- **EXPECT**:` (`present` / `contains` …) and `- **VALIDATE**:`
   - `## VALIDATION COMMANDS` (Level 1 = `CLAUDE.md → Validation`)
   - `## ACCEPTANCE CRITERIA` (the one-sentence "done", with the `Testy` line's `Proof:` line as a nested item under it — `- **AC-1** — <done>` then `  - Proof: <kind> — …`; a `test` proof is backed by a task whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that case already exists, and the task that writes or changes a proof test comes before the task that implements the behaviour it proves)
-  - `## NOTES` with the Codex outcome line (`Codex: czysto` / the folded findings / `brak opinii — <reason>`)
+  - `## NOTES` with the Codex outcome line (`Codex: czysto` / the folded findings / `brak opinii — <reason>`), and, when `.claude/regression.json` exists, Phase 1's `Scenario:` line (regression.md §16.2)
 - **Never** add a `## Execution Plan` section — the runner refuses it. `/gates:verify-implementation` counts the `- [ ]` anchors and checks the `EXPECT` lines, so a plan without them fails QA's gate.
 - **Phases 3–6 belong to the coder and QA** — skip them here.
 
@@ -83,6 +83,7 @@ Read the request, look at the code it would touch, then check these. **Any hit �
 - Adds a **dependency**, changes a **data schema / migration**, or alters a **public contract** other code or people rely on.
 - Needs a **design reference** to be judged (visual work with a Figma/spec source).
 - You cannot state what "done" means in **one sentence**.
+- With `.claude/regression.json` present: the change alters the `Expected` of an existing regression scenario (regression.md §16.2) — a human decision, routed to `/brainstorm`.
 
 On a hit, say which one fired and recommend the real route:
 
@@ -116,6 +117,7 @@ Write a plan that is genuinely short — **5–12 lines**, and it stays in the c
 - **Reuse** — one line: `Reuse: <existing path:line> | none found (searched: <terms / paths>)`, after searching the whole repository for an existing equivalent of anything new the change adds — by name (`rg --hidden -g '!.git' <name>`, or LSP `workspaceSymbol`) and by behaviour (`rg --hidden -g '!.git' <pattern>` from the root, LSP or not; plain `rg` skips `.claude/` and every other dot-directory); several new pieces → one entry each, `;`-separated. When `docs/coding-standards.md` exists, the line also names the review-enforced `CS-<n>` rules the change touches (a rule marked `(withdrawn)` is skipped), the `## Shared helpers` / `## One shape per problem` row it follows, and every `## Open — pick one` item the change hits: `<item> → local convention <path:line>` when every touched file already follows one variant, else ask (`AskUserQuestion`; in team mode the TeamLead answers) and record `<item> → <answer>` — never pick a variant silently.
 - **Ryzyko** — what could break, and what already covers it (existing test, type, guard) or does not.
 - **Testy** — what gets a test and what deliberately does not, per `CLAUDE.md` → Validation test policy; then the proof of the one-sentence "done" in the `/plan-feature` grammar — `Proof: static — <path>[ :: <literal>]` | `Proof: test — <test file> :: <test name literal>` | `Proof: manual — <what a human observes, and where>` | `Proof: none — <why>`.
+- **Scenario** (only when `.claude/regression.json` exists — regression.md §16.2) — `Scenario: <ID> (READY) — <how the change touches its path>` for every READY scenario whose path the change touches, read from the catalog files, or `Scenario: no scenario path touched`; otherwise no such line.
 
 Do **not** start editing yet. Not one line.
 

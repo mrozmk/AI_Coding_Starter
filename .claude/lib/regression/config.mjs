@@ -217,6 +217,10 @@ export function validateConfig(cfg) {
   if (!isObject(cat)) errors.push('catalog: required object');
   else {
     if ('path' in cat && !isFilled(cat.path)) errors.push('catalog.path: must be a non-empty string');
+    // The lexical half of containment (parseSpec's rule); the symlink half is crosscheck.mjs's.
+    else if ('path' in cat && (path.isAbsolute(cat.path) || cat.path.includes('\\') || cat.path.split('/').includes('..'))) {
+      errors.push('catalog.path: catalog.path must be a repo-relative path inside the repository');
+    }
     if ('areas' in cat) {
       if (!isObject(cat.areas)) errors.push('catalog.areas: must be an object of CODE: name');
       else {

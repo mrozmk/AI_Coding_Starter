@@ -17,6 +17,7 @@ what changed.
    rethink signal from the cross-model review (Step 9), or a product-fit hit (Step 1.5 c), which is
    the Operator's decision; with a per-run TeamLead the lead answers the first two and opens a
    decision for the Operator on the third.
+   When `.claude/regression.json` exists, an `Expected` change of a scenario on the base branch is asked too; the TeamLead opens an Operator decision for it (regression.md §16.6).
    - **Tracker comments (opt-in)** — only when `.claude/project-profile.json` has
      `workflow.tracker_comments: true` and the tracker is not `none`; otherwise skip this bullet.
      Before the spec is written, read the ticket's description and comments once
@@ -39,7 +40,7 @@ what changed.
 3. Run `/plan-feature` on the approved spec. The team handoff needs exactly **one standalone plan**
    (no umbrella, no parallel split): if Phase 4.5 offers a split, choose "keep one file" or narrow
    the scope with the developer.
-4. When the plan is final, run `/commit` for the spec and plan files only.
+4. When the plan is final, run `/commit` for the spec and plan files only — plus, when `.claude/regression.json` exists, the catalog files `/brainstorm` wrote (regression.md §16.6).
 5. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --artifacts <spec path>,<plan path>`
    With a TeamLead (`.agents/team/teamlead.json` names run `{{RUN}}`) the plan gate follows: on

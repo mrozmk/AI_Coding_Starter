@@ -1275,6 +1275,15 @@ export function renderEpicFile(text, backlog) {
 const SPEC_DATE = /(\d{4}-\d{2}-\d{2})-[^/]*\.md$/;
 const maxNum = (ids, re) => Math.max(0, ...ids.map((id) => re.exec(id)).filter(Boolean).map((m) => Number(m[1])));
 
+/**
+ * One criterion's text from its bullet line and the continuation lines that belong to it: the
+ * bullet after its id and separator, then each continuation trimmed. The one join every reader
+ * hashes (the resolver here, regression/crosscheck.mjs for specs and plans).
+ */
+export function criterionText(lines) {
+  return [acText(lines[0]), ...lines.slice(1).map((l) => l.trim())].join(' ');
+}
+
 /** AC definitions of `taskId` inside a spec's `## Acceptance Criteria` section only. */
 function specCriteria(md, taskId) {
   const out = [];
@@ -1285,14 +1294,14 @@ function specCriteria(md, taskId) {
     if (!inCriteria) continue;
     const d = AC_DEFINITION.exec(line);
     if (d) {
-      last = d[1].trim().split('.')[0] === taskId ? { id: d[1].trim(), text: acText(line) } : null;
+      last = d[1].trim().split('.')[0] === taskId ? { id: d[1].trim(), lines: [line] } : null;
       if (last) out.push(last);
       continue;
     }
-    if (last && /^\s+\S/.test(line) && !/^\s*[-*]\s+\*\*/.test(line)) last.text = `${last.text} ${line.trim()}`;
+    if (last && /^\s+\S/.test(line) && !/^\s*[-*]\s+\*\*/.test(line)) last.lines.push(line);
     else last = null;
   }
-  return out;
+  return out.map((a) => ({ id: a.id, text: criterionText(a.lines) }));
 }
 
 /**

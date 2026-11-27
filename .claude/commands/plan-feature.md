@@ -2,6 +2,7 @@
 description: "Create a comprehensive implementation plan from an approved spec, then grill it (mandatory) — surface critical gaps with self-critique loop, apply user-accepted fixes in-place"
 argument-hint: "[path-to-spec | optional — defaults to newest file in .agents/specs/]"
 effort: medium
+allowed-tools: Bash(node .claude/lib/regression/catalog.mjs:*)
 ---
 
 # Plan a new task (with built-in grilling)
@@ -157,6 +158,7 @@ The following plan should be complete, but it's important that you validate code
 
 **Source spec:** `.agents/specs/<spec-file>.md`
 **Tasks:** <copied verbatim from the spec's `**Tasks:**` line, or the Task id Phase 0's title match resolved; omit this line when neither exists — without it `/execute` never closes the Task>
+**Scenarios:** <only when .claude/regression.json exists — the regression.md §16.2 grammar, copied from the spec's section; omit the line otherwise>
 **External docs required:** yes | no
 **Appetite:** <from the spec's Appetite & Cut Lines — omit this line and the next if the spec has none>
 **Cut first (if this overruns):** <the spec's cut order, verbatim>
@@ -281,7 +283,7 @@ The `- [ ]` body line is a **parse anchor** for `/gates:verify-implementation` �
 - **Sensitive paths (payment / auth / webhook / license / locale-redirect) MUST have unit tests** — this is enforced by the Step 5.1d grilling gate, not optional here.
 - Coverage target: 70%+ (adjust if the project states its own standard in `CLAUDE.md`).
 
-**Per criterion (every project size):** every active criterion of `## ACCEPTANCE CRITERIA` names its proof (the `Proof:` lines there). Pick the kind by what settles the criterion: a **unit** test for a logic criterion; an **integration** test for a flow across modules or scripts; `manual` at task level for anything a user sees or clicks — end-to-end checks belong to the Operator's QA and the regression suite, not to this plan; `static` for structure and text. `none — <why>` is allowed only where the test policy above makes the test optional; Step 5.1f grills the choice.
+**Per criterion (every project size):** every active criterion of `## ACCEPTANCE CRITERIA` names its proof (the `Proof:` lines there). Pick the kind by what settles the criterion: a **unit** test for a logic criterion; an **integration** test for a flow across modules or scripts; `manual` at task level for anything a user sees or clicks — without regression, end-to-end checks belong to the Operator's QA; with `.claude/regression.json` present a tagged criterion is proven by `Proof: scenario — <ID>` instead (regression.md §16.2), its spec written later against the deployed build by `/regression-tests author`, so the plan writes no spec and starts no app; `static` for structure and text. `none — <why>` is allowed only where the test policy above makes the test optional; Step 5.1f grills the choice.
 
 ### Core Functions to Test (if applicable)
 
@@ -313,6 +315,7 @@ Execute every applicable command to ensure zero regressions and feature correctn
 - `Proof: test — <test file> :: <test name literal>` — the criterion asserts an outcome that appears only when something runs (a returned value, a written record, an exit code, a refusal).
 - `Proof: manual — <what a human observes, and where>` — the criterion can only be observed in a running app, a browser, a device or an external system this run cannot reach.
 - `Proof: none — <why>` — the criterion is behavioural, could be tested, and the plan deliberately adds no test.
+- `Proof: scenario — <ID>` — valid only when `.claude/regression.json` exists (regression.md §16.2): a tagged criterion, proven by the catalog scenario that cites its token; each catalog file holding a declared id gets one `UPDATE <catalog file>` task (EXPECT `contains — <file> :: ### <ID> — `, VALIDATE `catalog.mjs --delta <base> --plan <plan>`).
 
 Criteria without an id get plan-local labels `AC-1 … AC-n` in document order, written in the id position (`- **AC-1** — <text>`), skipping numbers already used — the same rule `/qa-verify` Phase 0 uses. The `Technical checks` sub-list takes neither labels nor `Proof:` lines. A criterion marked `(withdrawn)` keeps its id and text but takes no `Proof:` line and is not counted. A `test` proof is backed by an ordinary task in `## STEP-BY-STEP TASKS` whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that named test case already exists in the repo (an existing file without the case still needs the task). Order that task before the task(s) that implement the behaviour it proves, so `/execute` can see the test fail first. An existing case gets no task of its own, but a task that implements the behaviour names it (`<test file> :: <test name literal>` in its `IMPLEMENT` or `GOTCHA`), so `/execute` runs it first. Example:
 
@@ -508,11 +511,12 @@ For any sensitive path that does neither → raise a 🟠 MAJOR finding: _"Step 
 
 The other gates decide tests per component and per path; nothing asks "which test proves this criterion", so a behavioural criterion can be accepted on a code reading alone. For every active criterion, raise a 🟠 MAJOR finding when:
 
-1. it has no `Proof:` line, or a `Proof:` line outside the four forms (`static`, `test`, `manual`, `none`);
+1. it has no `Proof:` line, or a `Proof:` line outside the four forms (`static`, `test`, `manual`, `none`) (five when .claude/regression.json exists: scenario, regression.md §16.2);
 2. it is behavioural (it asserts what happens when something runs) and carries only `static` proofs;
 3. a `test` proof names a test — file and case — that no task creates or updates (an `EXPECT: contains — <test file> :: <test name literal>`) and that does not already exist in the repo;
 4. it uses `none` on a path where the `CLAUDE.md → Validation` test policy says a test MUST exist;
 5. the plan changes behaviour an existing test covers and names no task that updates or removes that test — unless that test is an unchanged case a `Proof: test` line names, which already asserts the new behaviour.
+6. with `.claude/regression.json` present, `node .claude/lib/regression/catalog.mjs --delta <base> --plan <plan> --planning` exits non-zero (a `Proof: scenario` id neither in the catalog nor added by a catalog task, a proof not bound to its criterion, a tagged criterion of the source spec missing — regression.md §16.2).
 
 Finding text: _"Criterion <id> <has no proof | is behavioural but proven only by `static` | names test <file :: case> that no task writes and the repo lacks | uses `none` on MUST path <path> | changes behaviour covered by <test file> with no task updating it>; the criterion will be accepted on a code reading, or the run will stop on a missing test. FIX: <add the `Proof:` line | add a `test` proof and its task | name the existing case | replace `none` with a test | add the task that updates or removes the test>."_ It is 🟠, not 🟡: Step 5.4's frugal scope would drop a 🟡 — the gap 5.1d closed for sensitive paths.
 
@@ -880,7 +884,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] Tasks ordered by dependency (can execute top-to-bottom)
 - [ ] Each task is atomic and independently testable
 - [ ] Pattern references include specific `file:line` numbers
-- [ ] Every active acceptance criterion carries a `Proof:` line in the four-kind grammar, and every `test` proof is backed by a task or an existing test case (Step 5.1f)
+- [ ] Every active acceptance criterion carries a `Proof:` line in the four-kind grammar (plus scenario when .claude/regression.json exists), and every `test` proof is backed by a task or an existing test case (Step 5.1f)
 
 ### Pattern Consistency ✓
 

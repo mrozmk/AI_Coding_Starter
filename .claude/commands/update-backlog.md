@@ -1,6 +1,7 @@
 ---
 description: Apply post-baseline scope changes (meeting notes, specs, discovery, decisions said in chat) to the PRD register AND .agents/backlog.md in one reviewed, validated write — protects work in progress, shows impact before acceptance, records one D-n
 argument-hint: "[<note | spec | docs/discovery.md> …] — empty = every pending source"
+allowed-tools: Bash(node .claude/lib/regression/catalog.mjs:*)
 ---
 
 # Update Backlog: Scope Change → Register + Backlog
@@ -12,6 +13,7 @@ No file is written until (a) the clarification loop resolved every intent, (b) t
 the preview, (c) the candidate set passed `node .claude/lib/backlog-check.mjs --candidate
 .agents/.pending-update --write`, and (d) every target's original hash (or absence) is unchanged
 since it was read. Cancel at any gate deletes `.agents/.pending-update/` and writes nothing else.
+When `.claude/regression.json` exists, condition (c) also needs `node .claude/lib/regression/catalog.mjs --backlog --candidate .agents/.pending-update` to pass (regression.md §16.5).
 </HARD-GATE>
 
 **What this is.** The **only** structural writer of the Task table and the Epic map of
@@ -22,6 +24,7 @@ there too, never the table. `/check-backlog` and `/jira resync` route their chan
 command's apply phase. It never writes `Status` of a row with a Jira key, any `Jira`
 cell, `.agents/jira/`, or `**Last check:**`; it never regenerates Epics, never renumbers an id and
 never puts emoji markers in table cells.
+When `.claude/regression.json` exists, the catalog files of the scenarios it edits are a write target too, written only under the validated `catalog.path` (regression.md §16.5).
 
 **Precondition:** `/prime` ran this session. `.agents/backlog.md` and `docs/PRD.md` exist — else
 point at `/setup:create-backlog` / `/discover` and stop.
@@ -45,6 +48,7 @@ Questions and the preview in the project's communication language; every artifac
      target still `original` — never discard (the candidate set is complete, validated and
      rendered, so rolling forward always reaches one consistent state);
    - any `unexpected` → stop, name each such target with manual instructions and keep the dir.
+   - When `.claude/regression.json` exists, catalog targets are classified the same way; before rolling forward a manifest holding them, rerun `node .claude/lib/regression/catalog.mjs --backlog --candidate .agents/.pending-update` (containment; an error → stop and keep the dir — regression.md §16.5).
 2. **Revisions.** Read the PRD header `**Current:**` and the backlog header `**Scope rev:**`. Register
    ahead → **reconcile mode** (below) runs first.
 3. **Pending Jira refreshes.** List every `**Jira refresh:** <key> pending` entry in the PRD
@@ -89,6 +93,7 @@ Read the sources, `docs/PRD.md`, `.agents/backlog.md` and every Epic file in `.a
 (`E<n>-<slug>.md`; `delivery-plan.md` is not one); record every target's sha256. Run
 `node .claude/lib/backlog-check.mjs --next-ids` and keep the JSON (next free ids; per Task the
 current AC, its source and `nextAc`).
+When `.claude/regression.json` exists, also record the sha256 of every catalog file of `catalog.path` (regression.md §16.5).
 
 ## Phase 3 — Intents
 
@@ -185,6 +190,7 @@ their protection reasons, transitive dependents, `scopes`, the `outside` rows (`
 (an `X-n` id is itself a valid target: its `Needed by` Tasks and their dependents; a Task id
 lists the rows that name it in `Needed by` or `Starts after`). Shown per intent
 in the preview — the `outside` rows next to the Tasks; summarised into the `D-n` `**Impact:**`.
+When `.claude/regression.json` exists (regression.md §16.5), list for every Task an intent withdraws, splits or merges the scenarios citing it (`node .claude/lib/regression/catalog.mjs --json` rows by `Source` Task id) and the edit each takes, per `Source` token: a block keeping another live token loses only the retired one (a superseded, split or merged token is re-pointed to its successor criterion with the current fingerprint, `Expected` unchanged); a block losing its last live token becomes `Status: DROPPED (D-n)` and keeps that token; and state, for every other Task the block still cites, that its coverage is kept.
 
 ## Phase 6 — Build the candidate set
 
@@ -205,6 +211,7 @@ of every Epic file** — changed or not; an Epic file the run removes is absent,
   set and, when it passes, renders the story map and the `>` meta lines inside the candidate
   directory (the repo files are never touched). Errors → back to the preview with the errors; the
   repo is unchanged.
+- When `.claude/regression.json` exists (regression.md §16.5): a full copy of each catalog file the run edits goes to `.agents/.pending-update/regression/<file>`, validated with `node .claude/lib/regression/catalog.mjs --backlog --candidate .agents/.pending-update` next to the backlog checker (errors → back to the preview, the repo unchanged), and each is a `manifest.json` target with its original and candidate sha256.
 - Then `manifest.json`: per target — `docs/PRD.md`, `.agents/backlog.md` and every
   `.agents/backlog/E<n>-<slug>.md` present in the repo or in the candidate — the original sha256
   from Phase 2 or `absent`, and the sha256 of the rendered candidate file or `absent`. The candidate
@@ -214,6 +221,7 @@ of every Epic file** — changed or not; an Epic file the run removes is absent,
 
 Show: the `D-n`; each changed register line (old → new); each changed Task row; per Epic file
 (new files by name), each changed Task block; each changed `X-n` row; the impact table; checker warnings verbatim; the Epics left untouched, by name. Approve → Phase 8.
+When `.claude/regression.json` exists, also each changed scenario block (regression.md §16.5).
 Patch → rebuild the candidate (Phase 6) and show again. Cancel → delete `.agents/.pending-update/`,
 nothing else written.
 
@@ -225,13 +233,16 @@ then rename it over the target.
 1. Re-check every target against Phase 2 — its sha256, or its absence for a target that did not
    exist — changed → abort, delete the pending dir, write nothing ("the file changed during the run
    — re-run `/update-backlog`").
+   When `.claude/regression.json` exists, the catalog targets are re-checked the same way (regression.md §16.5).
 2. Install the PRD.
 3. Install the Epic files — the new and the changed ones, then remove the ones the candidate
    dropped.
+   When `.claude/regression.json` exists, then the catalog files of the manifest, each atomically (regression.md §16.5).
 4. Install `backlog.md`.
 5. Verify every target against its candidate hash (or its absence), then run
    `node .claude/lib/backlog-check.mjs` (read-only) once. A mismatch or a checker error → stop,
    name the target or print the errors, keep the dir (Phase 0 resumes from it).
+   When `.claude/regression.json` exists, also run `node .claude/lib/regression/catalog.mjs --backlog` (read-only; regression.md §16.5).
 6. Remove `.agents/.pending-update/` — only after step 5 passed.
 7. Only after the writes returned, report: counts per intent kind, the `D-n`, pending Jira refreshes,
    drafted-but-unsent Tasks that changed ("draft stale — `/jira draft E<n>` refreshes it").

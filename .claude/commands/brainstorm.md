@@ -1,6 +1,7 @@
 ---
 description: Explore requirements and design a solution before planning implementation
 argument-hint: "[topic or feature idea | empty → next free backlog task]"
+allowed-tools: Bash(node .claude/lib/regression/catalog.mjs:*)
 ---
 
 # Brainstorm: Design Before You Build
@@ -11,6 +12,7 @@ argument-hint: "[topic or feature idea | empty → next free backlog task]"
 
 <HARD-GATE>
 This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning.
+When `.claude/regression.json` exists, the catalog blocks of Step 5.5 are design output like the spec (regression.md §16.1) — the only file this command writes outside `.agents/specs/`.
 </HARD-GATE>
 
 <WHY-GATE>
@@ -235,6 +237,8 @@ Create `.agents/specs/` if it doesn't exist.
 
 <When the topic is a backlog Task: copy its **current** AC verbatim, ids included (`- **E1-2.AC1** — …`) — current = the Task-filtered `## Acceptance Criteria` of the newest approved spec in the Task's `Ref`, if any, else its block in its Epic file `.agents/backlog/E<n>-<slug>.md` (the same resolver `/qa-verify` uses; `node .claude/lib/backlog-check.mjs --next-ids <id>` computes it — `current`, `source`, `nextAc`), so criteria added and withdrawals recorded by an earlier spec carry forward. Criteria this design adds take the next free number across **all** definitions the Task has ever had — Epic file + every spec in `Ref`, withdrawn included (`E1-2.AC4`; `nextAc`). A Task with no criteria yet (a `**Detail:** structure` backlog): write them here from its Summary and `Traces`, numbered from the resolver's `nextAc` upwards (`<Task id>.AC1` only when no definition of the Task ever existed — a Draft spec in `Ref` may already hold ids) — this spec owns them. A spec covering several Tasks gives **every** criterion a Task-prefixed id — no unnumbered criteria in a Task spec. Not a backlog Task (free topic / tracker issue without a backlog row): unnumbered bullets — `/qa-verify` numbers them. Never renumber or reword a sourced criterion; change one only by marking it `(withdrawn)` and adding a new id. The `(withdrawn)` marker goes **after** the bold id, in the text — `- **E1-2.AC2** — (withdrawn) superseded by E1-2.AC4`; inside the bold (`- **E1-2.AC2 (withdrawn)**`) it is a malformed id that `.claude/lib/backlog-check.mjs` rejects.>
 
+<When .claude/regression.json exists, add ## Regression scenarios after this section (regression.md §16.1); otherwise no such section.>
+
 ## Out of Scope
 
 <What this explicitly does NOT do — the "No-go (now)" from the scope gate>
@@ -262,6 +266,10 @@ Create `.agents/specs/` if it doesn't exist.
 - **no** — all external integrations are already documented in `.agents/reference/`, or the feature is purely internal (refactor, internal logic, UI polish on existing components).
 
 This flag drives whether `/plan-feature` performs a web-research phase during planning — set it accurately so planning doesn't waste a phase, and doesn't skip docs that are actually needed.
+
+### Step 5.5: Scenario blocks — only when .claude/regression.json exists
+
+When `.claude/regression.json` exists, follow regression.md §16.1: tag the topic's criteria, resolve the base, run `node .claude/lib/regression/catalog.mjs --delta <base> --spec <spec> [--key <KEY>]`, write a block for every `uncovered` token, ask before changing the `Expected` of a block that exists on the base (`AskUserQuestion`, a no leaves it), rerun until clean and fill the spec's section; otherwise skip this step — no line, no section, no question.
 
 ### Step 6: Spec Self-Review
 
@@ -320,6 +328,8 @@ If codex surfaced a **recurring** design mistake (a class of gap `/brainstorm` k
 ### Step 9: Approval, then Transition to Planning
 
 This is the one place `/brainstorm` stops and waits. The spec is final here — Step 6 self-review and Step 8's auto-apply are both behind you — so what the user accepts is exactly what `/plan-feature` will read.
+
+When `.claude/regression.json` exists, re-run the Step 5.5 check (regression.md §16.1) first — a Step 8 criterion edit changes a fingerprint — and re-point the blocks before approval; otherwise nothing.
 
 **What this gate is not:** it is not "approve every decision in the spec", and it does **not** reopen Step 2's question economy. You still resolved every detail yourself and asked nothing along the way. This is the single moment where the calls you made on the user's behalf get shown for correction — the payment of the promise Step 2 and Step 4 make when they write *"the user can correct it when they see the spec."* Nothing about it licenses asking more questions earlier.
 
