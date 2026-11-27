@@ -35,6 +35,7 @@
                    ".claude/hooks/lib/guard_team_egress_effect.py",
                    ".claude/hooks/lib/guard_team_egress_hard.py",
                    ".claude/hooks/lib/guard_team_egress_loops.py",
+                   ".claude/hooks/lib/guard_team_egress_operator.py",
                    ".claude/hooks/lib/guard_team_egress_supervisor.py",
                    ".claude/hooks/lib/guard_team_egress_words.py",
                    ".claude/hooks/team-ask-hook.sh",

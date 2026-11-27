@@ -59,6 +59,7 @@ from guard_destructive_sql import (  # noqa: E402
 from guard_team_egress_effect import (  # noqa: E402
     GH_READ_FORMS, inline_literals, py_code_safe, python_heredocs_judged)
 from guard_team_egress_loops import backstop  # noqa: E402
+import guard_team_egress_operator as operator  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, compound_verdict, format_masked, gh_host_selector,
     record_touch)
@@ -353,7 +354,7 @@ def reading_reason(cmd, project):
         return NET_FOUND
     # #272: a safe Python here-doc is `true <args>`, a `cat` data here-doc loses its body; then the
     # literal heads (inline_literals keeps a command with any other here-doc as it is).
-    cmd = inline_literals(python_heredocs_judged(cmd))
+    cmd = inline_literals(python_heredocs_judged(operator.commit_message_dropped(cmd)))
     decision, why = compound_verdict(cmd, project, egress_in)
     if decision != "defer":
         return why
@@ -430,6 +431,7 @@ def main():
         record_touch(project, None, "unreadable hook payload")
         return
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
+    operator.TRANSCRIPT = payload.get("transcript_path")
     if tool == "WebFetch":
         kind, reason = webfetch_effect(tool_input.get("url"), project)
     elif tool == "Bash":

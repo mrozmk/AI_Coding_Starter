@@ -25,6 +25,7 @@ from guard_team_egress_effect import (  # noqa: E402
 from guard_team_egress_loops import (  # noqa: E402
     SUB_MARK, backstop, companion_safe, loop_verdict, piped_verdict, substituted)
 from guard_team_egress_classify import net_read  # noqa: E402
+from guard_team_egress_operator import git_remote_read, operator_rules  # noqa: E402
 from guard_team_egress_words import LOOP_WORD as SAFE  # noqa: E402
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
@@ -368,7 +369,7 @@ def compound_verdict(cmd, project, egress_in, width=0):
         return compound_verdict(text, project, egress_in, w)
     if (judged := loop_verdict(cmd, SAFE, judge, width or 1)):
         return judged
-    allow = local_rules(project) if sup else []
+    allow = local_rules(project) + operator_rules(cmd) if sup else []
     py = python_forms_of(allow)
     if python_heredoc_ok(cmd, py):
         return "exempt", ""
@@ -391,7 +392,8 @@ def compound_verdict(cmd, project, egress_in, width=0):
             quoted = len(code) == 1 and code[0][0] in "sd"
             safe = quoted and py_code_safe(code[0][1])
             kinds.append("py" if quoted and ("-c" in py or safe) else "other")
-        elif net_read(vals, project) and not any(k == "g" for w in seg for k, _ in w.parts):
+        elif ((net_read(vals, project) or git_remote_read(vals, plain[seg[0].start:seg[-1].end], egress_in))
+              and not any(k == "g" for w in seg for k, _ in w.parts)):
             kinds.append("net")
         else:
             kinds.append("safe" if companion_safe(vals, egress_in, seg) else "other")

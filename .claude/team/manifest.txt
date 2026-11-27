@@ -169,6 +169,7 @@ own .claude/hooks/guard-team-egress.sh
 own .claude/hooks/lib/guard_team_egress.py
 own .claude/hooks/lib/guard_team_egress_supervisor.py
 own .claude/hooks/lib/guard_team_egress_loops.py
+own .claude/hooks/lib/guard_team_egress_operator.py
 own .claude/hooks/lib/guard_team_egress_effect.py
 own .claude/hooks/lib/guard_team_egress_classify.py
 own .claude/hooks/lib/guard_team_egress_words.py
