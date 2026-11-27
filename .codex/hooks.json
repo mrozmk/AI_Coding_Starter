@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAM_CLEARANCE_HOST=codex bash .claude/hooks/team-clearance-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

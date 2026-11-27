@@ -56,6 +56,7 @@
 # --- shared: the project's own copy wins; a difference is reported for a hand merge --------
 shared .claude/lib/codex-bg.sh
 shared AGENTS.md
+shared .codex/hooks.json
 shared .claude/commands/quick-change.md
 shared .claude/commands/check-implementation.md
 shared .claude/commands/brainstorm.md
@@ -75,6 +76,7 @@ own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/team-attention.sh
 own .claude/hooks/team-ask-hook.sh
+own .claude/hooks/team-clearance-hook.sh
 own .claude/team/stage-hooks.json
 own .claude/lib/costs/bindings.py
 own .claude/lib/costs/claude_adapter.py
@@ -171,6 +173,8 @@ own .claude/hooks/lib/guard_team_egress_effect.py
 own .claude/hooks/lib/guard_team_egress_classify.py
 own .claude/hooks/lib/guard_team_egress_words.py
 own .claude/hooks/lib/guard_team_egress_hard.py
+own .claude/hooks/lib/guard_team_egress_clear.py
+own .claude/hooks/lib/clearance-classes.json
 own .claude/lib/gate-lock.sh
 own .claude/lib/gate_lock.py
 own .claude/lib/team-anchor.sh
@@ -189,6 +193,7 @@ own .claude/lib/team-answer-lead.sh
 own .claude/lib/team-lead-decision.sh
 own .claude/lib/team_batch.py
 own .claude/lib/team-ask-batch.sh
+own .claude/lib/team-clearance.sh
 own .claude/lib/team-evidence.sh
 own .claude/team/baseline-ask.json
 own .claude/lib/team_prompt_settings.py

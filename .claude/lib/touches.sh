@@ -8,6 +8,8 @@
 #        bash .claude/lib/touches.sh report [--since D|<n>d] [--who U] [--reason R] [--main DIR]
 #        bash .claude/lib/touches.sh report --brief --team T --ticket K --run RUN [--main DIR]
 #        bash .claude/lib/touches.sh block --source HOOK --what TEXT [--main DIR]   (a hook refused)
+#        bash .claude/lib/touches.sh clear --kind cleared|shadow --who SESSION --what TEXT [--answer A]
+#            --clearance JSON [--main DIR]   (#323: a Supervisor clearance or a shadow line; never a touch)
 #        bash .claude/lib/touches.sh hook [--global]      (Notification hook; stdin = the payload)
 #   kinds:   question permission plan text decision restart other   (block: written only by block)
 #   reasons: human-only no-rule lead-unsure channel-failed guard direct   (hook: only by block)
@@ -20,10 +22,10 @@
 set -u
 
 LIB="$(cd "$(dirname "$0")" && pwd)"
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -gt 0 ] || usage
 case "$1" in -h|--help) usage ;; esac
 # block: a refusing hook's fire-and-forget record — never an exit code or output of its own.
-if [ "$1" = block ]; then python3 -I "$LIB/touches.py" "$@" >/dev/null 2>&1; exit 0; fi
+if [ "$1" = block ] || [ "$1" = clear ]; then python3 -I "$LIB/touches.py" "$@" >/dev/null 2>&1; exit 0; fi
 command -v python3 >/dev/null 2>&1 || { echo "error: python3 not found" >&2; exit 2; }
 exec python3 -I "$LIB/touches.py" "$@"

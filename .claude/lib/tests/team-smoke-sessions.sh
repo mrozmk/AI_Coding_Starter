@@ -258,7 +258,11 @@ jq '.hooks.Notification = [{matcher: "permission_prompt", hooks: [{type: "comman
   | .hooks.PermissionRequest = [{hooks: [{type: "command", command: "approve-all"}]}]
   | .permissions = {allow: ["Bash(*)"]}' "$WORK/rh.keep" > "$RH"
 run "$MAIN" $SS materialize Supervisor; expect 0 "" "(3) materialize Supervisor with the kit"
-jq -e '(.hooks | keys) == ["Stop"] and (.permissions.allow | index("Bash(*)") | not)
+# #323: the template's own PreToolUse/PermissionRequest entries (the clearance hook) stay; the kit
+# adds Stop and nothing else.
+jq -e '((.hooks | keys) - ["PermissionRequest", "PreToolUse"]) == ["Stop"] and (.permissions.allow | index("Bash(*)") | not)
+  and ([(.hooks.PreToolUse // [])[], (.hooks.PermissionRequest // [])[] | .hooks[].command]
+       | all(contains("/.claude/hooks/team-clearance-hook.sh")))
   and (tostring | contains("approve-all") | not)' "$PF" >/dev/null \
   || { cp "$PF" "$WORK/out"; fail "(3) Supervisor took more than Stop from the kit"; }
 cp "$WORK/rh.keep" "$RH"

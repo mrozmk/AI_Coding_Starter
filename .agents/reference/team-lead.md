@@ -514,6 +514,20 @@ in `answers.md`, the use in `d-<n>.batch-state.json`, no Operator touch (no huma
 Each entry answers once. `team-lead.sh decision revoke <team> d-<n> --why "<line>"` (lead or
 Supervisor) ends the remaining entries.
 
+**Supervisor clearance — carrier B (#323).** After the batch match found nothing, an operator-tier
+permission whose checker line `clearance:` names a Supervisor-clearable class (public-get-long,
+lockfile-install, gh-own-repo-write, starter-worktree-edit, inline-code-no-io —
+[security-egress.md](security-egress.md) → Supervisor clearance) goes to the Supervisor first, and
+only when no earlier ask of this session for this very request has an answer waiting (that answer
+wins, an Operator deny included). Shadow (the default): a `shadow` touch line, then the ask below.
+Enforce (the Operator's switch verifies for `claude` and equals the stage hooks' `{{SEAL}}`): a
+request in the main checkout, a `clearance` doorbell, a wait of at most min(240 s, half the ask
+deadline) that a cancellation ends with the stop message; before anything is consumed the hook
+re-checks under the run's ask lock what delivery checks (stopped, the run, the attempt, the session,
+a waiting answer). A claimed `allow` → allow with authority `supervisor (cleared)` in `answers.md`,
+a `cleared` touch line, no ask, no Operator decision; a claimed `deny` → deny; anything else → the
+ask is filed and the lead goes on as below. A cleared answer never claims to be the Operator's.
+
 A decision only the Operator can make becomes a file, and the lead raises it as an
 `AskUserQuestion` dialog in its own window (lead launched with `ask_operator`, §1). The cost: the
 lead blocks while the dialog is open. Other asks fall back to their hook deadline meanwhile (see
@@ -811,8 +825,14 @@ decision in plain text and the Operator types the reply.
   Attribution).
   **Class** (`mandate_ask_class`): only a lead-tier ask, by the decision's `touch_reason`
   (`no-rule`, `lead-unsure`): a question, a plan, or a permission the main checkout's checker, run
-  then on the request, tiers `lead`. An operator-tier request, a stop (`text`) ask — it has no
-  live input to verify at delivery — and any other reason have no class. No class, no delegation.
+  then on the request, tiers `lead` — or (#323 T3) tiers `operator — egress: …` with `batch:
+  eligible` (the egress is its only cause) and a `clearance:` line that is not `hard`: an
+  `ask`-kind egress is delegable, a hard egress class never. For such an ask the lead's
+  `decision open … --reason no-rule|lead-unsure` is accepted only when the main checkout's checker
+  verifies it at open (exit 2 otherwise: "an operator-tier ask stays human-only unless its only cause
+  is a non-hard egress"); without a reason an operator-tier ask keeps `human-only`, and an explicit
+  `human-only` is never overridden. Every other operator-tier request, a stop (`text`) ask — it has
+  no live input to verify at delivery — and any other reason have no class. No class, no delegation.
   **Routing.** `decision open --ask` (a lead whose prompt carries the delegation rule) asks the
   main checkout: covered → the decision gets `delegate: supervisor`, `delegate_class`,
   `delegate_mandate`, an inbox message `delegated` to the Supervisor (§3) that prints the whole

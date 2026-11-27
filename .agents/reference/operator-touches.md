@@ -32,7 +32,8 @@ Keys, in this order:
 | `machine` | string | 100 | short host name, `[A-Za-z0-9._-]` only |
 | `who` | string | 100 | `$USER`, same filter |
 | `where` | string | 200 | `team <team> / <ticket> / <role>` (role `TeamLead` for the lead) or `solo <path relative to the main checkout>` (`solo .` at its root, `solo ?` outside it) |
-| `kind` | string | — | what stopped: `question` · `permission` · `plan` · `text` · `decision` · `restart` · `other` — or `block`: a hook refused a call with no human involved (written only by `touches.sh block`; never an Operator touch) |
+| `kind` | string | — | what stopped: `question` · `permission` · `plan` · `text` · `decision` · `restart` · `other` — or `block`: a hook refused a call with no human involved (written only by `touches.sh block`; never an Operator touch) — or (#323) `cleared`: a Supervisor clearance answer a hook claimed (reason `supervisor`, `answer` allow/deny) and `shadow`: what the clearance hook would have done (reason `hook`), both written only by `touches.sh clear`, never an Operator touch, reported in their own sections |
+| `clearance` | object, optional | line | #323 `cleared`/`shadow` lines only, strings: `id`, `class`, `request_hash`, `list_version`, `authority` (`supervisor (cleared)`), `result` (`would-pass` · `would-clear` · `own` · `hard` · `none`), `host` |
 | `what` | string | 200 | one line: the question, or `<tool>: <command or path>` |
 | `reason` | string | — | why a human was needed (below) |
 | `answer` | string | 200 | the human's words, or `allow` / `deny` / `deny: <instead>`; empty when unknown |
@@ -51,7 +52,8 @@ Reason codes — the field reports group by — and who assigns each:
 | `channel-failed` | a lead-run stage waited at a permission prompt no ask covered | the Notification hook |
 | `guard` | a guard stopped a Supervisor session for the Operator | the egress guard ([security-egress.md](security-egress.md)) |
 | `direct` | a human acted in a stage window or a solo session without a lead asking | the Notification hook, the dialog watch, a manual `add` |
-| `hook` | no human: a PreToolUse hook refused the call (exit 2) and the session had to retry another way — only with `kind: block` | `touches.sh block`, called by the refusing hook |
+| `hook` | no human: a PreToolUse hook refused the call (exit 2) and the session had to retry another way — only with `kind: block`; or (#323) a clearance hook's `shadow` line | `touches.sh block`, called by the refusing hook; `touches.sh clear` |
+| `supervisor` | no human: the Supervisor cleared or denied a clearance request (#323) — only with `kind: cleared` | `touches.sh clear`, called by the claiming hook |
 
 ## Main checkout
 

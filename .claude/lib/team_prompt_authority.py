@@ -422,15 +422,36 @@ def retry_key(tool, inp, cwd):
 def input_tier(c, root, main, extra, path):
     """team_prompt_check.py --input-json: the tier line of one structured permission
     ({tool_name, tool_input, cwd}), a second line `retry: <key>|none` (retry_key, operator tier
-    only) and a third `batch: eligible|no` (tier_full: an egress-only operator tier, #322), or None
-    when the file cannot be read."""
+    only), a third `batch: eligible|no` (tier_full: an egress-only operator tier, #322) and a fourth
+    `clearance: pass|hard|none|<class id>` (input_clearance, operator tier only; #323), or None when
+    the file cannot be read."""
     parts = input_tier_parts(c, root, main, extra, path)
     if parts is None:
         return None
     kind, why, eligible, _, key = parts
     line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
         else "tier: operator — %s" % why
-    return "%s\nretry: %s\nbatch: %s" % (line, key or "none", "eligible" if eligible else "no")
+    clear = input_clearance(root, main, path) if kind == "operator" else "none"
+    return "%s\nretry: %s\nbatch: %s\nclearance: %s" % (line, key or "none", "eligible" if eligible else "no",
+                                                         clear)
+
+
+def input_clearance(root, main, path):
+    """#323 carrier B: the clearance checker (guard_team_egress_clear.clear_class, ctx stage, the
+    clone's stage-hooks settings as the launch profile) on this structured request → pass | hard |
+    none | the class id; hard when the checker is missing or fails. Imported lazily: lines 1-3 never
+    depend on it."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        import guard_team_egress_clear
+        rules = os.path.join(root, ".agents", "team", "stage-hooks.settings.json")
+        r = guard_team_egress_clear.clear_class(data.get("tool_name"), data.get("tool_input") or {},
+                                                data.get("cwd") or root, root, "stage", main,
+                                                rules if os.path.isfile(rules) else None)
+        return r["class_id"] if r["result"] == "clearable" else r["result"]
+    except Exception:  # noqa: BLE001 — never a clearance from a failure
+        return "hard"
 
 
 def input_tier_parts(c, root, main, extra, path):

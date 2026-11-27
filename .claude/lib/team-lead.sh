@@ -329,7 +329,7 @@ owns() {
 # Same union as supervisor-sessions.sh materialize, written into the clone instead of the main
 # checkout's watch/profiles: the lead runs in the clone, the global roles do not.
 materialize() {
-  local team="$1" root clone out tpl pr='[]' L mq
+  local team="$1" root clone out tpl pr='[]' L mq seal=off rd
   team_check_name "$team" || exit 2
   root="$(team_root)"
   [ ! -f "$root/.agents/team/team.json" ] \
@@ -352,8 +352,9 @@ materialize() {
   L="$(team_lead_lib_prefix "$root")" || { echo "error: main checkout path holds a quote" >&2; exit 1; }
   mq="$(team_lead_shell_word "$root")"
   out="$clone/.agents/team/teamlead.settings.json"
+  [ ! -f "$root/.agents/team/clearance.json" ] || seal="$(shasum -a 256 < "$root/.agents/team/clearance.json" | cut -d' ' -f1)"
   ( umask 077
-    jq -n --argjson pr "$pr" --arg L "$L" --arg H "$root/.claude/hooks" --arg Mq "$mq" --arg team "$team" \
+    jq -n --argjson pr "$pr" --arg L "$L" --arg H "$root/.claude/hooks" --arg Mq "$mq" --arg team "$team" --arg seal "${seal:-off}" \
       --slurpfile t "$tpl" --slurpfile m "$root/.claude/settings.json" \
       --slurpfile ml "$(f="$root/.claude/settings.local.json"; [ -f "$f" ] && echo "$f" || echo /dev/null)" \
       --slurpfile c "$(f="$clone/.claude/settings.json"; [ -f "$f" ] && echo "$f" || echo /dev/null)" \
@@ -379,9 +380,17 @@ materialize() {
          hooks: {PreToolUse: [{matcher: "Edit|Write|NotebookEdit", hooks: [{type: "command",
            onFailure: "block", command: ("bash \"" + $H + "/guard-teamlead-write.sh\"")}]},
            {matcher: "Bash", hooks: [{type: "command", onFailure: "block",
-           command: ("bash \"" + $H + "/guard-teamlead-bash.sh\"")}]}]}}' \
+           command: ("bash \"" + $H + "/guard-teamlead-bash.sh\"")}]}],
+           # #323 carrier A: the Supervisor clearance hook, sealed at this launch. The matcher never
+           # matches AskUserQuestion, so the lead'"'"'s ask provenance stays clean.
+           PermissionRequest: [{matcher: "Bash|WebFetch|Edit|Write|MultiEdit|NotebookEdit", hooks: [{type: "command",
+           timeout: 300, command: ("TEAM_CLEARANCE_SEAL=" + $seal + " TEAM_CLEARANCE_RULES={{RULES}} bash \"" + $H
+             + "/team-clearance-hook.sh\"")}]}]}}' \
       > "$out.tmp"
-    mv "$out.tmp" "$out" )
+    rd="$(python3 -I "$root/.claude/hooks/lib/guard_team_egress_clear.py" rules-digest --project "$clone" --rules "$out.tmp" \
+      --main "$root" 2>/dev/null)" || rd=unknown
+    jq --arg d "${rd:-unknown}" '.hooks.PermissionRequest[0].hooks[0].command |= gsub("\\{\\{RULES\\}\\}"; $d)' "$out.tmp" > "$out.tmp2" \
+      && mv "$out.tmp2" "$out" && rm -f "$out.tmp" )
   jq -r '"profile TeamLead: \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }

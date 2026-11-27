@@ -1,5 +1,5 @@
 {
-  "_comment": "Settings template for the Advisors (the shipped Fable; any Claude role whose teams.sessions entry names settings: Advisor): an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. An Advisor works on request through the Supervisor and stays off the team path, so the team-answering and team-control commands, merges, releases and pushes are denied. The launcher materialises one profile per role from this template, with env.TEAM_SESSION_ROLE set to that role ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned); _samples feed session_profile_check.py. Project-specific named reads go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/advisor.md",
+  "_comment": "Settings template for the Advisors (the shipped Fable; any Claude role whose teams.sessions entry names settings: Advisor): an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. An Advisor works on request through the Supervisor and stays off the team path, so the team-answering and team-control commands, merges, releases and pushes are denied. The launcher materialises one profile per role from this template, with env.TEAM_SESSION_ROLE set to that role ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned); _samples feed session_profile_check.py. Project-specific named reads go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/advisor.md #323: PermissionRequest runs the Supervisor clearance hook (shadow by default; {{SEAL}} and {{RULES}} are filled at launch) and the PreToolUse write guard asks before an edit of the guard layer and denies one of the clearance ledger.",
   "env": {
     "TEAM_SESSION_ROLE": "Advisor"
   },
@@ -28,7 +28,9 @@
       "Skill(release)",
       "Skill(release *)",
       "Bash(*notify.sh*)",
-      "Bash(*operator-record.sh*)"
+      "Bash(*operator-record.sh*)",
+      "Bash(bash .claude/lib/team-clearance.sh answer*)",
+      "Bash(*team-clearance.sh grant*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -44,7 +46,9 @@
       "bash .claude/lib/team-remode.sh alfa brainstorm",
       "bash .claude/lib/team-integrate.sh alfa",
       "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
-      "bash .claude/lib/supervisor-sessions.sh rollback"
+      "bash .claude/lib/supervisor-sessions.sh rollback",
+      "bash .claude/lib/team-clearance.sh answer c-1-0123456789abcdef allow",
+      "bash .claude/lib/team-clearance.sh grant"
     ],
     "skills": [
       "Skill(start-team)",
@@ -74,6 +78,33 @@
       "bash .claude/lib/team-new.sh alfa 12 feat/12-x origin/main",
       "rm -rf /",
       "bash .claude/team/sessions/operator-kit/install.sh --apply"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "onFailure": "block",
+            "timeout": 10,
+            "command": "bash \"{{MAIN}}/.claude/hooks/team-clearance-hook.sh\""
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Bash|WebFetch|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 300,
+            "command": "TEAM_CLEARANCE_SEAL={{SEAL}} TEAM_CLEARANCE_RULES={{RULES}} bash \"{{MAIN}}/.claude/hooks/team-clearance-hook.sh\""
+          }
+        ]
+      }
     ]
   }
 }

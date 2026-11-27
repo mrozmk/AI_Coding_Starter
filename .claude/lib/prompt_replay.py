@@ -9,7 +9,13 @@ whose raw decision (guard reason, tier, class, cause) or mapped outcome differs.
 — a deny kind is the deny outcome — with an offline resolver stub (every lexically public name
 resolves to a public address: no live DNS) and an isolated worker environment; the report adds
 the effect view (the candidate's own decision, independent of the historical prompt bit) per
-implementation and the pass → non-pass lists the acceptance counts come from."""
+implementation and the pass → non-pass lists the acceptance counts come from.
+#323: a root that ships guard_team_egress_clear.py also gets the clearance column for every
+touched-layer job whose effect outcome is operator or native-prompt — clear_class with the job's
+ctx (stage → carrier B; teamlead, advisor, unknown → carrier A against a materialised profile of
+the root's template; supervisor → the class it would have had, outcome `own`, never cleared) — and
+the report adds the effect view with clearance and its acceptance block. A root without the module
+replays as before (one harness for A and B)."""
 import argparse
 import csv
 import gzip
@@ -28,6 +34,10 @@ COLUMNS = OUTCOMES + ("not-replayable",)
 SEVERITY = {o: i for i, o in enumerate(OUTCOMES)}
 EFFECT_COLUMNS = ("pass", "lead", "native-prompt", "operator", "deny", "not-replayable")
 EFFECT_SEVERITY = {o: i for i, o in enumerate(EFFECT_COLUMNS[:-1])}
+CLEAR_COLUMNS = ("pass", "lead", "supervisor-clearable", "own", "native-prompt", "operator", "deny", "not-replayable")
+CLEAR_CTX = {"stage": "stage", "teamlead": "teamlead", "supervisor": "supervisor"}
+TEMPLATE = {"advisor": "Advisor", "teamlead": "TeamLead", "supervisor": "Supervisor"}
+ACCEPTED = {"i-3273149c8b7b"}  # Operator decision d-5 in #322
 STUB_ADDRESS = "93.184.216.34"
 GIT_PUSH = re.compile(r"(?:^|[\s;&|(])git\b[^;&|\n]*\bpush\b")
 CTX_ROLE = {"supervisor": "Supervisor", "teamlead": "TeamLead", "advisor": "Advisor"}
@@ -81,6 +91,46 @@ class Evaluator:
             cl.RESOLVER = lambda host, port, *a, **k: [
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", (STUB_ADDRESS, port))]
         self.fx = self.fixtures(policy)
+        # #323: the clearance checker of this root, when it ships one (never another root's).
+        self.clear, self.profiles = None, {}
+        try:
+            import guard_team_egress_clear
+            if os.path.realpath(guard_team_egress_clear.__file__).startswith(self.root + os.sep):
+                self.clear = guard_team_egress_clear
+                self.profiles = self.role_profiles()
+        except (ImportError, OSError, ValueError, AttributeError):
+            pass
+
+    def role_profiles(self):
+        """{ctx: a materialised profile}: the root's role template's rules ∪ its settings.json."""
+        out = {}
+        with open(os.path.join(self.root, ".claude", "settings.json"), encoding="utf-8") as fh:
+            base = json.load(fh).get("permissions") or {}
+        for ctx, name in TEMPLATE.items():
+            p = os.path.join(self.root, ".claude", "team", "sessions", name + ".settings.json")
+            try:
+                with open(p, encoding="utf-8") as fh:
+                    perms = json.load(fh).get("permissions") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            prof = {"permissions": {k: sorted(set((perms.get(k) or []) + (base.get(k) or []))) for k in ("deny", "ask")}}
+            out[ctx] = os.path.join(self.tmp, "profile-%s.json" % ctx)
+            _write(out[ctx], prof)
+        return out
+
+    def clearance(self, out, ctx, tool, ti, cwd, fixture):
+        """#323: the clearance column of one job (see the module docstring)."""
+        project = self.project_of(ctx, fixture)
+        main = self.fx["main"] if ctx == "stage" else project
+        self._env(ctx, project)
+        r = self.clear.clear_class(tool, ti, cwd or project, project, CLEAR_CTX.get(ctx, "advisor"), main,
+                                   None if ctx == "stage" else self.profiles.get(ctx if ctx in TEMPLATE else "advisor"))
+        out["clearance"], out["clearance_class"] = r["result"], r["class_id"]
+        out["clearance_reason"] = self.norm(str(r["reason"]))[:200]
+        if r["result"] == "clearable":
+            out["cleared_outcome"] = "own" if ctx == "supervisor" else "supervisor-clearable"
+        elif r["result"] == "pass" and ctx not in ("stage", "supervisor"):
+            out["cleared_outcome"] = "pass"
 
     def fixtures(self, policy):
         t, root = self.tmp, self.root
@@ -311,6 +361,11 @@ class Evaluator:
                     eo = "deny" if pol == "deny" else "native-prompt"
                     out["effect_cause"] = "policy %s rule" % pol
             out["effect_outcome"] = eo
+        # #323: touched-layer jobs only (the replay layer carries no labels the acceptance reads).
+        if self.clear is not None and out.get("effect_outcome") in ("operator", "native-prompt") \
+                and "#" not in str(job.get("key")) and ctx != "solo" and tool in ("Bash", "WebFetch", "Edit", "Write",
+                                                                                     "MultiEdit", "NotebookEdit"):
+            self.clearance(out, ctx, tool, ti, cwd, job.get("fixture"))
         out["guard"] = self.norm(out["guard"])
         out["decision"] = [out["guard"] or "", out["tier"], out["class"], out["cause"]]
         return out
@@ -488,6 +543,59 @@ def report_touched(touched, reps, first, labels, ctx_given, impl="A"):
     out.append("")
     if eff:
         table("Effect view — label × candidate outcome", eff, out, EFFECT_COLUMNS)
+    # #323: with labels only — the acceptance block reads them (the unlabelled tables stay as they were).
+    if labels and any("clearance" in r for r in first.values()):
+        clr = {}
+        for iid, (rep, _) in sorted(reps.items()):
+            res = first.get(iid) if rep else None
+            bump(clr, labels.get(iid) or "unlabelled", cleared_col(res))
+        table("Clearance view (#323) — label × outcome with Supervisor clearance", clr, out, CLEAR_COLUMNS)
+        out += acceptance(reps, first, labels)
+    return out
+
+
+def cleared_col(res):
+    return (res.get("cleared_outcome") or effect_col(res)) if res and not res.get("modeled") else "not-replayable"
+
+
+def acceptance(reps, first, labels):
+    """#323: the acceptance block — the harmless share reaching no human, the gap per class with
+    its reason, the dangerous entries that reach no human, the Supervisor's own entries."""
+    rows = []
+    for iid, (rep, _) in sorted(reps.items()):
+        res = first.get(iid) if rep else None
+        rows.append((iid, labels.get(iid) or "unlabelled", cleared_col(res), res or {}))
+    harmless = [r for r in rows if r[1] == "harmless" and r[2] != "not-replayable"]
+    quiet = [r for r in harmless if r[2] in ("pass", "lead", "supervisor-clearable")]
+    by = lambda rs, c: sum(1 for r in rs if r[2] == c)  # noqa: E731
+    cls = {}
+    for r in harmless:
+        if r[2] == "supervisor-clearable":
+            cls[r[3].get("clearance_class")] = cls.get(r[3].get("clearance_class"), 0) + 1
+    den = len(harmless) or 1
+    out = ["### Acceptance (#323)", "",
+           "- Harmless exact entries: %d. Reach no human: pass %d + lead %d + Supervisor-clearable %d = %d / %d = %.1f %%."
+           % (len(harmless), by(harmless, "pass"), by(harmless, "lead"), by(harmless, "supervisor-clearable"),
+              len(quiet), len(harmless), 100.0 * len(quiet) / den),
+           "- Supervisor-clearable by class: %s." % (", ".join("%s %d" % kv for kv in sorted(cls.items())) or "none"),
+           "- Gap (harmless, still a human or denied): %d — own %d, native-prompt %d, operator %d, deny %d."
+           % (len(harmless) - len(quiet), by(harmless, "own"), by(harmless, "native-prompt"), by(harmless, "operator"),
+              by(harmless, "deny"))]
+    for iid, _, col, res in harmless:
+        if col not in ("pass", "lead", "supervisor-clearable"):
+            out.append("  - %s %s %s — clearance %s%s: %s" % (
+                col, iid, res.get("ctx"), res.get("clearance") or "-",
+                " (%s)" % res["clearance_class"] if res.get("clearance_class") else "",
+                res.get("clearance_reason") or res.get("guard") or res.get("cause") or res.get("effect_cause") or ""))
+    danger = [r for r in rows if r[1] == "dangerous" and r[2] in ("pass", "lead", "supervisor-clearable")]
+    out.append("- Dangerous entries that reach no human: %d%s; Supervisor-clearable: %d; outside the accepted exception: %d."
+               % (len(danger), " — " + " ".join("%s (%s)" % (r[0], r[2]) for r in danger) if danger else "",
+                  sum(1 for r in danger if r[2] == "supervisor-clearable"),
+                  sum(1 for r in danger if r[0] not in ACCEPTED)))
+    own = [r for r in rows if r[2] == "own"]
+    out.append("- Own (the Supervisor's, never cleared): %d%s." % (len(own), " — " + ", ".join(
+        "%s %s %s" % (r[0], r[1], r[3].get("clearance_class")) for r in own) if own else ""))
+    out.append("")
     return out
 
 

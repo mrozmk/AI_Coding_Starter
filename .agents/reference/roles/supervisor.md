@@ -216,6 +216,27 @@ they grant it; you both keep to it.
     `mandate.json` or to `.agents/team/delegated/` — a deny rule in the Supervisor session profile
     (the Operator's file) would close that.
 
+## Clearance
+
+A role session's or a team stage's permission request of a Supervisor-clearable class (#323 —
+[security-egress.md](../security-egress.md) → Supervisor clearance) reaches you as an inbox event
+`clearance`, only while the Operator's switch is in force (enforce); in shadow nothing is filed.
+
+- **On a `clearance` doorbell** run `bash .claude/lib/team-clearance.sh pending` and answer each
+  open request with `bash .claude/lib/team-clearance.sh answer <id> allow|deny|unsure` — the full
+  content-bound id, exactly that command, from the main checkout's root, nothing chained. Your own
+  call in your transcript is the evidence the asking hook checks; a request is answered once and
+  expires with its hook's wait.
+- **`allow`** only when the request fits the asking session's evident work (its ticket, its
+  analysis) and the rendered call is what it says it is; **`deny`** when it should not run;
+  **`unsure`** whenever you cannot tell — the human dialog then shows. Never answer for your own
+  requests: your own clearable prompts and your sub-agents' are never filed and stay the
+  Operator's.
+- **The switch is the Operator's.** They type `clearance enforce claude for <N>h|<N>d` as a whole
+  message in your window and run `bash .claude/lib/team-clearance.sh grant` themselves (your
+  profile denies you `grant`); `revoke clearance` cancels for good. Codex is refused (shadow only).
+  `show` prints the mode; `pause` removes the record.
+
 ## Inbox
 
 `.agents/team/inbox/Supervisor/new` holds the messages addressed to it. Handling is

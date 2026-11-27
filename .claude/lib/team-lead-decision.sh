@@ -339,6 +339,20 @@ decision_open() {
       fi
     done
     src="asks/$ask.json"; kind="$(ask_get "$ask" kind)"
+    # #323 T3: an escalation reason on an operator-tier permission only when the main checkout's
+    # checker says its only cause is an egress that is no hard class.
+    if [ "$kind" = permission ] && [ "$(ask_get "$ask" tier)" = operator ] \
+        && { [ "$reason" = no-rule ] || [ "$reason" = lead-unsure ]; }; then
+      v="$(mktemp "${TMPDIR:-/tmp}/decision-t3.XXXXXX")" || d_bad 4 "mktemp"
+      jq -c .payload "$ASK_D/$ask.json" > "$v" 2>/dev/null \
+        && [ -n "${MAIN:-}" ] && bo="$(python3 -I "$MAIN/.claude/lib/team_prompt_check.py" "${TD%/.agents/team}" \
+          --input-json "$v" --main "$MAIN" 2>/dev/null)" || bo=""
+      rm -f "$v"
+      [ "$(sed -n 's/^batch: //p' <<<"$bo")" = eligible ] && [ -n "$(sed -n 's/^clearance: //p' <<<"$bo")" ] \
+        && [ "$(sed -n 's/^clearance: //p' <<<"$bo")" != hard ] \
+        || d_bad 2 "an operator-tier ask stays human-only unless its only cause is a non-hard egress"
+      bo=""
+    fi
     [ -n "$q" ] || q="$(ask_get "$ask" role): $(ask_one_line "$ask")"
     bind="bind_ask: $ask
 bind_session_id: $(ask_get "$ask" session_id)

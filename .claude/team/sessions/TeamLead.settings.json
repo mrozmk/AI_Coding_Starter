@@ -1,5 +1,5 @@
 {
-  "_comment": "Role profile for the per-run TeamLead: one lead session per team run, launched in the team's clone with --settings. It may read the team's state, write verdicts and answers through the named scripts (team-lead.sh decision answer is deliberately not allowed: outside auto mode the Operator's approval of that prompt is itself a human act), and write files only under .agents/team/runs/<run>/ and the scratchpad (guard-teamlead-write.sh, registered at materialise time — a deny rule cannot say 'everything except one directory'). It never commits, pushes, merges, rewrites history or writes a stage record. The PR host's update verbs are denied at materialise time from teams.pr_provider; `team-lead.sh materialize <team>` unions this file with the project and local deny/ask rules into <clone>/.agents/team/teamlead.settings.json. _samples feed session_profile_check.py (role TeamLead). Contract: .agents/reference/team-lead.md",
+  "_comment": "Role profile for the per-run TeamLead: one lead session per team run, launched in the team's clone with --settings. It may read the team's state, write verdicts and answers through the named scripts (team-lead.sh decision answer is deliberately not allowed: outside auto mode the Operator's approval of that prompt is itself a human act), and write files only under .agents/team/runs/<run>/ and the scratchpad (guard-teamlead-write.sh, registered at materialise time — a deny rule cannot say 'everything except one directory'). It never commits, pushes, merges, rewrites history or writes a stage record. The PR host's update verbs are denied at materialise time from teams.pr_provider; `team-lead.sh materialize <team>` unions this file with the project and local deny/ask rules into <clone>/.agents/team/teamlead.settings.json. _samples feed session_profile_check.py (role TeamLead). Contract: .agents/reference/team-lead.md #323: the template registers the Supervisor clearance hook for PermissionRequest; team-lead.sh materialize builds the lead's hooks itself and writes the same entry, sealed at launch (its matcher never matches AskUserQuestion, so the ask provenance stays clean).",
   "env": {
     "TEAM_SESSION_ROLE": "TeamLead"
   },
@@ -49,7 +49,9 @@
       "Bash(*session-host.sh send *-coder*)",
       "Bash(*session-host.sh send *-qa*)",
       "Bash(*session-host.sh send *-wrapup*)",
-      "Bash(*session-host.sh send *-cli*)"
+      "Bash(*session-host.sh send *-cli*)",
+      "Bash(bash .claude/lib/team-clearance.sh answer*)",
+      "Bash(*team-clearance.sh grant*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -72,7 +74,9 @@
       ".claude/lib/notify.sh release --summary x",
       "bash -c '.claude/lib/notify.sh flush'",
       "bash ~/.agent-comms/../notify.sh list",
-      "bash .claude/lib/operator-record.sh failure --summary x"
+      "bash .claude/lib/operator-record.sh failure --summary x",
+      "bash .claude/lib/team-clearance.sh answer c-1-0123456789abcdef allow",
+      "bash .claude/lib/team-clearance.sh grant"
     ],
     "skills": [
       "Skill(pr-merge)",
@@ -101,6 +105,20 @@
       "git push --force origin main",
       "git commit --amend --no-edit",
       "rm -rf /"
+    ]
+  },
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "Bash|WebFetch|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 300,
+            "command": "TEAM_CLEARANCE_SEAL={{SEAL}} TEAM_CLEARANCE_RULES={{RULES}} bash \"{{MAIN}}/.claude/hooks/team-clearance-hook.sh\""
+          }
+        ]
+      }
     ]
   }
 }
