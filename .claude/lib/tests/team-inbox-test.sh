@@ -99,6 +99,11 @@ s2=$(FAKE_NOW=20261127T120001Z ti --main "$M" write Supervisor clearance --from 
 s3=$(FAKE_NOW=20261127T120002Z ti --main "$M" write Supervisor bogus --from alfa 2>/dev/null); rc3=$?
 ok '[ "$rc1" = 0 ] && grep -qx "event: clearance" "$s1" && grep -qx "ref: clearance/requests/c-1-0123456789abcdef.json" "$s1" && [ "$rc2" = 0 ] && [ "$rc3" = 2 ]' \
   "#323 clearance event to Supervisor from a role (and a team); another event still refused"
+s4=$(FAKE_NOW=20261127T120003Z ti --main "$M" write Supervisor decision --from alfa --ticket 9 --run r9 \
+  --ref runs/r9/decisions/d-1.md --message "d-1: which way" 2>/dev/null); rc4=$?
+s5=$(FAKE_NOW=20261127T120004Z ti --main "$M" write Supervisor decision --from adhoc-probe 2>/dev/null); rc5=$?
+ok '[ "$rc4" = 0 ] && grep -qx "event: decision" "$s4" && grep -qx "ref: runs/r9/decisions/d-1.md" "$s4" && grep -qx "d-1: which way" "$s4" && [ "$rc5" = 2 ]' \
+  "a decision event to Supervisor from a team; refused from a role or ad-hoc session"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "team-inbox-test: OK ($n checks)"

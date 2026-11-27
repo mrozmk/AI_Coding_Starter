@@ -1588,6 +1588,8 @@ ok '[ "$TMRC" = 2 ]' "team-mandate.sh refuses a team clone"
 rm -f "$MF" "$SINBOX"/*; mrun 20990101-000002; qask n0 1
 ok '! grep -q "^delegate" "$RD/decisions/d-1.md" && ! grep -q "^delegated:" "$T/tl.out" && ! ls "$SINBOX" 2>/dev/null | grep -q "beta-delegated"' \
   "no mandate: the decision opens for the Operator as before"
+ok 'f="$(ls "$SINBOX"/*beta-decision* 2>/dev/null | head -1)" && grep -qx "event: decision" "$f" && grep -q "^ref: .*decisions/d-1.md$" "$f" && grep -q "^d-1: " "$f"' \
+  "no mandate: the decision is also filed for the Supervisor as a decision event (the card)"
 dcall c0 d-1 a-1 "d-1 Remove it"; SD d-1 a-1 "d-1 Remove it"
 ok '[ "$SDRC" = 7 ] && [ "$(dst d-1)" = pending ] && [ ! -e "$DLG/beta-$RUN-d-1.json" ]' "no mandate: a delegated answer is refused ($(cat "$T/sd.out"))"
 stopq "$HP1"
@@ -1596,6 +1598,7 @@ stopq "$HP1"
 mrun 20990101-000003; G "$M1"; : > "$RINGS"; qask m1 1
 ok '[ "$(dfm_t d-1 delegate)" = supervisor ] && [ "$(dfm_t d-1 delegate_class)" = no-rule ] && [ "$(dfm_t d-1 delegate_mandate)" = "m-g$GN" ] && grep -q "^delegated: d-1 " "$T/tl.out" && ls "$SINBOX" | grep -q "beta-delegated"' \
   "a covered class is routed to the Supervisor's inbox ($(cat "$T/tl.out"))"
+ok '! grep -lx "run: $RUN" "$SINBOX"/*beta-decision* 2>/dev/null | grep -q .' "a delegated decision files no decision event beside it"
 ok 'grep -qF "bash .claude/lib/team-lead.sh $(dargs d-1 a-1 "d-1 <reply>" | sed "s/inside the mandate\"\$/<line>\"/")" "$SINBOX"/*beta-delegated*' "the inbox message prints the whole command with its bindings"
 TL pending beta; TL2="$(cat "$T/tl.out")"; TL decision list beta
 ok 'grep -q "d-1.md — .*(delegated to the Supervisor" <<<"$TL2" && grep -q "^d-1 pending \[delegated to the Supervisor\]" "$T/tl.out"' "pending and list name the delegation"

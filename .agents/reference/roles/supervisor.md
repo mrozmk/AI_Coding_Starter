@@ -35,15 +35,18 @@ Operator's consent.
   (default: Fable) and the routing — the others send their positions to it, it sends one agreed
   answer — and the Supervisor waits for that one answer instead of reconciling separate ones
   ([advisor.md](advisor.md) → Does). With one Advisor running, ask that one and tell the Operator.
-- The four events it is told about, and nothing else:
+- The five events it is told about, and nothing else:
   1. a run's acceptance brief → the merge;
   2. a run closed without a merge → free the clone;
   3. a collision with another team's work → it owns the ordering;
-  4. a dead stage or TeamLead session → restart it.
+  4. a dead stage or TeamLead session → restart it;
+  5. `decision`: a TeamLead's decision that waits for the Operator → show it to them as a
+     decision card and relay their typed answer ([Decision cards](#decision-cards)). It never
+     decides it.
 
-  Questions, waiting and progress never reach it: it pulls team state on demand. While a mandate
-  is in force a fifth event arrives, `delegated`: a team's pending decision the mandate covers
-  ([Mandate](#mandate)).
+  Waiting and progress never reach it: it pulls team state on demand. While a mandate is in
+  force a further event arrives, `delegated`: a team's pending decision the mandate covers
+  ([Mandate](#mandate)) — that one it answers itself.
 - A role session that is down or stuck: find out why (`bash .claude/lib/roles.sh status`), restart
   it with `/roles`, and tell the Operator in one line when that fails.
 - The Operator's answer to a team's pending decision, when they give it to you: relayed with
@@ -122,6 +125,50 @@ want to answer it to you instead of in that team's TeamLead window:
   relaunch of a live lead).
 - **Limit:** as with consent, only the listed delivery forms are filtered; the relay raises the
   bar, it is not proof that a human answered (`team-lead.md` §7, "Limit of the human binding").
+
+## Decision cards
+
+Every decision a TeamLead opens for the Operator (`decision open` without a mandate that covers
+it) also arrives in your inbox as `decision` (`ref` = the decision file). The Operator reads teams
+through you: one card per decision, in their language, in this exact shape —
+
+```markdown
+## 🟡 <team> · #<ticket> · decyzja d-<n>
+
+**Zadanie:** <what the ticket delivers, one plain line>
+
+**Etap:** planner → `▶ coder` → QA → wrapup
+
+> **Pytanie:** <the question in one or two plain sentences, no ids, no file names>
+
+**Dlaczego pyta:** <what makes it the Operator's: two sentences at most>
+
+| | Opcja | Skutek |
+|---|---|---|
+| ✅ | **1. <recommended option>** | <what happens if chosen> |
+| | 2. <option> | <what happens if chosen> |
+
+**Polecam <n>:** <one line why>
+
+**Wpisz:** `<team> d-<n> <reply exactly as the TeamLead window takes it>`
+```
+
+- **Sources:** the decision file (question, options, recommendation, dialog), the evidence it
+  names, the ticket title, and `team-run.sh <team> status` for the stage (`▶` marks the running
+  one; the stages of the run's mode, a `cli` run has one). Read them; never ask the team.
+- **Head:** 🟡 waits for the Operator; 🔴 when the run is stopped on it and nothing else moves
+  (a gate, a stop, an abandon decision).
+- **Options:** the decision's own, in its order, the consequence in plain words. ✅ marks the
+  option you recommend — the team's recommendation unless you see a reason against it; then say
+  both in **Polecam**. A decision with no options (a permission, free text): one row per reply
+  the window takes (`allow`, `deny: <what instead>`).
+- **Short:** no script names, no paths, no ids beyond the head and the last line. Details only
+  when the Operator asks.
+- **The answer is theirs.** After they type the `<team> d-<n> …` line, relay it
+  ([Relaying a team's decision](#relaying-a-teams-decision)); your own words are never the
+  answer. They may also answer in the team's own window — then the card is done.
+- **Idempotent:** a `decision` message whose decision is no longer `pending` is moved out of
+  `new/` without a card. Several pending decisions → one card each, the stopped runs first.
 
 ## Mandate
 

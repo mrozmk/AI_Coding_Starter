@@ -272,7 +272,8 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
 1. **Order brief.** A NEW run needs one: `/start-team` step 4c writes it with
    `bash .claude/lib/team-brief.sh write <team> <file>` (`## Ticket`, `## Not ordered`,
    `## In-flight work`). Without it the runner exits 4 before any session (team-lead.md §1).
-2. **Inbox.** Exactly four events arrive in `<main>/.agents/team/inbox/Supervisor/new/`, each with a
+2. **Inbox.** Four run events (and `decision`: a lead's decision waiting for the Operator, shown to
+   them as a card — roles/supervisor.md → Decision cards) arrive in `<main>/.agents/team/inbox/Supervisor/new/`, each with a
    doorbell to your registered socket. List them with `bash .claude/lib/team-inbox.sh list Supervisor`;
    after acting, `bash .claude/lib/team-inbox.sh done Supervisor <file>`.
 

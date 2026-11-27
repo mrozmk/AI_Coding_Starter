@@ -437,6 +437,12 @@ ask_kind: $kind"
       dfm_set "$f" delegate lapsed; dcls=""
     fi
   fi
+  # Every decision that waits for the Operator is also filed for the Supervisor, which shows it to
+  # them as a decision card and relays their typed answer (roles/supervisor.md → Decision cards).
+  # Never the answer path: a message that cannot be filed changes nothing.
+  [ -n "$dcls" ] || bash "$MAIN/.claude/lib/team-inbox.sh" --main "$MAIN" write Supervisor decision \
+    --from "$(jq -r .team "$TD/team.json")" --ticket "$(jq -r '.ticket // ""' "$TD/team.json")" \
+    --run "$RUN" --ref "$f" --message "d-$n: ${q:0:120}" >/dev/null 2>&1 || true
   echo "[d-$n] $q"
   [ -z "$reply" ] || echo "${reply//d-<n>/d-$n}"
   echo "file: $f"; echo "verdict: $v"

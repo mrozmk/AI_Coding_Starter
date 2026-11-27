@@ -13,7 +13,8 @@
 #   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md in tmp/, links it into new/, then rings the address's
 #   session through session-host.sh send (rc on stderr `ring: <rc>`, never the exit: the file is
 #   the truth). Supervisor: a team sender only accepted|closed|collision|session_dead|delegated (a
-#   decision the Operator's mandate hands to the Supervisor — team-mandate.sh) and clearance (#323: a
+#   decision the Operator's mandate hands to the Supervisor — team-mandate.sh), decision (a lead's
+#   decision that waits for the Operator: the Supervisor shows it as a card) and clearance (#323: a
 #   request team-clearance.sh files for the Supervisor), a role or
 #   adhoc-* sender also message|advice|clearance, an unknown sender refused. Role/team address: any event.
 #   e.g. bash .claude/lib/team-inbox.sh --main ~/src/app write Supervisor accepted --from alfa \
@@ -21,7 +22,7 @@
 # Contract: .agents/reference/team-lead.md §3
 set -euo pipefail
 
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 LIB="$(cd "$(dirname "$0")" && pwd)"
 MAIN=""
 if [ "${1:-}" = --main ]; then [ $# -ge 2 ] || usage; MAIN="$2"; shift 2; fi
@@ -56,8 +57,8 @@ write() {
   [ -n "$from" ] && [[ "$from" =~ ^[A-Za-z0-9-]+$ ]] || { echo "error: --from is required" >&2; exit 2; }
   if [ "$addr" = Supervisor ]; then
     if [ -f "$MAIN/.agents/team/anchors/$from.json" ]; then
-      case "$event" in accepted|closed|collision|session_dead|delegated|clearance) ;;
-        *) echo "error: Supervisor takes accepted|closed|collision|session_dead|delegated|clearance from a team, not $event" >&2; exit 2 ;;
+      case "$event" in accepted|closed|collision|session_dead|delegated|decision|clearance) ;;
+        *) echo "error: Supervisor takes accepted|closed|collision|session_dead|delegated|decision|clearance from a team, not $event" >&2; exit 2 ;;
       esac
     elif [[ "$from" =~ ^adhoc-[A-Za-z0-9-]+$ ]] \
       || (ROLES_ROOT="$MAIN"; . "$LIB/roles-lib.sh" && roles_is_declared "$from") 2>/dev/null; then

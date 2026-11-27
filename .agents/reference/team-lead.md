@@ -175,7 +175,7 @@ switches a later run to the lead branch.
 
 ## 3. Events to the Supervisor
 
-Exactly four events reach the Supervisor from a team, each an atomic file, then a doorbell through
+Four run events reach the Supervisor from a team, each an atomic file, then a doorbell through
 `session-host.sh send` (§1):
 
 | Event | Sender | When |
@@ -185,9 +185,13 @@ Exactly four events reach the Supervisor from a team, each an atomic file, then 
 | `collision` | lead | another team's in-flight work collides with this run (`team-verdict.sh event collision`) |
 | `session_dead` | runner | the lead died, or a stage died with partial work (`ref` = its `.session`) |
 
-Only while the Operator's mandate is in force (§7, **Delegated to the Supervisor**) a fifth event
-exists: `delegated`, sent by the lead's `decision open` for a pending decision the mandate covers
-(`ref` = the decision file).
+A fifth event, `decision`, is sent by the lead's `decision open` for every decision that waits for
+the Operator (`ref` = the decision file): the Supervisor shows it to them as a decision card and
+relays their typed answer (roles/supervisor.md → Decision cards). It changes nothing in who
+answers; a message that cannot be filed is skipped.
+
+Only while the Operator's mandate is in force (§7, **Delegated to the Supervisor**) the lead sends
+`delegated` instead, for a pending decision the mandate covers (`ref` = the decision file).
 
 Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`, files
 `<UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md`, written to `tmp/` and hard-linked into `new/` (never over an existing name: a clash takes the next `-n`). Frontmatter
