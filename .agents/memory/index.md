@@ -70,6 +70,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 |------|-----------|---------|
 | `CLAUDE.md` | **The harness — injected every session.** Do **not** re-read it in `/prime` or in any command | Everything, always |
 | `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
+| `index.md`, `user-profile.md`, `project-brief.md`, the PRD register index + newest `D-n`, discovery / architecture / decisions extracts, backlog state, pending sources, code map (default); `decisions.md` whole + pending and newest specs (full) — as selected by `.claude/lib/prime-ba.mjs plan` | `/prime-ba` (default or `/prime-ba full`) | Every BA command in the session |
 | Tool-specific configs the command operates on (e.g. `pyproject.toml` for a Python-aware command) | The command itself | That command only |
 | Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/discover`, `/architect`, `/setup:create-backlog`) | The transforming command | The transforming command only |
 
