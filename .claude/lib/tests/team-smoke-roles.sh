@@ -479,8 +479,11 @@ clr; run "$MAIN" $RS here Astra; expect 0 "" "(13c) value: here Astra"
 grep -q "^codex .* ch=$CH\$" "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(13c) value: here Astra: no ch=$CH"; }
 # no value line
 printf '# template — no value\n' > "$CP"
-clr; run "$MAIN" $RS up Astra; expect 0 "Astra: started" "(13c) none: up Astra"
+LCH="$WORK/launcher-ch"; mkdir -p "$LCH"
+clr; run "$MAIN" env CODEX_HOME="$LCH" $RS up Astra; expect 0 "Astra: started" "(13c) none: up Astra"
 nsline astra; noline "CODEX_HOME=" "$WORK/ns-astra" "(13c) none: up Astra"
+clr; run "$MAIN" env CODEX_HOME="$LCH" $RS up Fable; expect 0 "Fable: started" "(13c) none: up Fable"
+nsline fable; line "-e CODEX_HOME=$LCH " "$WORK/ns-fable" "(13c) none: up Fable keeps the launcher's"
 run "$MAIN" $RS stop all; expect 0 "" "(13c) none: stop all"
 clr; run "$MAIN" $RS here Astra; expect 0 "" "(13c) none: here Astra"
 grep -q '^codex .* ch=unset$' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(13c) none: here Astra: no ch=unset"; }

@@ -210,7 +210,13 @@ run "$MAIN" $SS materialize Advisor; expect 2 "Advisor has no settings profile" 
 run "$CLONE" bash "$MAIN/.claude/lib/supervisor-sessions.sh" check; expect 1 "team clone" "(2) in a clone"
 echo "team-smoke-sessions: (2) launch, removed verbs, materialise OK"
 
-# ---- (2b) the channel's Codex home differs from .claude/codex-profile: nothing is launched ------
+# ---- (2b) a Claude role takes the channel's Codex home; one that differs from the profile refuses --
+run "$MAIN" $RS stop all; kill_roles; : > "$STUB_LOG"
+CHV="$(jq -r .codex_home "$MAIN/.agents/team/channel.local.json")"
+run "$MAIN" env CODEX_HOME="$WORK/launcher-ch" $RS up Supervisor; expect 0 "Supervisor: started" "(2b) up Supervisor, channel agrees"
+wait_claude 1
+grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -qF " codex=$CHV " \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(2b) Supervisor CODEX_HOME is not the channel's $CHV"; }
 mkdir -p "$HOME/.codex-other"
 cp "$MAIN/.claude/codex-profile" "$WORK/codex-profile.keep"
 printf '~/.codex-other\n' > "$MAIN/.claude/codex-profile"
