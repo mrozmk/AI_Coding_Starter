@@ -48,9 +48,9 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 | `/setup:regression`, catalog stage | `.claude/regression.json` with the `catalog` section (area codes proposed from the system map or the route list). | yes |
 | `/setup:create-backlog` | `[regression:foundation]`, 1–3 `[regression:baseline]`, optional `[regression:smoke]` (`quality-tasks.md` → Regression), or a rule-out line. | yes |
 | `/setup:delivery-plan` | Every browser-observable criterion carries `[reg P0|P1|P2]`. | yes |
-| `/brainstorm` | The scenario blocks for the Task's tagged criteria, written into the catalog on the Task's branch. | (not yet shipped) |
-| `/plan-feature`, `/execute` | The catalog change lands with the code; no spec is written, no app is started. | (not yet shipped) |
-| `/check-implementation` | The catalog validates; every tagged criterion has a scenario citing its current fingerprint. | (not yet shipped) |
+| `/brainstorm` | The scenario blocks for the Task's tagged criteria, written into the catalog on the Task's branch (§16.1). | yes |
+| `/plan-feature`, `/execute` | The catalog change lands with the code; no spec is written, no app is started (§16.2, §16.3). | yes |
+| `/check-implementation` | The catalog validates; every tagged criterion has a scenario citing its current fingerprint (§16.4). | yes |
 | `/setup:regression`, baseline stage | The `runner` and `environments` sections; Playwright config, fixtures and the test-data adapter from the templates; `@playwright/mcp` pinned. | yes |
 | Inventory of an existing app (`/setup:regression --inventory`) | The whole catalog from the routes in the code and a guarded walk of the live app (`Source: live` / `code`), a critic, a proposed baseline split (§14). | yes |
 | `/regression-tests author` | A spec per READY scenario without one — three green passes, a critic — and the `Spec` field written back (§15). | yes |
@@ -180,6 +180,10 @@ invalidated. Every other edit of the criterion text does.
 ```
 node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--status | --json]
   exit 0 valid (or not adopted) · 1 validation errors · 2 usage / unreadable or invalid config
+node .claude/lib/regression/catalog.mjs --backlog [--candidate <dir>] [--root <dir>]
+node .claude/lib/regression/catalog.mjs --delta <rev|none> [--spec <file> [--key <KEY>] | --plan <file> [--planning]] [--root <dir>]
+  exit 0 ok (or not adopted — no output at all) · 1 errors (an invalid catalog first) ·
+  2 usage / invalid config / unknown <rev> / a catalog path outside the repository
 node .claude/lib/regression/setup.mjs catalog  [--root <dir>] --areas CODE=Name,… [--path <dir>] [--smoke P0,…]
 node .claude/lib/regression/setup.mjs baseline [--root <dir>] --fragment <json file, relative to --root>
 node .claude/lib/regression/setup.mjs visual   [--root <dir>] --fragment <json file, relative to --root>
@@ -235,6 +239,17 @@ node .claude/lib/regression/author.mjs suggest --from-qa <file> [--root <dir>]
   the tag form and the critical-flow P0 rule are checked by `backlog-check.mjs`
   (`quality-tasks.md` → Regression);
   written = scenarios not `DROPPED`; automated = written scenarios whose state is `verified`.
+- `catalog.mjs --backlog` cross-checks every scenario against the backlog (§16.5): `<file>:<line>:
+  <ID>: unknown | withdrawn <token>[ — superseded by <id>]` errors, `.agents/backlog.md: <Task>:
+  DONE with tagged criterion <id> and no scenario`, `warning:` lines for an old fingerprint; without
+  a current-format backlog one `backlog cross-check: n/a — …` line. `--candidate <dir>` reads the
+  backlog and the catalog files of `/update-backlog`'s candidate set instead, never writing the repo.
+- `catalog.mjs --delta` compares the catalog with its base and a spec's or plan's tagged criteria
+  (§16.1, §16.4): lines `added <ids>`, `changed <ID> (<labels>)`, `proof <ID> deferred`,
+  `delta: not evaluated — no base`; errors `uncovered <token> (<Pn>) — …`, `priority …`,
+  `undeclared <ID>`, `<ID>: removed — …`, `Expected of <ID> …`, `Proof: scenario — …`.
+- Both cross-checks print **nothing** and exit 0 when regression is not adopted, unlike the plain
+  validator's `regression not adopted` line: they run inside other commands.
 - `setup.mjs` is the only writer of `regression.json`: `catalog` never overwrites an existing file;
   `baseline` adds each absent section of `runner` / `environments` and never alters an existing
   key; `visual` adds an absent `visual` section the same way (baseline established first); `check` is static (never runs an adapter command, never reaches the network) and lists, one
@@ -653,3 +668,171 @@ with its `/regression-tests author --area <codes>` line.
 - **Unobservable.** A clause a browser cannot observe is written
   `// regression-unobservable: <ID> · <clause> — <reason>` in the spec; `catalog.mjs --status`
   lists it.
+
+## 16. Delivery — scenarios with every Task
+
+Every step below applies **only when `.claude/regression.json` exists**. Without it no command
+prints a line of this, writes a section, asks a question or runs a check — the scripts print nothing
+and exit 0, and every command pointer says "otherwise skip it". The commands carry one guarded
+pointer each; the rules live here. Every mechanical decision is a `catalog.mjs` result (§8): the
+model never hashes, diffs or matches tokens by hand.
+
+**The base.** Resolved once per Task, by the `/check-implementation` 1c chain: the team's
+`team.json` `base_sha`, else the merge-base of the branch's **line** (`branch-model.sh line
+<branch>` → … → `main`), never a bare trunk ref. No resolvable base → `none`. `/brainstorm` records
+it in the spec section; the plan and the gate reuse it (the gate re-resolves the merge-base with the
+line, §16.4).
+
+**The token.** A tagged criterion is cited by `E<n>-<m>.AC<k> [<fp>]` (a backlog id) or `<KEY> [<fp>]`
+(an unnumbered or plan-local `AC-n` criterion; `KEY` a tracker key — `--key`, or `key <KEY>` on the
+plan's `**Scenarios:**` line). `fp` is the §7c fingerprint of the criterion — the bullet plus its
+continuation lines, nested `Proof:` lines excluded — so the spec, the plan, the backlog and the
+automation state hash the same text. A scenario covers a criterion only by citing that exact token.
+
+### 16.1 /brainstorm
+
+New Step 5.5, after the spec draft:
+
+- **Citation first.** A topic with neither a backlog Task id nor a ticket key has no `Source` token
+  (§6): its criteria are not tagged, the section reads `none — no criterion id or ticket key to
+  cite`, and `/plan-feature` proves its user-visible criteria `manual` as without regression.
+- **Tag** the criteria the topic owns: a backlog Task's current criteria carry their tags already;
+  criteria the spec adds, and every criterion of a ticket-file or tracker topic, are tagged per
+  `quality-tasks.md` → Regression (browser-observable → `[reg Pn]`).
+- **Check.** Resolve the base and run `node .claude/lib/regression/catalog.mjs --delta <base> --spec
+  <spec> [--key <KEY>]`. For every `uncovered <token>` line write one or more blocks (§6) into the
+  area file of `catalog.path` (created when absent, named by the id's area): `Expected` from the
+  approved criterion text, never from the code; `Priority` = the highest tag it covers; `Status:
+  READY` (`BLOCKED (<ref>)` when the path needs another unbuilt Task); the token verbatim in `Source`;
+  `Spec: —`. An existing scenario on the same path is re-pointed or extended instead of duplicated;
+  a `priority` error is fixed in the covering block. Write only under the validated `catalog.path`
+  (the script refuses a path outside the repository before anything is written).
+- **`Expected` of a block that exists on the base** — show id, old and new text and the criterion
+  that drives it with `AskUserQuestion`; write it only on a yes, recorded with the digest `<d>` (the
+  first 12 hex of the sha256 of the whitespace-normalised text shown). Any later edit of that text
+  needs a fresh yes. A no leaves the block as on the base, records `<ID> — Expected change declined`
+  and moves the mismatch to `## Open Questions` — the gate keeps blocking until the design changes.
+  With base `none` no `Expected` of an existing block is edited: stop and say why. A block added on
+  this branch is edited freely. In team mode the question reaches the TeamLead, who escalates it
+  (§16.6).
+- **Loop** until the script reports no `uncovered`, `priority` or other error. The spec then gets
+  `## Regression scenarios` after `## Acceptance Criteria`:
+
+  ```markdown
+  ## Regression scenarios
+
+  - base: <sha> (<line>)
+  - added: CART-004, CART-005
+  - changed: CART-001 (Expected, Steps) — Expected <d> approved by <who>
+  - files: .agents/regression/scenarios/cart.md
+  - key: <KEY>
+  ```
+
+  or the single line `none — <reason>` (no tagged criterion; or no criterion id and no ticket key).
+- **Step 9** re-runs the check after the cross-model review — an auto-applied criterion edit changes
+  a fingerprint — and re-points the blocks before approval.
+- **HARD-GATE.** The catalog blocks are design output like the spec: the only file `/brainstorm`
+  writes outside `.agents/specs/`.
+
+### 16.2 /plan-feature and /quick-change
+
+- **A fifth proof form:** `Proof: scenario — <ID>`, valid only with regression adopted. A tagged
+  criterion carries at least one; the block must cite the token of the criterion it is nested under.
+  The spec of the scenario is written later, against the deployed build, by `/regression-tests
+  author` — the plan writes no spec and starts no app. Without regression, `manual` as before.
+- **The plan header** gets, under `**Tasks:**`, the declaration copied from the spec section plus any
+  block a plan task adds:
+
+  `**Scenarios:** added <ID>, … | — · changed <ID>[ (Expected <d>)], … | —[ · key <KEY>]`
+
+  `(Expected <d>)` carries the digest the spec section recorded for that id; `key` is required when a
+  tagged criterion has no backlog id. Absent when the plan family has no tagged criterion and changes
+  no block.
+- **One `UPDATE <catalog file>` task per catalog file** holding a declared id — IMPLEMENT: keep the
+  blocks as the spec wrote them, bring `Steps` in line with the flow as built, never touch `Expected`,
+  `Source` or `Priority` (a needed change is a material decision); EXPECT: `contains — <file> :: ###
+  <ID> — ` per id; VALIDATE: `node .claude/lib/regression/catalog.mjs --delta <base> --plan <plan>`
+  (the base sha from the spec section, literal).
+- **Step 5.1f.** Finding 1 accepts the fifth form only when adopted; finding 6: `catalog.mjs --delta
+  <base> --plan <plan> --planning` exits non-zero — a `Proof: scenario` id neither in the catalog
+  nor added by a catalog task (`--planning` accepts an id whose `### UPDATE|CREATE <catalog file>`
+  task EXPECTs `### <ID> — ` and names the criterion's token in its IMPLEMENT), a proof not bound to
+  its criterion, a tagged criterion of the source spec missing from every plan with that source
+  spec. Same 🟠 severity.
+- **Executor.** A plan with a catalog task edits a path under `.agents/`: it is delivered by the
+  Claude executor — `/execute codex` refuses any task path under `.agents/` — and the plan says so
+  in its `## NOTES`.
+- **`/quick-change`.** Phase 1 adds `Scenario: <ID> (READY) — <how the change touches its path>` for
+  every READY scenario whose path the change touches (read from the catalog files), or `Scenario: no
+  scenario path touched`. A change that would alter an existing scenario's `Expected` is a Phase 0
+  hit — a human decision, routed to `/brainstorm`. A team quick planner puts the line under the plan's
+  `## NOTES`.
+
+### 16.3 /execute
+
+No regression spec is written and no app is started during delivery: the catalog change is the
+deliverable, a `Proof: scenario` criterion stays `deferred` until a run, and §2.5's browser fallback
+does not run for it.
+
+### 16.4 /gates:verify-implementation
+
+- **Regression catalog** (a §6 concrete check): `node .claude/lib/regression/catalog.mjs --delta
+  <CBASE> --plan <plan>`. `CBASE` = `git merge-base HEAD origin/<line>`, `<line>` named in the
+  source spec's `base: <sha> (<line>)` entry and resolved **now** — a merge of the line into the
+  branch moves the attribution base, so the line's own catalog changes are not this Task's; else the
+  gate's `BASE` (quick plans, specs without the entry). The recorded `<sha>` is the approval
+  provenance only: a base block's `Expected` edit is checked against the spec-recorded digest
+  whatever `<rev>` is. Diff-only mode: `--delta <BASE>` alone (validity and removals). No base →
+  `--delta none`: validity, coverage and proof binding still block, and the report adds
+  `delta: not evaluated — no base` — never a pass for the historical checks. Exit 1 → each error line is a High
+  finding (→ `BLOCK`); exit 2 → `BLOCK` (config). Report line `Regression catalog: ok | <n> findings`.
+- **What blocks**, by the script: an invalid catalog; a tagged criterion of the Task with no
+  non-`DROPPED` scenario citing its current token; a covering scenario whose `Priority` is below the
+  highest tag it covers (the source spec's tag counts); a `Proof: scenario` id absent or not citing
+  its criterion; a tagged criterion of the source spec missing from every plan with that source spec;
+  a catalog diff (`added` ∪ `changed`) unequal to the plan family's `**Scenarios:**` declarations
+  (the family: plans with the same source spec that this branch added or changed since the base);
+  a removed id; an `Expected` change without the spec-recorded yes or not matching its digest.
+- **Ledger.** A `Proof: scenario — <ID>` proof is `deferred` with evidence `deferred — <ID>`. It is
+  never `met` in this release: no run record yet binds the spec bytes that ran (promotion to `met`
+  is a follow-up, together with spec digests in the run record).
+- **Existing tests.** Files under `runner.spec_dir` — the current config's and the one at `BASE`,
+  renames followed — that exist at `BASE` are in scope; a removed or loosened assertion, or an added
+  `skip` / `fixme` / `fail` marker, there is **High in both modes, with no plan-task exemption**:
+  specs change only through `/regression-tests author | heal` behind their never-weaken check (§3).
+- `allowed-tools` carries `Bash(node .claude/lib/regression/catalog.mjs:*)`.
+
+### 16.5 /check-backlog and /update-backlog
+
+- **`/check-backlog`** step 1 also runs `node .claude/lib/regression/catalog.mjs --backlog`: errors
+  stop like checker errors, `warning:` lines go to the critic as known context.
+- **`/update-backlog`** Phase 5 / 7 — the impact preview lists, for every Task it withdraws, splits or
+  merges, the scenarios citing it (`catalog.mjs --json` rows by `Source` Task id) and the edit each
+  takes, **per `Source` token**: a token of a withdrawn criterion with no successor is removed from a
+  block that keeps another live token; a superseded / split / merged one is re-pointed to the
+  successor criterion with its current fingerprint (`Expected` unchanged; a meaning change is the
+  reviewed intent's, shown in the preview); a block whose **last** live token is retired becomes
+  `Status: DROPPED (D-n)` and **keeps** that token as history (a `Source` is never empty). The
+  preview states, for every other Task the block still cites, that its coverage is kept.
+- **Inside the candidate transaction.** Phase 2 hashes every catalog file of `catalog.path`; Phase 6
+  writes a full copy of each catalog file the run edits to `.agents/.pending-update/regression/<file>`,
+  validates the set with `catalog.mjs --backlog --candidate <dir>` (`<dir>` =
+  `.agents/.pending-update`) next to the backlog checker — an error goes back to the preview, the
+  repo unchanged — and lists those files in `manifest.json` with their original and candidate sha256
+  like every other target. `--candidate` also refuses a removed id, a changed `Expected` and a
+  dropped citation of a still-active criterion. Phase 7 shows each changed block; Phase 8 re-checks
+  them in step 1, installs them atomically in step 3 after the Epic files and before `backlog.md`, and
+  step 5 also runs `catalog.mjs --backlog` read-only. Phase 0 recovery classifies the catalog targets
+  like every other manifest target and reruns the `--candidate` check (containment) before rolling
+  forward. Writes go only under the validated `catalog.path`.
+
+### 16.6 Team
+
+- The planner's `/commit` carries the catalog files `/brainstorm` wrote, with the spec and the plan.
+- The coder changes the catalog only — no spec under `runner.spec_dir`, no app started; an `Expected`
+  change of a base scenario is a material decision: ask, the lead escalates.
+- `team-lead.md` §6 (escalated) and `teamlead.md` rule 2 (escalate) list a changed `Expected` of a
+  regression scenario that exists on the base branch: an Operator-tier ask.
+- `team-mode.md` §7: a `deferred` ledger row from `Proof: scenario` ends `manual check: regression
+  scenario <ID> — /regression-tests author, then run`.
+- No team stage, role or report line is added.

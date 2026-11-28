@@ -414,7 +414,7 @@ Operator's relay answers it).
   lead contradict an Operator decision (an answered decision, a CLAUDE.md or `decisions.md`
   Operator decision; an order-brief line only on the conflict or changed constraint named under
   brief-decided); an irreversible or outward-facing action; a product-fit hit; a `/quick-change`
-  Phase 0 override other than size.
+  Phase 0 override other than size; a changed `Expected` of a regression scenario that exists on the base branch (regression.md §16.6).
 - **a planned step is not the act** — a plan that includes a step needing an Operator approval
   later (a network install, a settings edit) grants nothing and is no Operator question: the
   operator tier above gates the request when a stage makes it. A prerequisite denied then means a

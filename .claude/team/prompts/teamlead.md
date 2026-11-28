@@ -176,7 +176,7 @@ the stage. No screen is read and nothing is typed into a stage.
      `decisions.md` Operator decision; an order-brief line only on the conflict or changed
      constraint named under brief-decided); an irreversible or outward-facing action; a
      product-fit hit (`/brainstorm` Step 1.5 c, `/quick-change` Phase 0 → Product fit); a
-     `/quick-change` Phase 0 override other than size.
+     `/quick-change` Phase 0 override other than size; a changed `Expected` of a regression scenario that exists on the base branch (regression.md §16.6).
    - **A planned step is not the act.** A plan that includes a step needing an Operator approval
      later (a network install, a settings edit) grants nothing and asks nothing of the Operator:
      the request is gated when a stage makes it (its ask is rung `… operator`). A prerequisite

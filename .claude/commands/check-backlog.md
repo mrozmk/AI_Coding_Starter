@@ -1,6 +1,7 @@
 ---
 description: Independent critic + grill for .agents/backlog.md and its Epic files (structure or detail mode, from the Detail header) — @start-critic grades them against the backlog rubric, one Codex cross-model review attacks the cut and the order, the main thread judges, the user decides, accepted fixes go through /update-backlog's apply phase
 argument-hint: "[--epic E<n>] [--since D-k]"
+allowed-tools: Bash(node .claude/lib/regression/catalog.mjs:*)
 ---
 
 # Check Backlog: Critic + Grill
@@ -40,6 +41,7 @@ grades the wrong scope).
 
 `node .claude/lib/backlog-check.mjs` — errors → print them and stop. Warnings → kept verbatim and
 passed to the critic as known context (it must not re-report them).
+When `.claude/regression.json` exists, also run `node .claude/lib/regression/catalog.mjs --backlog` (regression.md §16.5) — its errors stop like checker errors, its `warning:` lines go to the critic as known context; otherwise nothing.
 
 ## 2. Current view
 

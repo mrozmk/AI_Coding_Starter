@@ -7,7 +7,9 @@
 // Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md.
 //
 //   node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--status | --json]
+//     [--backlog [--candidate <dir>] | --delta <rev|none> [--spec <file> [--key <KEY>] | --plan <file> [--planning]]]
 //   exit 0 = valid (or not adopted) · 1 = validation errors · 2 = usage / unreadable or invalid config
+// `--backlog` / `--delta` are the cross-checks of crosscheck.mjs (silent when not adopted).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +29,7 @@ const STATUS = new RegExp(`^(${STATUSES.join('|')})(?:\\s+\\((.*)\\))?$`);
 const LIVE_REF = /live: \S.*/;
 const BLOCKED_REF = new RegExp(`^(E\\d+-\\d+|[A-Z][A-Z0-9]+-\\d+|#\\d+|${LIVE_REF.source})$`);
 const CRITERION = /^E\d+-\d+\.AC\d+ \[[0-9a-f]{6}\]$/;
-const CRITERION_BARE = /^E\d+-\d+\.AC\d+$/;
+export const CRITERION_BARE = /^E\d+-\d+\.AC\d+$/;
 const FLOW = /^FL-\d+(\.A\d+)?$/;
 const TRACKER = /^([A-Z][A-Z0-9]+-\d+|#\d+)( \[[0-9a-f]{6}\])?$/;
 const WORDS = new Set(['live', 'code']);
@@ -40,7 +42,7 @@ export const UNOBSERVABLE = /^\s*\/\/ regression-unobservable: (\S+) · (.+?) �
 const FP_BEGIN = '<!-- qa-fingerprint:begin -->';
 const FP_END = '<!-- qa-fingerprint:end -->';
 export const FP_REFERENCE = '.agents/reference/qa-evidence-families.md';
-const BACKLOG = '.agents/backlog.md';
+export const BACKLOG = '.agents/backlog.md';
 
 const isEmpty = (v) => v === undefined || /^\s*(—|-)?\s*$/.test(v);
 export const posix = (p) => p.split(path.sep).join('/');
@@ -48,7 +50,7 @@ export const posix = (p) => p.split(path.sep).join('/');
 export const oneLine = (v) => v.replace(/\s*\n\s*/g, ' ');
 /** `[match, status, ref]` of a block's Status, `[]` when it does not parse. */
 export const statusOf = (b) => STATUS.exec(b.fields.Status?.value ?? '') ?? [];
-const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
+export const isDropped = (b) => statusOf(b)[1] === 'DROPPED';
 const LIVE_BLOCKED = new RegExp(`^${LIVE_REF.source}$`);
 /** Whether a block is `BLOCKED (live: <reason>)` — a path the walk saw fail. */
 export const isLiveBlocked = (b) => { const [, s, ref] = statusOf(b); return s === 'BLOCKED' && LIVE_BLOCKED.test((ref ?? '').trim()); };
@@ -407,25 +409,52 @@ function renderStatus(counts, nFiles, nScenarios, rows = []) {
   return out.join('\n');
 }
 
+const VALUE_FLAGS = ['--root', '--config', '--delta', '--spec', '--plan', '--key', '--candidate'];
+
 function parseArgs(argv) {
-  const args = { root: process.cwd(), config: CONFIG_PATH, status: false, json: false };
+  const args = { root: process.cwd(), config: CONFIG_PATH, status: false, json: false, backlog: false, planning: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--status') args.status = true;
     else if (a === '--json') args.json = true;
-    else if (a === '--root' || a === '--config') {
+    else if (a === '--backlog') args.backlog = true;
+    else if (a === '--planning') args.planning = true;
+    else if (VALUE_FLAGS.includes(a)) {
       if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`);
       args[a.slice(2)] = argv[++i];
     } else throw new UsageError(`unknown argument ${a}`);
   }
   if (args.status && args.json) throw new UsageError('--status and --json are exclusive');
+  const delta = args.delta !== undefined;
+  if (args.backlog && delta) throw new UsageError('--backlog and --delta are exclusive');
+  if ((args.backlog || delta) && (args.status || args.json)) throw new UsageError('--backlog / --delta take no --status or --json');
+  if (args.spec !== undefined && args.plan !== undefined) throw new UsageError('--spec and --plan are exclusive');
+  for (const f of ['spec', 'plan', 'key']) if (args[f] !== undefined && !delta) throw new UsageError(`--${f} needs --delta`);
+  if (args.planning && args.plan === undefined) throw new UsageError('--planning needs --delta and --plan');
+  if (args.candidate !== undefined && !args.backlog) throw new UsageError('--candidate needs --backlog');
+  if (args.key !== undefined && !/^([A-Z][A-Z0-9]+-\d+|#\d+)$/.test(args.key)) throw new UsageError(`--key ${args.key} is no tracker key (ABC-12 or #12)`);
   return args;
 }
 
 class UsageError extends Error {}
-const USAGE = 'usage: node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--status | --json]';
+const USAGE = 'usage: node .claude/lib/regression/catalog.mjs [--root <dir>] [--config <path>] [--status | --json]\n'
+  + '       [--backlog [--candidate <dir>] | --delta <rev|none> [--spec <file> [--key <KEY>] | --plan <file> [--planning]]]';
 
-export function main(argv = process.argv.slice(2)) {
+const errorLine = (e) => `${e.file}${e.line ? `:${e.line}` : ''}: ${e.message}`;
+
+/** `--backlog` / `--delta`: lines, then `warning:` lines, then errors; exit 1 on errors (a refusal throws → 2). */
+async function crossCheck(root, args, settings) {
+  const { backlogCheck, deltaCheck } = await import('./crosscheck.mjs');
+  const res = args.backlog
+    ? backlogCheck(root, settings, { candidate: args.candidate })
+    : deltaCheck(root, settings, { rev: args.delta, spec: args.spec, plan: args.plan, key: args.key, planning: args.planning });
+  for (const l of res.lines) console.log(l);
+  for (const w of res.warnings) console.log(`warning: ${w}`);
+  for (const e of res.errors) console.log(errorLine(e));
+  return res.errors.length ? 1 : 0;
+}
+
+export async function main(argv = process.argv.slice(2)) {
   let args;
   try { args = parseArgs(argv); } catch (err) {
     if (!(err instanceof UsageError)) throw err;
@@ -434,7 +463,10 @@ export function main(argv = process.argv.slice(2)) {
   }
   const root = path.resolve(args.root);
   const loaded = loadConfig(root, args.config);
+  const cross = args.backlog || args.delta !== undefined;
   if (!loaded.adopted) {
+    // The cross-checks run inside other commands: not adopted, they say nothing at all.
+    if (cross) return 0;
     console.log(args.json ? JSON.stringify({ adopted: false, message: 'regression not adopted' }) : 'regression not adopted');
     return 0;
   }
@@ -443,6 +475,7 @@ export function main(argv = process.argv.slice(2)) {
     return 2;
   }
   const settings = catalogSettings(loaded.config);
+  if (cross) return crossCheck(root, args, settings);
   const files = catalogFiles(root, settings);
   const blocks = parseCatalog(root, files);
   const errors = validateCatalog(blocks, settings);
@@ -453,7 +486,7 @@ export function main(argv = process.argv.slice(2)) {
   if (args.json) {
     console.log(JSON.stringify({ adopted: true, catalog: { path: settings.path, files }, errors, scenarios: rows, counts }, null, 2));
   } else if (!ok) {
-    for (const e of errors) console.log(`${e.file}:${e.line}: ${e.message}`);
+    for (const e of errors) console.log(errorLine(e));
   } else if (args.status) {
     console.log(renderStatus(counts, files.length, rows.length, rows));
   } else {
@@ -463,10 +496,5 @@ export function main(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    process.exitCode = main();
-  } catch (err) {
-    console.error(`catalog: ${err.message}`);
-    process.exitCode = 2;
-  }
+  main().then((c) => { process.exitCode = c; }, (err) => { console.error(`catalog: ${err.message}`); process.exitCode = 2; });
 }

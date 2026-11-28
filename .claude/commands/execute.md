@@ -147,6 +147,8 @@ For EACH task in "Step by Step Tasks":
 
 If the plan requires browser validation (e.g. a task or acceptance criterion reading "E2E flow tested in the browser" or similar), validate the running app, not just the code:
 
+When `.claude/regression.json` exists (regression.md §16.3), no regression spec is written and no app is started during delivery: the catalog change is the deliverable, `Proof: scenario` criteria stay deferred until a run, and the browser fallback below does not run for them; otherwise this section applies unchanged.
+
 1. **If the project has its own E2E-generation command**, run it to generate browser tests. It typically needs the dev server running in the background.
    - Use the flow name from the plan. If unsure, validate the full set.
    - If no such command exists, fall back to step 2.
