@@ -125,7 +125,7 @@ spec changed since start it refuses with `conflict:` and keeps both files: a hum
 For a spec whose header lags a current catalog (`stop: refresh needed`): `heal.mjs select --refresh
 <ID>…`, then `heal.mjs start <ID> --env <n> --refresh` (no probe). Rewrite only the candidate's
 `// regression:` header to the block's current `Source`; `weaken-check --refresh` allows the header
-and nothing else. Then the Repair steps 2–3 and `heal.mjs apply … --refresh`, which installs the
+and nothing else. Then the Repair steps 1–3 (step 1 with `--refresh`) and `heal.mjs apply … --refresh`, which installs the
 candidate only when the scenario then computes `verified` and prints `refreshed: <ID> — <spec>`.
 
 ## After a human changes `Expected`

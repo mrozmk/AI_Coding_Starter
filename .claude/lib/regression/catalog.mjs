@@ -369,6 +369,13 @@ export function staleRule(b, state, { fingerprint: fp }) {
   return { rule: 'inconclusive', reason: state.reason };
 }
 
+/** `{state, rule}` — the automation state and the stale rule of `b` now (rule null = verified). */
+export function staleNow(root, b) {
+  const ctx = {};
+  const state = automationState(root, b, ctx);
+  return { state, rule: staleRule(b, state, { fingerprint: (cid) => currentFingerprint(root, cid, ctx) }) };
+}
+
 /** One scenario's JSON row (the block's fields plus its computed automation state). */
 export function scenarioRow(root, b, ctx) {
   const [, status, ref] = statusOf(b);

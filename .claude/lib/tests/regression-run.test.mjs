@@ -88,6 +88,8 @@ let SHA_URL = '';
 before(async () => {
   shaServer = http.createServer((req, res) => {
     const sha = shaQueue.length > 1 ? shaQueue.shift() : shaQueue[0];
+    // A queued `{status}` answers that status with no body.
+    if (typeof sha === 'object' && sha !== null) { res.writeHead(sha.status); res.end(); return; }
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ sha }));
   });
@@ -1304,6 +1306,28 @@ test('probe: a guard stop or an interrupted pass 1 skips pass 2', async () => {
     assert.match(r.stdout, new RegExp(`^not run: pass 2 — ${reason}$`, 'm'));
     assert.deepEqual(probeOf(root, r).skipped, [{ n: 2, reason }]);
   }
+});
+
+test('probe: a guard stop on a build read runs no pass after it, records the stop and exits 5', async () => {
+  const opening = withHealAttempt(withAuthoringFiles(copyRoot())).root;
+  guardedBuild(opening);
+  shaQueue = [{ status: 429 }];
+  useRunner(opening, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const a = await probeCli(opening);
+  assert.equal(a.status, 5, a.out);
+  assert.equal(runnerCalls(opening), 0, a.out);
+  const ra = probeOf(opening, a);
+  assert.equal(ra.build.stop, 'status 429');
+  assert.deepEqual(ra.skipped.map((s) => s.reason), ['guard stop: status 429', 'guard stop: status 429']);
+  const closing = withHealAttempt(withAuthoringFiles(copyRoot())).root;
+  guardedBuild(closing);
+  shaQueue = ['abc1234', { status: 429 }];
+  useRunner(closing, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const c = await probeCli(closing);
+  assert.equal(c.status, 5, c.out);
+  assert.equal(runnerCalls(closing), 2, c.out);
+  const rc = probeOf(closing, c);
+  assert.deepEqual([rc.build.before, rc.build.after, rc.build.stop], ['abc1234', null, 'status 429']);
 });
 
 test('probe: refuses a lint violation in the claimed spec\'s helper and a probe critic verdict without clauses, before any token or runner call', async () => {

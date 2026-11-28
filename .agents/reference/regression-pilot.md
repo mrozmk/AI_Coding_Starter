@@ -25,9 +25,11 @@ The window is the set of runs and attempts the metrics are computed over:
 - **≥ 5 `run full` on the test environment on one `build_sha`**, plus **every production run** made
   while the window is open;
 - **10 spot-checks**, **10 seeded faults** and **5 seeded heals** (§5, §6);
-- **the spec directory is committed and unchanged** for the whole window: before every run, log
-  `git diff --quiet -- <spec_dir>` and its exit code in the run log (0 = unchanged). A seeded fault
-  is the one logged exception (§5). **An applied heal ends the window** — the specs it measured are
+- **the spec directory is committed and unchanged** for the whole window: before run 1, log
+  `git rev-parse HEAD` as the window's base; before every run, log `git diff --quiet <base> --
+  <spec_dir>` with its exit code and `git status --porcelain --untracked-files=all -- <spec_dir>`
+  in the run log (exit 0 and no status line = unchanged — staged, unstaged, committed and untracked
+  changes all count). A seeded fault is the one logged exception (§5). **An applied heal ends the window** — the specs it measured are
   no longer the specs that run; a new window starts on the new bytes.
 - **The build is known.** A run with no build SHA is `INCOMPLETE`, and the heal probe classifies
   `env` whenever the environment's deployed build is unknown. Before run 1 the test environment

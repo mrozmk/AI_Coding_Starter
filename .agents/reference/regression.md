@@ -734,14 +734,14 @@ a visual writer, never commits, and every command refuses in a team clone (exit 
   awaited actions and condition waits, and `expect` / `expect.soft` / `expect.poll` assertions on a
   known matcher (options at the matcher's options position only; every argument of a generic matcher
   is data). Refused: `removed-assertion`, `loosened-matcher` (another matcher, `.not`, `soft`/`poll`,
-  `exact: true` dropped, a string name turned into a regex), `changed-value`, `changed-tolerance`
+  `exact: true` dropped, a string name turned into a regex, an anchored regex relaxed), `changed-value`, `changed-tolerance`
   (any non-`timeout` option), `added-marker` (`.skip|.fixme|.fail|.only|.slow(` anywhere, `test.abort(`),
   `added-unobservable`, `changed-identity` (title, tags, header, `test.use`) and `unclassified`
-  (anything else: a removed, reordered or changed statement, a dropped `await`, a new import, more
+  (anything else: a removed, reordered or changed statement, an assertion subject changed outside a locator, a dropped `await`, a new import, more
   control flow — `if`, `else`, `switch`, `try`, `catch`, `finally`, a loop, `?:`, `.catch(` —, `||` /
   `&&` / `??` in an assertion, an unknown matcher, a body outside the grammar). Allowed, each reported:
   `retargeted` (a locator changed, all else equal), `timeout`, `added-assertion`, `added-action`,
-  `added-wait`, an added binding. `--refresh` allows the header and nothing else.
+  `added-wait`, `added-binding`. `--refresh` allows the header and nothing else.
 - **Repair and apply** (`TEST`): the model edits only the candidate; `run.mjs verify <ID>=<candidate>
   --heal <dir>` accepts exactly this attempt's candidate on its pin (the attempt open, `TEST` or a
   refresh, no screenshot assertion, the scenario's `Spec` still the pinned spec) and writes `heal_id`

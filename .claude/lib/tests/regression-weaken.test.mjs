@@ -183,6 +183,37 @@ test("refuses a dropped await, a changed literal inside a string, and a relaxed 
   refuses(weakenCheck(BASE, swap("name: 'Quantity'", 'name: /Quantity/')), 'loosened-matcher', L.binding);
 });
 
+test('refuses a relaxed anchored regex locator; a regex that keeps its anchors is a retarget', () => {
+  const anchored = swap("{ name: 'Cart' }", '{ name: /^Cart$/ }');
+  refuses(weakenCheck(anchored, swap('/^Cart$/', '/Cart/', anchored)), 'loosened-matcher', L.heading);
+  refuses(weakenCheck(anchored, swap('/^Cart$/', '/^Cart/', anchored)), 'loosened-matcher', L.heading);
+  const text = swap("page.getByRole('heading', { name: 'Cart' })", 'page.getByText(/^Pay$/)');
+  refuses(weakenCheck(text, swap('/^Pay$/', '/Pay/', text)), 'loosened-matcher', L.heading);
+  const kept = weakenCheck(anchored, swap('/^Cart$/', '/^Basket$/', anchored));
+  assert.equal(kept.ok, true, JSON.stringify(kept.weakened));
+  assert.equal(find(kept.allowed, 'retargeted').line, L.heading);
+});
+
+test('refuses exact: true dropped beside an added .first(); reports an added binding, which a refresh refuses', () => {
+  const exact = swap("{ name: 'Cart' }", "{ name: 'Cart', exact: true }");
+  refuses(weakenCheck(exact, swap("{ name: 'Cart', exact: true })", "{ name: 'Cart' }).first()", exact)), 'loosened-matcher', L.heading);
+  const bound = swap("  await page.goto('/cart');", "  const total = page.getByTestId('total');\n  await page.goto('/cart');");
+  const r = weakenCheck(BASE, bound);
+  assert.equal(r.ok, true, JSON.stringify(r.weakened));
+  assert.equal(find(r.allowed, 'added-binding').line, L.goto);
+  const header = (t) => swap('// regression: CART-004 · source: live', '// regression: CART-004 · source: code', t);
+  refuses(weakenCheck(BASE, header(bound), { refresh: true }), 'added-binding', L.goto);
+});
+
+test('refuses an assertion subject changed outside a locator', () => {
+  const count = swap("  await expect(stepper).toHaveValue('2');", "  await expect(stepper).toHaveValue('2');\n  expect(n).toBe(3);");
+  const r = weakenCheck(count, swap('expect(n)', 'expect(3)', count));
+  refuses(r, 'unclassified', L.value + 1);
+  assert.match(find(r.weakened, 'unclassified').detail, /subject changed outside a locator/);
+  const bound = weakenCheck(BASE, swap('expect(stepper).toHaveValue', "expect(page.getByLabel('Quantity')).toHaveValue"));
+  assert.equal(bound.ok, true, JSON.stringify(bound.weakened));
+});
+
 test('a binding chain ending in an action is unclassified', () => {
   const r = weakenCheck(BASE, swap("  await page.goto('/cart');", "  const b = page.getByRole('button').click();\n  await page.goto('/cart');"));
   refuses(r, 'unclassified', L.goto);

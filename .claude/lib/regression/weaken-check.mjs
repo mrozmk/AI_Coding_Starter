@@ -173,21 +173,39 @@ function maskChain(segs) {
   return parts.join('');
 }
 
-/** A locator call of `after` that matches less than its `before` counterpart: `exact: true` dropped, a string turned into a regex. */
+/** A regex literal's `[^, $]` anchors (an escaped `\$` is no anchor). */
+const anchors = (tk) => {
+  const src = tk.t.slice(1, tk.t.lastIndexOf('/'));
+  return [src.startsWith('^'), /(^|[^\\])\$$/.test(src)];
+};
+/** One-token arguments `before` → `after` where a regex lost an anchor. */
+const relaxedRegex = (bv, av) => bv?.length === 1 && av?.length === 1 && bv[0].kind === 'regex' && av[0].kind === 'regex'
+  && anchors(bv[0]).some((had, k) => had && !anchors(av[0])[k]);
+
+/**
+ * A locator call of `after` that matches less than its `before` counterpart: `exact: true` dropped,
+ * a string turned into a regex, an anchored regex relaxed.
+ */
 function loosenedLocator(beforeSegs, afterSegs) {
   const b = locatorCalls(beforeSegs);
   const a = locatorCalls(afterSegs);
-  if (b.length !== a.length) return null;
+  // Each before call is paired with the next after call of the same name, so an added or dropped
+  // `.first()` / `.filter()` does not hide a loosened neighbour.
+  let from = 0;
   for (let k = 0; k < b.length; k += 1) {
-    if (b[k].name !== a[k].name) continue;
+    const m = a.findIndex((c, i) => i >= from && c.name === b[k].name);
+    if (m < 0) continue;
+    from = m + 1;
     const bargs = b[k].args;
-    const aargs = a[k].args;
+    const aargs = a[m].args;
     if (bargs[0]?.length === 1 && bargs[0][0].kind === 'str' && aargs[0]?.length === 1 && aargs[0][0].kind === 'regex') return `${b[k].name}: a string became a regex`;
+    if (relaxedRegex(bargs[0], aargs[0])) return `${b[k].name}: an anchored regex was relaxed`;
     const bo = bargs.map(objectOf).find((o) => o && !o.__raw) ?? {};
     const ao = aargs.map(objectOf).find((o) => o && !o.__raw) ?? {};
     if (bo.exact && textOf(bo.exact) === 'true' && !(ao.exact && textOf(ao.exact) === 'true')) return `${b[k].name}: exact: true dropped`;
     for (const [key, v] of Object.entries(bo)) {
       if (v.length === 1 && v[0].kind === 'str' && ao[key]?.length === 1 && ao[key][0].kind === 'regex') return `${b[k].name}: ${key} became a regex`;
+      if (relaxedRegex(v, ao[key])) return `${b[k].name}: the anchored ${key} regex was relaxed`;
     }
   }
   return null;
@@ -203,7 +221,7 @@ function classifyStatement(toks) {
   const text = textOf(toks);
   const line = toks[0].line;
   const base = { text, masked: text, line, segs: null };
-  if (hasMarker(toks)) return { ...base, kind: 'marker' };
+  if (markers(toks).length) return { ...base, kind: 'marker' };
   if (toks[0].t === 'const' && toks[1]?.kind === 'id' && toks[2]?.t === '=') {
     const segs = parseChain(toks.slice(3));
     const locatorsOnly = segs && segs.slice(1).every((s, k, rest) => (s.type === 'member' ? LOCATOR_CALLS.has(s.name) && rest[k + 1]?.type === 'call' : rest[k - 1]?.type === 'member'));
@@ -259,12 +277,7 @@ function assertionOf(segs, awaited) {
 
 const withoutTimeout = (o) => JSON.stringify(Object.entries(o).filter(([key]) => key !== 'timeout').sort());
 
-function hasMarker(toks) {
-  return toks.some((tk, k) => (tk.t === '.' && MARKERS.has(toks[k + 1]?.t) && toks[k + 2]?.t === '(')
-    || (tk.t === 'test' && toks[k + 1]?.t === '.' && toks[k + 2]?.t === 'abort' && toks[k + 3]?.t === '('));
-}
-
-/** `[{line, text}]` of every marker call in the tokens. */
+/** `[{line, name}]` of every marker call in the tokens. */
 function markers(toks) {
   const out = [];
   toks.forEach((tk, k) => {
@@ -280,7 +293,7 @@ const controlFlow = (toks) => toks.filter((tk) => (tk.kind === 'id' && CONTROL.h
 // ---------------------------------------------------------------------------------------------
 // The parsed spec
 
-/** `{imports, header, unobservable, use, test, rest, toks, error}` of one spec text. */
+/** `{lines, imports, header, unobservable, use, tests, rest, toks, error}` of one spec text. */
 export function parseSpecText(raw) {
   const text = raw.replace(/\r/g, '');
   const lines = text.split('\n');
@@ -344,6 +357,7 @@ export function weakenCheck(beforeText, afterText, { refresh = false } = {}) {
     }
     return { ok: weakened.length === 0, weakened, allowed };
   };
+  const unparsed = (p) => p.error || p.tests.length !== 1 || p.rest.length || p.use.length > 1;
 
   for (const [which, p] of [['before', b], ['after', a]]) {
     if (p.error) bad(1, 'unclassified', `${which}: ${p.error}`);
@@ -364,7 +378,7 @@ export function weakenCheck(beforeText, afterText, { refresh = false } = {}) {
     const at = known.indexOf(u.text);
     if (at >= 0) known.splice(at, 1); else bad(u.line, 'added-unobservable', u.text);
   }
-  // 3. identity: test.use, title, tags
+  // 3. identity: test.use (title and tags below, once both texts parsed)
   if (JSON.stringify(b.use.map((u) => u.text)) !== JSON.stringify(a.use.map((u) => u.text))) bad(a.use[0]?.line ?? 1, 'changed-identity', 'test.use changed');
   // 4. markers anywhere in the code
   const bm = markers(b.toks).map((m) => `${m.name}\0${b.lines[m.line - 1]?.trim()}`);
@@ -373,7 +387,7 @@ export function weakenCheck(beforeText, afterText, { refresh = false } = {}) {
     const at = bm.indexOf(key);
     if (at >= 0) bm.splice(at, 1); else bad(m.line, 'added-marker', `.${m.name}(`);
   }
-  if (weakened.some((w) => w.kind === 'unclassified' && /^(before|after):/.test(w.detail))) return done();
+  if ([b, a].some(unparsed)) return done();
   const [bt] = b.tests;
   const [at] = a.tests;
   if (bt.title !== at.title) bad(at.line, 'changed-identity', `title ${bt.title} → ${at.title}`);
@@ -397,9 +411,11 @@ function compareBody(before, after, bad, ok) {
   let j = 0;
   const take = (k) => { used.add(k); j = Math.max(j, k + 1); };
   const find = (from, to, pred) => { for (let k = from; k < to; k += 1) if (!used.has(k) && pred(after[k])) return k; return -1; };
+  const bound = new Set([...before, ...after].filter((s) => s.kind === 'binding').map((s) => s.name));
+  const isLocator = (segs) => !!segs && (locatorCalls(segs).length > 0 || (segs.length === 1 && bound.has(segs[0].name)));
   for (const s of before) {
     if (s.kind === 'marker') continue;
-    if (s.kind === 'assertion') { matchAssertion(s, after, { find, take, used, j: () => j }, bad, ok); continue; }
+    if (s.kind === 'assertion') { matchAssertion(s, after, { find, take, used, j: () => j, isLocator }, bad, ok); continue; }
     let k = find(j, after.length, (x) => x.kind === s.kind && x.text === s.text);
     if (k >= 0) { take(k); continue; }
     k = find(j, after.length, (x) => x.kind === s.kind && s.kind !== 'other' && x.masked === s.masked && (s.kind !== 'binding' || x.name === s.name));
@@ -415,8 +431,9 @@ function compareBody(before, after, bad, ok) {
     bad(s.line, 'unclassified', `${s.kind === 'action' ? 'removed action' : 'removed statement'}: ${s.text}`);
   }
   after.forEach((x, k) => {
-    if (used.has(k) || x.kind === 'marker' || x.kind === 'binding') return;
-    if (x.kind === 'assertion') ok(x.line, 'added-assertion', x.text);
+    if (used.has(k) || x.kind === 'marker') return;
+    if (x.kind === 'binding') ok(x.line, 'added-binding', x.text);
+    else if (x.kind === 'assertion') ok(x.line, 'added-assertion', x.text);
     else if (x.kind === 'action') ok(x.line, 'added-action', x.text);
     else if (x.kind === 'wait') ok(x.line, 'added-wait', x.text);
     else bad(x.line, 'unclassified', `added statement: ${x.text}`);
@@ -424,7 +441,7 @@ function compareBody(before, after, bad, ok) {
 }
 
 /** One before assertion against the after body: the best counterpart from the pointer on, by the plan's order. */
-function matchAssertion(s, after, { find, take, used, j }, bad, ok) {
+function matchAssertion(s, after, { find, take, used, j, isLocator }, bad, ok) {
   const x = s.assertion;
   const same = (y, ...keys) => keys.every((key) => JSON.stringify(x[key]) === JSON.stringify(y[key]));
   const shape = ['soft', 'poll', 'not', 'matcher'];
@@ -434,7 +451,7 @@ function matchAssertion(s, after, { find, take, used, j }, bad, ok) {
     [(y) => same(y, ...shape, 'subject', 'data') && y.awaited !== x.awaited, 'unclassified'],
     [(y) => same(y, 'awaited', ...shape, 'subject') && JSON.stringify(x.data) !== JSON.stringify(y.data), 'changed-value'],
     [(y) => same(y, 'awaited', ...shape, 'subject', 'data'), 'changed-tolerance'],
-    [(y) => same(y, 'subject') && y.matcher.startsWith('to'), 'loosened-matcher'],
+    [(y) => same(y, 'subject'), 'loosened-matcher'],
     [(y) => same(y, 'awaited', ...shape, 'data') && withoutTimeout(x.options) === withoutTimeout(y.options), 'retargeted'],
   ];
   const isA = (pred) => (y) => y.kind === 'assertion' && pred(y.assertion);
@@ -447,7 +464,8 @@ function matchAssertion(s, after, { find, take, used, j }, bad, ok) {
     if (kind === 'timeout') ok(y.line, 'timeout', `${x.options.timeout ?? '(none)'} → ${y.assertion.options.timeout ?? '(none)'}`);
     else if (kind === 'retargeted') {
       const loose = loosenedLocator(x.subjectSegs, y.assertion.subjectSegs);
-      if (loose) bad(y.line, 'loosened-matcher', loose);
+      if (!isLocator(x.subjectSegs) || !isLocator(y.assertion.subjectSegs)) bad(y.line, 'unclassified', `subject changed outside a locator: ${x.subject} → ${y.assertion.subject}`);
+      else if (loose) bad(y.line, 'loosened-matcher', loose);
       else ok(y.line, 'retargeted', `${x.subject} → ${y.assertion.subject}`);
     } else if (kind === 'unclassified') bad(y.line, 'unclassified', 'dropped or added await');
     else if (kind === 'loosened-matcher') bad(y.line, kind, `${x.not ? 'not.' : ''}${x.matcher} → ${y.assertion.not ? 'not.' : ''}${y.assertion.matcher}`);

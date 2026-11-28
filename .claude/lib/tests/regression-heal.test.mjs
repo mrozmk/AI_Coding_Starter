@@ -402,6 +402,13 @@ test('classify: refuses a probe record of another attempt or environment, and a 
     has(r, /^refused: CART-008 — probe record of another attempt, environment or plan$/m);
   }
   write(ctx, file, original);
+  const h = healJson(ctx, dir);
+  const critic = read(ctx, h.probe_critic);
+  writeJson(ctx, h.probe_critic, { ...JSON.parse(critic), verdict: 'fail' });
+  const criticEdited = classify();
+  assert.equal(criticEdited.status, 1, criticEdited.out);
+  has(criticEdited, /^refused: CART-008 — the probe plan no longer holds: no probe critic pass on the current probe$/m);
+  write(ctx, h.probe_critic, critic);
   write(ctx, SPEC8, `${read(ctx, SPEC8)}\n`);
   const changed = classify();
   assert.equal(changed.status, 1, changed.out);

@@ -20,8 +20,10 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { RUNS_DIR, isObject, envPolicy, resolveTarget, specDir } from './config.mjs';
-import { loadCatalog, validateCatalog, specOf, statusOf, blockTexts, automationState, currentFingerprint, staleRule, posix } from './catalog.mjs';
-import { candidateProblem, pinProblem, buildProbePlan, evidenceKey, changedPart, sha256, targetOf, hasScreenshotAssertion, viewportProjects } from './policy.mjs';
+import { loadCatalog, validateCatalog, specOf, statusOf, blockTexts, automationState, staleNow, posix } from './catalog.mjs';
+import {
+  candidateProblem, buildProbePlan, evidenceKey, changedPart, sha256, targetOf, hasScreenshotAssertion, viewportProjects, readText, sameInputs,
+} from './policy.mjs';
 import { isTeamClone, newRunDir, scanIntegration, RUNNER_NEEDS } from './run.mjs';
 import { lintSpec, stripComments } from './speclint.mjs';
 import { weakenCheck } from './weaken-check.mjs';
@@ -49,7 +51,6 @@ function catalogOf(root, cfg) {
 }
 
 const rel = (root, abs) => posix(path.relative(root, abs));
-const readText = (root, p) => { try { return fs.readFileSync(path.resolve(root, p), 'utf8'); } catch { return null; } };
 const testCount = (text) => [...stripComments(text).matchAll(/\btest\(\s*['"`]/g)].length;
 const writeHeal = (abs, heal) => writeAtomic(path.join(abs, 'heal.json'), `${JSON.stringify(heal, null, 2)}\n`);
 
@@ -74,11 +75,22 @@ function openAttempts(root, id) {
   });
 }
 
-/** `{state, rule}` — the automation state and the stale rule of `b` now (rule null = verified). */
-function staleNow(root, b) {
-  const ctx = {};
-  const state = automationState(root, b, ctx);
-  return { state, rule: staleRule(b, state, { fingerprint: (cid) => currentFingerprint(root, cid, ctx) }) };
+/** The resolved target of `--env`, or null after printing the error and the configured names. */
+function targetOrNull(cfg, envName) {
+  const target = resolveTarget(cfg, envName);
+  if (!target.error) return target;
+  console.error(`heal: ${target.error}`);
+  console.log(`environments: ${target.names.join(', ') || '(none)'}`);
+  return null;
+}
+
+/** The catalog blocks of `ids`, printing `refused: <id> — not in the catalog` for each unknown one. */
+function pickIds(blocks, ids) {
+  return ids.flatMap((id) => {
+    const b = blocks.find((x) => x.id === id);
+    if (!b) console.log(`refused: ${id} — not in the catalog`);
+    return b ? [b] : [];
+  });
 }
 
 /** Why the claimed spec, its block or its closure differ from the attempt's snapshot, or null. */
@@ -92,9 +104,6 @@ function snapshotProblem(root, cfg, heal, b, texts) {
   if (!sameInputs(root, inputs, heal.snapshot.inputs)) return 'a helper';
   return null;
 }
-
-const sameInputs = (root, files, recorded) => JSON.stringify(files) === JSON.stringify(recorded.map((i) => i.file))
-  && files.every((f, k) => sha256(readText(root, f) ?? '') === recorded[k].sha256);
 
 /** Move `abs` (when it exists) into `destDir`; its new repo path, or null. */
 function moveInto(root, abs, destDir) {
@@ -130,7 +139,6 @@ function cmdSelect(root, args) {
   const { blocks } = catalogOf(root, cfg);
   let envName;
   let picked = [];
-  const lines = [];
   if (args.run) {
     const file = path.resolve(root, RUNS_DIR, args.run, 'record.json');
     if (!fs.existsSync(file)) refuse(`record not found — ${args.run}`);
@@ -148,25 +156,13 @@ function cmdSelect(root, args) {
     }
     if (rec.verdict !== 'RED') refuse(`${args.run} — verdict ${rec.verdict}: nothing a heal can classify`);
     envName = rec.env;
-    lines.push(`env: ${envName}`);
-    for (const id of red) {
-      const b = blocks.find((x) => x.id === id);
-      if (b) picked.push(b); else console.log(`refused: ${id} — not in the catalog`);
-    }
+    picked = pickIds(blocks, red);
   } else {
-    const target = resolveTarget(cfg, args.env);
-    if (target.error) {
-      console.error(`heal: ${target.error}`);
-      console.log(`environments: ${target.names.join(', ') || '(none)'}`);
-      return 2;
-    }
+    const target = targetOrNull(cfg, args.env);
+    if (!target) return 2;
     envName = target.name;
-    if (args.refresh) {
-      for (const id of args.ids) {
-        const b = blocks.find((x) => x.id === id);
-        if (b) picked.push(b); else console.log(`refused: ${id} — not in the catalog`);
-      }
-    } else {
+    if (args.refresh) picked = pickIds(blocks, args.ids);
+    else {
       const m = /^(\S+?)(?: › (.+))?$/.exec(args.spec.trim());
       picked = blocks.filter((b) => specOf(b)?.path === m?.[1] && (!m?.[2] || specOf(b).title === m[2]));
       if (!picked.length) refuse(`no scenario cites ${args.spec}`);
@@ -184,7 +180,7 @@ function cmdSelect(root, args) {
     if (why) console.log(`refused: ${b.id} — ${why}`);
     else { eligible += 1; console.log(`eligible: ${b.id} ${specOf(b).path}`); }
   }
-  for (const l of lines) console.log(l);
+  if (args.run) console.log(`env: ${envName}`);
   return eligible ? 0 : 1;
 }
 
@@ -200,12 +196,8 @@ const STOP_LINE = {
 function cmdStart(root, args) {
   const cfg = configOf(root);
   const id = args.id;
-  const target = resolveTarget(cfg, args.env);
-  if (target.error) {
-    console.error(`heal: ${target.error}`);
-    console.log(`environments: ${target.names.join(', ') || '(none)'}`);
-    return 2;
-  }
+  const target = targetOrNull(cfg, args.env);
+  if (!target) return 2;
   const t = targetOf(root, cfg, target.name);
   if (t.error) throw new UsageError(t.error);
   return underCheckoutLock(root, `heal-start-${id}`, () => {
@@ -318,6 +310,7 @@ function environmentFacts(probe) {
     for (const a of f.attestation ?? []) out.push(`pass ${pass.n}: ${a}`);
   }
   const b = probe.build ?? {};
+  if (b.stop) out.push(`guard stop on a build read: ${b.stop}`);
   if (!b.before || (!b.after && !b.after_skipped)) out.push(`deployed build unknown (${b.reason ?? 'no build_sha_url'})`);
   else if (b.after && b.after !== b.before) out.push(`build changed during the probe (${b.before} → ${b.after})`);
   return out;
@@ -399,10 +392,12 @@ function cmdClassify(root, args) {
     if (changed) refuse(`${id} — the spec changed since start (${changed}) — the live check precedes any diff`);
     const probeDir = path.resolve(root, args.probe);
     const probe = readJson(path.join(probeDir, 'probe.json'), 'probe.json');
-    const t = targetOf(root, cfg, heal.env);
-    const plan = t.error ? null : buildProbePlan(root, cfg, heal.env, heal);
-    const pinned = !t.error && !pinProblem(t, heal.env, heal) && probe.env === heal.env && probe.kind === heal.kind && probe.base_url === heal.base_url;
-    if (probe.heal_id !== heal.id || !pinned || !plan?.digests?.plan || probe.plan_digest !== plan.digests.plan) refuse(`${id} — probe record of another attempt, environment or plan`);
+    // The plan the probe ran is recomputed now: a refusal of it names its own reason.
+    const plan = buildProbePlan(root, cfg, heal.env, heal);
+    const planProblem = plan.error ?? (plan.catalog_errors ? 'the catalog is invalid' : plan.refused[0]?.reason);
+    if (planProblem) refuse(`${id} — the probe plan no longer holds: ${planProblem}`);
+    const pinned = probe.env === heal.env && probe.kind === heal.kind && probe.base_url === heal.base_url;
+    if (probe.heal_id !== heal.id || !pinned || probe.plan_digest !== plan.digests.plan) refuse(`${id} — probe record of another attempt, environment or plan`);
     const projects = viewportProjects(cfg, b.fields.Viewport?.value).map((d) => d.project);
     const res = classifyProbe({ probe, heal, projects });
     heal.probe_run = rel(root, probeDir);
@@ -459,7 +454,7 @@ function cmdApply(root, args) {
     if (lint.violations.length) refuse(`${id} — lint: ${lint.violations[0].file}:${lint.violations[0].line}: ${lint.violations[0].rule}`);
     if (lint.title !== heal.title) refuse(`${id} — the candidate's title ${lint.title} is not ${heal.title}`);
     if (!sameInputs(root, lint.files.filter((f) => f !== heal.candidate), heal.snapshot.inputs)) refuse(`${id} — a helper changed — heal changes only the spec`);
-    const { entry } = checkVerified(root, cfg, { id, spec: heal.candidate, verifyDir: args.verify, refuse, heal });
+    const { entry } = checkVerified(root, cfg, { id, spec: heal.candidate, verifyDir: args.verify, heal });
     const current = evidenceKey(root, heal.candidate, lint.files, texts.get(id).text);
     const stale = changedPart(entry, current);
     if (stale) refuse(`${id} — ${stale} changed since the verify`);
@@ -540,7 +535,7 @@ function parseArgs(argv) {
   if (positional.length !== 1) throw new UsageError(`${cmd} needs exactly one <ID>`);
   args.id = positional[0];
   if (args.refresh && !['start', 'apply'].includes(cmd)) throw new UsageError(`${cmd} takes no --refresh`);
-  for (const k of NEEDS[cmd]) if (!args[k]) throw new UsageError(`${cmd} needs --${k === 'fromRun' ? 'from-run' : k}`);
+  for (const k of NEEDS[cmd]) if (!args[k]) throw new UsageError(`${cmd} needs --${k}`);
   return args;
 }
 

@@ -155,7 +155,6 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
   return findings;
 }
 
-/** What the functional runner config must import and do: testMatch from runnerOptions. */
 // Playwright loads every discovered file before grep: without testMatch an unclaimed draft — or a
 // heal candidate or probe — loads too.
 export const RUNNER_NEEDS = [{ module: GUARD_MODULE, binding: 'runnerOptions', uses: 'opts.testMatch', missing: 'does not set testMatch from runnerOptions' }];
@@ -1132,12 +1131,15 @@ async function cmdProbe(args) {
     const shaUrl = buildShaUrl(root, cfg, plan.env, plan.policy);
     // The build reads go through the guard on this run's ledger, each under a nonce of its own.
     const buildRead = (tag) => readStoryBuild(manifestOf(root, plan, dir, runId, `${runId}-build-${tag}`, []), shaUrl);
+    // A stop on a build read halts the probe like a pass's stop: no runner after it, exit 5.
+    const buildStop = () => createLedger(dir).stopInfo();
     const before = await buildRead('before');
     const needs = plan.passes[0].cases[0]?.needs ?? [];
     const passes = [];
     const skipped = [];
-    let stopped = null;
-    let halt = null;
+    let readStop = buildStop();
+    let stopped = readStop;
+    let halt = readStop ? `guard stop: ${readStop.reason}` : null;
     for (const pass of plan.passes) {
       if (halt) { skipped.push({ n: pass.n, reason: halt }); console.log(`not run: pass ${pass.n} — ${halt}`); continue; }
       const nonce = randomBytes(8).toString('hex');
@@ -1156,14 +1158,18 @@ async function cmdProbe(args) {
         attachments: c.result === 'failed' ? [...new Set(c.attachments)].map((a) => keepAttachment(root, dir, pass.n, a)) : [],
       }));
       passes.push({ n: pass.n, nonce, cases, facts: probeFacts(plan, cls, guard, runner, events) });
-      for (const c of cases) console.log(`probe: pass ${pass.n} ${c.id}/${c.project} ${c.result}${c.attempts !== 1 || retried(c) || !c.attested || !c.session_ok ? ' (unqualified)' : ''}`);
+      for (const c of cases) console.log(`probe: pass ${pass.n} ${c.id}/${c.project} ${c.result}${retried(c) || !c.attested || !c.session_ok ? ' (unqualified)' : ''}`);
       // A stopped or interrupted pass 1 ends the sequence: pass 2 would read a different state.
       if (guard.stop) { stopped = guard.stop; halt = `guard stop: ${guard.stop.reason}`; } else if (runner.signal || cls.interrupted) halt = `pass ${pass.n} interrupted`;
     }
     const after = stopped ? null : await buildRead('after');
+    if (!stopped) { readStop = buildStop(); stopped = readStop; }
     const record = {
       schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, heal_id: plan.heal_id, plan_digest: plan.digests.plan, confirmed,
-      build: { before: before.sha, after: after?.sha ?? null, reason: before.reason ?? after?.reason ?? null, ...(stopped ? { after_skipped: 'guard stop' } : {}) },
+      build: {
+        before: before.sha, after: after?.sha ?? null, reason: before.reason ?? after?.reason ?? null,
+        ...(stopped && !after ? { after_skipped: 'guard stop' } : {}), ...(readStop ? { stop: readStop.reason } : {}),
+      },
       passes, skipped,
     };
     const recordFile = path.join(dir, 'probe.json');

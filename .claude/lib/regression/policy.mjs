@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, isObject, docKey, specDir, envKind, visualSettings, runnerDevices, VISUAL_DEVICES,
 } from './config.mjs';
-import { loadCatalog, validateCatalog, needsKeys, specOf, statusOf, blockTexts, automationState, currentFingerprint, staleRule } from './catalog.mjs';
+import { loadCatalog, validateCatalog, needsKeys, specOf, statusOf, blockTexts, staleNow } from './catalog.mjs';
 import { lintSpec, stripComments, RETRY_NEEDLES } from './speclint.mjs';
 import { redactedSamples } from './walk.mjs';
 
@@ -374,10 +374,15 @@ const SCREENSHOT = /\.(toHaveScreenshot|toMatchSnapshot)\s*\(/;
 /** Whether spec code asserts a screenshot — such a spec belongs to the visual lane, never to heal. */
 export const hasScreenshotAssertion = (text) => SCREENSHOT.test(stripComments(String(text)));
 
-const readText = (root, rel) => { try { return fs.readFileSync(path.resolve(root, rel), 'utf8'); } catch { return null; } };
+/** The text of a repo file, or null when it cannot be read. */
+export const readText = (root, rel) => { try { return fs.readFileSync(path.resolve(root, rel), 'utf8'); } catch { return null; } };
+
+/** Whether `files` are the heal snapshot's recorded helper closure, file for file and byte for byte. */
+export const sameInputs = (root, files, recorded) => JSON.stringify(files) === JSON.stringify(recorded.map((i) => i.file))
+  && files.every((f, k) => sha256(readText(root, f) ?? '') === recorded[k].sha256);
 
 /** `target differs from the pinned …` when the resolved target is not the heal attempt's pin, else null. */
-export function pinProblem(t, envName, heal) {
+function pinProblem(t, envName, heal) {
   if (envName === heal.env && t.policy.kind === heal.kind && t.base_url === heal.base_url) return null;
   return `target differs from the pinned ${heal.env} (${heal.kind} ${heal.base_url})`;
 }
@@ -456,11 +461,9 @@ export function buildProbePlan(root, cfg, envName, heal, { configPath = CONFIG_P
       if (l.violations.some((v) => RETRY_NEEDLES.includes(v.needle))) return 'retries are not 0 — spec';
       if (l.violations.length) return `lint: ${l.violations[0].file}:${l.violations[0].line}: ${l.violations[0].rule}`;
     }
-    const inputs = specLint.files.filter((f) => f !== heal.spec);
-    if (JSON.stringify(inputs) !== JSON.stringify(heal.snapshot.inputs.map((i) => i.file)) || inputs.some((f, k) => sha256(readText(root, f) ?? '') !== heal.snapshot.inputs[k].sha256)) return 'a helper of the spec changed since start';
+    if (!sameInputs(root, specLint.files.filter((f) => f !== heal.spec), heal.snapshot.inputs)) return 'a helper of the spec changed since start';
     if (hasScreenshotAssertion(probeText)) return 'the probe asserts a screenshot — the visual lane owns those';
-    const ctx = {};
-    const stale = staleRule(b, automationState(root, b, ctx), { fingerprint: (cid) => currentFingerprint(root, cid, ctx) });
+    const { rule: stale } = staleNow(root, b);
     if (stale) return `the criterion changed during the heal — ${stale.rule}: ${stale.reason}`;
     specKey = evidenceKey(root, heal.spec, specLint.files, texts.get(id).text);
     probeKey = evidenceKey(root, heal.probe, probeLint.files, texts.get(id).text);
