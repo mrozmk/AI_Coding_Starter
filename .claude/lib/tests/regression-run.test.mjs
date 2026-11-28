@@ -690,3 +690,426 @@ test('consent cookie without path defaults to slash', () => {
   const errors = validateConfig({ version: 1, catalog: {}, environments: { prod: { host: 'https://shop.example.com', consent: { cookies: [{ name: 'c', value: 'v', domain: 'd', path: 'no-slash' }] } } } });
   assert.ok(errors.some((e) => /^environments\.prod\.consent\.cookies:/.test(e)));
 });
+
+test('environment redact must be an array of compilable regexes', () => {
+  const env = (redact) => ({ version: 1, catalog: {}, environments: { prod: { host: 'https://shop.example.com', redact } } });
+  for (const bad of ['x', ['('], [1]]) {
+    assert.ok(validateConfig(env(bad)).includes('environments.prod.redact: must be an array of compilable regexes'), JSON.stringify(bad));
+  }
+  assert.deepEqual(validateConfig(env(['lic-[0-9]+'])), []);
+  assert.deepEqual(envPolicy({ host: 'https://shop.example.com' }).redact, []);
+  assert.deepEqual(envPolicy({ host: 'https://shop.example.com', redact: ['lic-[0-9]+'] }).redact, ['lic-[0-9]+']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The walk and verify lanes (#332)
+
+const sha256 = (b) => createHash('sha256').update(b).digest('hex');
+
+/** Add the authoring files (CART-008..010, their candidate specs, the walk stub) to a temp copy only. */
+function withAuthoringFiles(root) {
+  const src = path.join(FIX, 'authoring');
+  fs.appendFileSync(path.join(root, CAT, 'cart.md'), fs.readFileSync(path.join(src, 'cart-append.md'), 'utf8'));
+  fs.cpSync(path.join(src, 'e2e'), path.join(root, 'e2e'), { recursive: true });
+  return root;
+}
+
+/** A staged route list in the temp root. */
+function stagedRoutes(root, routes) {
+  const file = path.join(root, '.agents/regression/runs/inventory-t/routes.staged.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify({ schema: 1, routes }, null, 2)}\n`);
+  return file;
+}
+const WALK_ROUTES = [
+  { route: '/', source: 'app/home.tsx', sample: '/', submit: [{ form: 'search', action: '/search', method: 'GET', inputs: { q: 'shoes' } }] },
+  { route: '/account', source: 'app/account.tsx', sample: '/account', account: 'shopper' },
+];
+const walkOf = (root, r) => {
+  const m = /^record: (.+walk\.json)$/m.exec(r.stdout);
+  assert.ok(m, `no walk record in:\n${r.out}`);
+  return JSON.parse(fs.readFileSync(path.join(root, m[1]), 'utf8'));
+};
+const verifyOf = (root, r) => {
+  const m = /^record: (.+verify\.json)$/m.exec(r.stdout);
+  assert.ok(m, `no verify record in:\n${r.out}`);
+  return JSON.parse(fs.readFileSync(path.join(root, m[1]), 'utf8'));
+};
+const PAIR8 = 'CART-008=e2e/regression/cart/cart-008.spec.ts';
+const PAIR9 = 'CART-009=e2e/regression/cart/cart-009.spec.ts';
+
+test('walk: refuses a team clone, a missing stub and a non-GET submit entry', async () => {
+  const team = withAuthoringFiles(copyRoot());
+  fs.mkdirSync(path.join(team, '.agents/team'), { recursive: true });
+  fs.writeFileSync(path.join(team, '.agents/team/team.json'), '{}\n');
+  const t = await cli(['walk', '--routes', stagedRoutes(team, WALK_ROUTES), '--root', team]);
+  assert.equal(t.status, 3, t.out);
+  assert.match(t.stderr, /a team clone never runs regression/);
+  const nostub = copyRoot();
+  const s = await cli(['walk', '--routes', stagedRoutes(nostub, WALK_ROUTES), '--root', nostub]);
+  assert.equal(s.status, 2, s.out);
+  assert.match(s.stderr, /walk stub missing — \/setup:regression --inventory installs it/);
+  const post = withAuthoringFiles(copyRoot());
+  const p = await cli(['walk', '--routes', stagedRoutes(post, [{ route: '/login', source: 's', submit: [{ form: 'login', action: '/login', method: 'POST', inputs: {} }] }]), '--root', post]);
+  assert.equal(p.status, 2, p.out);
+  assert.match(p.stderr, /submit login: only GET forms may be allow-listed/);
+  for (const r of [team, nostub, post]) assert.equal(runnerCalls(r), 0);
+});
+
+test('walk: production prints a confirmation naming the routes, groups and submit entries', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-green walk-groups 0', 'full');
+  const r = await cli(['walk', '--env', 'prod', '--routes', stagedRoutes(root, WALK_ROUTES), '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stdout, /^target: prod \(production\) https:\/\/shop\.example\.com · walk · 2 routes in 2 groups$/m);
+  assert.match(r.stdout, /^mode: walk$/m);
+  assert.match(r.stdout, /^routes: 2 · groups: WALK1,WALK2 · submit entries: \/ search \/search q$/m);
+  const token = tokenOf(r);
+  assert.ok(token);
+  assert.ok(fs.existsSync(path.join(root, '.agents/regression/runs/.confirm/prod.walk.json')), 'a walk token has its own lane');
+  const ok = await cli(['walk', '--env', 'prod', '--confirm', token, '--routes', stagedRoutes(root, WALK_ROUTES), '--root', root]);
+  assert.equal(ok.status, 0, ok.out);
+  assert.equal(walkOf(root, ok).confirmed, true);
+  assert.equal(runnerCalls(root), 1);
+});
+
+test('walk: a group whose account is not a declared means is not walked — policy', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-missing walk-groups 0', 'full');
+  const routes = [WALK_ROUTES[0], { route: '/admin', source: 'app/admin.tsx', sample: '/admin', account: 'admin' }];
+  const r = await cli(['walk', '--routes', stagedRoutes(root, routes), '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stdout, /^not walked — policy: WALK2 — account:admin not declared for test$/m);
+  const rec = walkOf(root, r);
+  assert.deepEqual(rec.excluded.map((e) => [e.group, e.reason]), [['WALK2', 'account:admin not declared for test']]);
+  const observations = JSON.parse(fs.readFileSync(path.join(root, /^observations: (.+)$/m.exec(r.stdout)[1]), 'utf8'));
+  assert.deepEqual(observations.find((o) => o.route === '/admin'), { route: '/admin', group: 'WALK2', account: 'admin', outcome: 'not-walked', reason: 'policy: account:admin not declared for test', sample: null });
+});
+
+test('walk: merges the group files into observations and is COMPLETE', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-green walk-groups 0', 'full');
+  const r = await cli(['walk', '--routes', stagedRoutes(root, WALK_ROUTES), '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stdout, /^walk: COMPLETE$/m);
+  const observations = JSON.parse(fs.readFileSync(path.join(root, /^observations: (.+)$/m.exec(r.stdout)[1]), 'utf8'));
+  assert.deepEqual(observations.map((o) => [o.route, o.group, o.account, o.outcome]), [['/', 'WALK1', null, 'ok'], ['/account', 'WALK2', 'shopper', 'ok']]);
+  const rec = walkOf(root, r);
+  assert.deepEqual(rec.groups.map((g) => [g.key, g.result, g.done]), [['WALK1', 'passed', true], ['WALK2', 'passed', true]]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, '.agents/regression/runs', rec.run_id, 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.walk.groups.map((g) => g.key), ['WALK1', 'WALK2']);
+  assert.deepEqual(manifest.selection.map((c) => [c.id, c.title, c.project, c.spec]), [['WALK1', 'WALK1 — anonymous', 'desktop-chrome', 'e2e/regression/_walk.spec.ts'], ['WALK2', 'WALK2 — shopper', 'desktop-chrome', 'e2e/regression/_walk.spec.ts']]);
+});
+
+test('walk: a missing group case or a missing attestation is not COMPLETE', async () => {
+  const lastGroup = withAuthoringFiles(copyRoot());
+  useRunner(lastGroup, 'walk-green walk-groups-missing-last 0', 'full');
+  const a = await cli(['walk', '--routes', stagedRoutes(lastGroup, WALK_ROUTES), '--root', lastGroup]);
+  assert.equal(a.status, 4, a.out);
+  assert.match(a.stdout, /^reason: group WALK2 not done$/m);
+  const missingCase = withAuthoringFiles(copyRoot());
+  useRunner(missingCase, 'walk-missing walk-groups 0', 'full');
+  const b = await cli(['walk', '--routes', stagedRoutes(missingCase, WALK_ROUTES), '--root', missingCase]);
+  assert.equal(b.status, 4, b.out);
+  assert.match(b.stdout, /^reason: missing: WALK2\/desktop-chrome$/m);
+  const unattested = withAuthoringFiles(copyRoot());
+  useRunner(unattested, 'walk-green attest-none 0', 'full');
+  const c = await cli(['walk', '--routes', stagedRoutes(unattested, WALK_ROUTES), '--root', unattested]);
+  assert.notEqual(c.status, 0, c.out);
+  assert.doesNotMatch(c.stdout, /^walk: COMPLETE$/m);
+  assert.match(c.stdout, /^reason: guard not attested for WALK1\/desktop-chrome$/m);
+});
+
+test('walk: report errors or a missing session attestation are not COMPLETE', async () => {
+  const errors = withAuthoringFiles(copyRoot());
+  useRunner(errors, 'walk-errors walk-groups 0', 'full');
+  const a = await cli(['walk', '--routes', stagedRoutes(errors, WALK_ROUTES), '--root', errors]);
+  assert.equal(a.status, 4, a.out);
+  assert.match(a.stdout, /^reason: report errors: 1$/m);
+  const session = withAuthoringFiles(copyRoot());
+  useRunner(session, 'walk-green walk-groups-session-missing 0', 'full');
+  const b = await cli(['walk', '--routes', stagedRoutes(session, WALK_ROUTES), '--root', session]);
+  assert.equal(b.status, 5, b.out);
+  assert.match(b.stdout, /^reason: session not guard-attested for shopper$/m);
+  assert.match(b.stdout, /^walk: BLOCKED\/ENV$/m);
+});
+
+test('walk: a test environment refuses a runner that is not guard-integrated', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-green walk-groups 0', 'full');
+  fs.writeFileSync(path.join(root, 'e2e/fixtures.ts'), fs.readFileSync(path.join(FIX, 'root/e2e/fixtures.ts'), 'utf8').replace(/^import \{ installGuard[^\n]*\n/m, ''));
+  const r = await cli(['walk', '--routes', stagedRoutes(root, WALK_ROUTES), '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stderr, /^runner not guard-integrated — e2e\/fixtures\.ts: does not import installGuard/m);
+  assert.equal(runnerCalls(root), 0);
+});
+
+test('walk: walk.json binds the staged routes digest and lists the redacted samples', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-green walk-groups 0', 'full');
+  editConfig(root, (cfg) => { cfg.environments.test.redact = ['lic-[0-9]+']; });
+  const routes = [{ ...WALK_ROUTES[0], sample: '/?ref=mail' }, { ...WALK_ROUTES[1], sample: '/account/lic-42' }];
+  const file = stagedRoutes(root, routes);
+  const r = await cli(['walk', '--routes', file, '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  const rec = walkOf(root, r);
+  assert.equal(rec.routes_digest, sha256(fs.readFileSync(file)));
+  assert.equal(rec.routes_file, '.agents/regression/runs/inventory-t/routes.staged.json');
+  assert.deepEqual(rec.redacted_samples, ['/', '/account']);
+});
+
+test('verify: refuses a scenario that is not READY, already has a Spec, or a write under writes refuse', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  editConfig(root, (cfg) => { cfg.environments.test.writes = 'refuse'; });
+  const r = await cli(['verify', 'CART-005=e2e/regression/cart/cart-008.spec.ts', 'CART-001=e2e/regression/cart.spec.ts', 'CART-010=e2e/regression/cart/cart-010.spec.ts', '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stdout, /^refused: CART-005 — not READY \(BLOCKED \(#12\)\)$/m);
+  assert.match(r.stdout, /^refused: CART-001 — already has a spec$/m);
+  assert.match(r.stdout, /^refused: CART-010 — writes refuse$/m);
+  assert.equal(runnerCalls(root), 0);
+});
+
+test('verify: three green passes qualify the scenario and record both digests', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-green attest-pass 0', 'full');
+  const r = await cli(['verify', PAIR8, '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  const spec = fs.readFileSync(path.join(root, 'e2e/regression/cart/cart-008.spec.ts'));
+  const m = /^verified: CART-008 spec_sha256=([0-9a-f]{64}) inputs_sha256=([0-9a-f]{64}) block_sha256=([0-9a-f]{64})$/m.exec(r.stdout);
+  assert.ok(m, r.out);
+  assert.equal(m[1], sha256(spec));
+  const rec = verifyOf(root, r);
+  const s = rec.scenarios[0];
+  assert.deepEqual({ qualified: s.qualified, passes_ok: s.passes_ok, projects: s.projects, spec_sha256: s.spec_sha256, inputs_sha256: s.inputs_sha256 }, { qualified: true, passes_ok: [1, 2, 3], projects: ['desktop-chrome', 'mobile-safari'], spec_sha256: m[1], inputs_sha256: m[2] });
+  assert.equal(new Set(rec.passes.map((p) => p.nonce)).size, 3, 'one nonce per pass');
+  assert.ok(rec.passes.every((p) => p.cases.length === 2 && p.cases.every((c) => c.result === 'passed' && c.attempts === 1)));
+  assert.equal(runnerCalls(root), 3);
+  for (const n of [1, 2, 3]) assert.ok(fs.existsSync(path.join(root, '.agents/regression/runs', rec.run_id, `report-${n}.json`)));
+});
+
+test('verify: a retry, a flaky result or a missing per-pass attestation does not qualify', async () => {
+  const flaky = withAuthoringFiles(copyRoot());
+  useRunner(flaky, 'verify-retry attest-pass 0', 'full');
+  const a = await cli(['verify', PAIR8, '--root', flaky]);
+  assert.equal(a.status, 1, a.out);
+  assert.match(a.stdout, /^not verified: CART-008 — flaky in pass 1$/m);
+  assert.equal(runnerCalls(flaky), 1, 'a scenario that lost a case runs no further pass');
+  const unattested = withAuthoringFiles(copyRoot());
+  useRunner(unattested, 'verify-green attest-pass,attest-none,attest-pass 0', 'full');
+  const b = await cli(['verify', PAIR8, '--root', unattested]);
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.stdout, /^not verified: CART-008 — no guard attestation in pass 2$/m);
+  assert.deepEqual(verifyOf(unattested, b).scenarios[0].passes_ok, [1]);
+});
+
+test('verify: a scenario that fails pass 1 is dropped from later passes and prints its context', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-failed attest-pass 1', 'full');
+  const r = await cli(['verify', PAIR8, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^not verified: CART-008 — failed in pass 1$/m);
+  assert.match(r.stdout, /^context: test-results\/x\/error-context\.md$/m);
+  assert.equal(runnerCalls(root), 1);
+});
+
+test('verify: a failed case keeps a copy of its attachment in the run directory', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  fs.mkdirSync(path.join(root, 'test-results/x'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'test-results/x/error-context.md'), 'the page at the failure\n');
+  useRunner(root, 'verify-failed attest-pass 1', 'full');
+  const r = await cli(['verify', PAIR8, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  const kept = /^context: (\.agents\/regression\/runs\/\S+\/context-1\/test-results\/x\/error-context\.md)$/m.exec(r.stdout);
+  assert.ok(kept, r.out);
+  assert.equal(fs.readFileSync(path.join(root, kept[1]), 'utf8'), 'the page at the failure\n');
+  assert.deepEqual(verifyOf(root, r).scenarios[0].context, [kept[1]]);
+});
+
+test('verify: production confirmation covers the three passes', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-green attest-pass 0', 'full');
+  const locks = fs.mkdtempSync(path.join(os.tmpdir(), 'regression-locks-'));
+  const first = await cli(['verify', PAIR8, '--env', 'prod', '--root', root], { locks });
+  assert.equal(first.status, 3, first.out);
+  assert.match(first.stdout, /^repeats: 3 passes over 2 cases \(CART-008\)$/m);
+  assert.match(first.stdout, /^mode: verify$/m);
+  const ok = await cli(['verify', PAIR8, '--env', 'prod', '--confirm', tokenOf(first), '--root', root], { locks });
+  assert.equal(ok.status, 0, ok.out);
+  assert.equal(runnerCalls(root), 3, 'one token, three passes');
+  assert.equal(verifyOf(root, ok).confirmed, true);
+  const again = await cli(['verify', PAIR8, '--env', 'prod', '--confirm', tokenOf(first), '--root', root], { locks });
+  assert.equal(again.status, 3, 'the token covered that verify only');
+});
+
+test('verify: a missing session attestation, a block outside a test, an orphan or an outside-selection case, or report errors do not qualify', async () => {
+  const cases = [
+    [PAIR9, 'verify-green-009', 'session-missing', /^not verified: CART-009 — no session evidence for account:shopper in pass 1$/m],
+    [PAIR8, 'verify-green', 'blocked-outside', /^not verified: CART-008 — pass 1: blocked request outside a test$/m],
+    [PAIR8, 'verify-orphan', 'attest-pass', /^not verified: CART-008 — pass 1: no scenario id: Untitled check$/m],
+    [PAIR8, 'verify-outside', 'attest-pass', /^not verified: CART-008 — pass 1: outside the selection: CART-001\/desktop-chrome$/m],
+    [PAIR8, 'verify-errors', 'attest-pass', /^not verified: CART-008 — pass 1: report errors: 1$/m],
+  ];
+  for (const [pair, report, events, re] of cases) {
+    const root = withAuthoringFiles(copyRoot());
+    useRunner(root, `${report} ${events} 0`, 'full');
+    const r = await cli(['verify', pair, '--root', root]);
+    assert.equal(r.status, 1, `${report} ${events}: ${r.out}`);
+    assert.match(r.stdout, re, `${report} ${events}`);
+  }
+});
+
+test('verify: refuses before the runner starts when retries are not zero or the candidate fails lint', async () => {
+  const retries = withAuthoringFiles(copyRoot());
+  useRunner(retries, 'verify-green attest-pass 0', 'full');
+  const config = path.join(retries, 'e2e/playwright.config.ts');
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('retries: 0', 'retries: 2'));
+  const a = await cli(['verify', PAIR8, '--root', retries]);
+  assert.equal(a.status, 3, a.out);
+  assert.match(a.stdout, /^refused: CART-008 — retries are not 0 — config$/m);
+  const lint = withAuthoringFiles(copyRoot());
+  useRunner(lint, 'verify-green attest-pass 0', 'full');
+  const spec = path.join(lint, 'e2e/regression/cart/cart-008.spec.ts');
+  fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8').replace("  await page.goto('/cart');", "  await page.goto('/cart');\n  await page.waitForTimeout(500);"));
+  const b = await cli(['verify', PAIR8, '--root', lint]);
+  assert.equal(b.status, 3, b.out);
+  assert.match(b.stdout, /^refused: CART-008 — lint: forbidden waitForTimeout\($/m);
+  assert.equal(runnerCalls(retries) + runnerCalls(lint), 0);
+});
+
+test('verify: refuses a project-level or spec-level retries override before the runner starts', async () => {
+  const project = withAuthoringFiles(copyRoot());
+  const config = path.join(project, 'e2e/playwright.config.ts');
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace("{ name: 'mobile-safari',", "{ name: 'mobile-safari', retries: 1,"));
+  const a = await cli(['verify', PAIR8, '--root', project]);
+  assert.equal(a.status, 3, a.out);
+  assert.match(a.stdout, /^refused: CART-008 — retries are not 0 — config$/m);
+  const spec = withAuthoringFiles(copyRoot());
+  const f = path.join(spec, 'e2e/regression/cart/cart-008.spec.ts');
+  fs.writeFileSync(f, `${fs.readFileSync(f, 'utf8')}test.describe.configure({ retries: 2 });\n`);
+  const b = await cli(['verify', PAIR8, '--root', spec]);
+  assert.equal(b.status, 3, b.out);
+  assert.match(b.stdout, /^refused: CART-008 — retries are not 0 — spec$/m);
+  const command = withAuthoringFiles(copyRoot());
+  editConfig(command, (cfg) => { cfg.runner.commands.full = 'npx playwright test --retries=1'; });
+  const c = await cli(['verify', PAIR8, '--root', command]);
+  assert.equal(c.status, 3, c.out);
+  assert.match(c.stdout, /^refused: CART-008 — retries are not 0 — command$/m);
+  for (const r of [project, spec, command]) assert.equal(runnerCalls(r), 0);
+});
+
+test('verify: the record aggregates blocked events and budget across the three nonces', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-green attest-budget,attest-budget,blocked-case 0', 'full');
+  const r = await cli(['verify', PAIR8, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^not verified: CART-008 — failed in pass 3$/m);
+  const rec = verifyOf(root, r);
+  assert.deepEqual(rec.guard.blocked.map((b) => [b.reason, b.pass]), [['foreign host', 3]]);
+  assert.deepEqual({ reserved: rec.guard.budget.reserved, by_op: rec.guard.budget.by_op }, { reserved: 2, by_op: { 'price-call': 2 } });
+  assert.deepEqual(rec.scenarios[0].passes_ok, [1, 2]);
+});
+
+test('verify: an account-required candidate with case attestations and no session events does not qualify', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-green-009 attest-cases-only 0', 'full');
+  const r = await cli(['verify', PAIR9, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^not verified: CART-009 — no session evidence for account:shopper in pass 1$/m);
+  const old = withAuthoringFiles(copyRoot());
+  useRunner(old, 'verify-green-009 session-no-test 0', 'full');
+  const o = await cli(['verify', PAIR9, '--root', old]);
+  assert.match(o.stdout, /^not verified: CART-009 — fixture predates per-case sessions — re-copy fixtures\.ts \(regression\.md §11\)$/m);
+});
+
+test('verify: two projects sharing one account each need their own session evidence', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-green-009 session-first-only 0', 'full');
+  const r = await cli(['verify', PAIR9, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^not verified: CART-009 — no session evidence for account:shopper in pass 1$/m);
+  const ok = withAuthoringFiles(copyRoot());
+  useRunner(ok, 'verify-green-009 attest-pass 0', 'full');
+  assert.equal((await cli(['verify', PAIR9, '--root', ok])).status, 0);
+});
+
+test('verify: one failed candidate with exit 1 lets its passing sibling run passes two and three', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'verify-pair-fail1,verify-green-009,verify-green-009 attest-pass 1,0,0', 'full');
+  const r = await cli(['verify', PAIR8, PAIR9, '--root', root]);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^not verified: CART-008 — failed in pass 1$/m);
+  assert.match(r.stdout, /^verified: CART-009 /m);
+  assert.equal(runnerCalls(root), 3);
+  const rec = verifyOf(root, r);
+  assert.deepEqual(rec.passes.map((p) => [...new Set(p.cases.map((c) => c.id))]), [['CART-008', 'CART-009'], ['CART-009'], ['CART-009']]);
+});
+
+test('run: an ordinary smoke run loads only the selected spec files (testMatch), so an invalid draft beside them does not break it', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  knownBuild(root);
+  useRunner(root, 'green attest-all 0');
+  fs.writeFileSync(path.join(root, 'e2e/regression/cart/cart-011.spec.ts'), 'this is not TypeScript (\n');
+  const r = await cli(['run', '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  const rec = recordOf(root, r);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, '.agents/regression/runs', rec.run_id, 'manifest.json'), 'utf8'));
+  const { testMatch } = runnerOptions(manifest);
+  assert.equal(testMatch.test(path.join(root, 'e2e/regression/cart.spec.ts')), true);
+  assert.equal(testMatch.test(path.join(root, 'e2e/regression/cart/cart-011.spec.ts')), false);
+  assert.equal(testMatch.test(path.join(root, 'e2e/regression/cart/cart-008.spec.ts')), false);
+  assert.equal(testMatch.test(path.join(root, 'e2e/regression/_walk.spec.ts')), false);
+});
+
+test('run: a config without testMatch is refused on production with the migration hint', async () => {
+  const root = copyRoot();
+  useRunner(root, 'green-prod attest-all 0');
+  const config = path.join(root, 'e2e/playwright.config.ts');
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('  testMatch: opts.testMatch,\n', ''));
+  const r = await cli(['run', '--env', 'prod', '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stderr, /^runner not guard-integrated — e2e\/playwright\.config\.ts: does not set testMatch from runnerOptions — re-copy the templates \(regression\.md §11\)$/m);
+  const t = copyRoot();
+  knownBuild(t);
+  useRunner(t, 'green attest-all 0');
+  fs.writeFileSync(path.join(t, 'e2e/playwright.config.ts'), fs.readFileSync(config, 'utf8'));
+  const w = await cli(['run', '--root', t]);
+  assert.equal(w.status, 0, w.out);
+  assert.match(w.stdout, /^warning: runner not guard-integrated — e2e\/playwright\.config\.ts: does not set testMatch from runnerOptions$/m);
+});
+
+test('run: the first production run still prints the same confirmation after the prepare refactor', async () => {
+  const root = copyRoot();
+  useRunner(root, 'green-prod attest-all 0');
+  const r = await cli(['run', '--env', 'prod', '--root', root]);
+  assert.equal(r.status, 3, r.out);
+  const plan = buildPlan(root, readConfig(root), 'prod', 'smoke');
+  const expected = [
+    `target: prod (production) https://shop.example.com · mode smoke · ${plan.cases.length} cases (${plan.scenarios} scenarios)`,
+    ...plan.excluded.map((e) => `not run — policy: ${e.id} — ${e.reason}`),
+    confirmationText(plan),
+  ].join('\n');
+  assert.equal(r.stdout.replace(/^confirmation-required: [0-9a-f]{32}\n$/m, ''), `${expected}\n`);
+  assert.ok(fs.existsSync(path.join(root, '.agents/regression/runs/.confirm/prod.run.json')));
+});
+
+test('a legacy confirmation token file still confirms a run', async () => {
+  const root = copyRoot();
+  useRunner(root, 'green-prod attest-all 0');
+  const locks = fs.mkdtempSync(path.join(os.tmpdir(), 'regression-locks-'));
+  const first = await cli(['run', '--env', 'prod', '--root', root], { locks });
+  const dir = path.join(root, '.agents/regression/runs/.confirm');
+  fs.renameSync(path.join(dir, 'prod.run.json'), path.join(dir, 'prod.json'));
+  const ok = await cli(['run', '--env', 'prod', '--confirm', tokenOf(first), '--root', root], { locks });
+  assert.notEqual(ok.status, 3, ok.out);
+});
+
+test('status ignores walk and verify run directories', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  useRunner(root, 'walk-green walk-groups 0', 'full');
+  assert.equal((await cli(['walk', '--routes', stagedRoutes(root, WALK_ROUTES), '--root', root])).status, 0);
+  useRunner(root, 'verify-green attest-pass 0', 'full');
+  assert.equal((await cli(['verify', PAIR8, '--root', root])).status, 0);
+  const s = await cli(['status', '--env', 'test', '--root', root]);
+  assert.equal(s.status, 0);
+  assert.equal(s.stdout.trim(), 'test no run recorded on this machine');
+});

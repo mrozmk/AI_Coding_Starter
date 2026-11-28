@@ -5,18 +5,24 @@
 // runner is guard-integrated and asks for a single-use confirmation token bound to the plan.
 // `visual compare | update` runs the visual lane on its own (regression.md §13), `run full` adds
 // its compare pass after the functional one, `visual accept` is the only writer of baselines.
-// `status` prints the newest per-machine record per environment and mode.
+// `status` prints the newest per-machine record per environment and mode. `walk` (the inventory,
+// §14) and `verify` (the author lane's three passes, §15) go through the same refusals, pre-flight
+// — strict on both kinds there —, confirmation and locks (`prepare`).
 // Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §12–§13.
 //
 //   node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]
+//   node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]
+//   node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]
 //   run / visual exit: 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established /
 //             visual not configured / widened tolerance · 3 refused (team clone, lock held, not
 //             guard-integrated, confirmation required/invalid, overlapping baselines; `visual update`:
 //             acceptance required) · 4 INCOMPLETE · 5 BLOCKED/ENV
 //   accept exit: 0 written · 2 usage / config · 3 refused          status exit: 0 (2 on usage)
+//   walk exit: 0 COMPLETE · 2 usage / route list / no stub · 3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
+//   verify exit: 0 every scenario verified · 1 some not · 2 usage · 3 refused (incl. a candidate) · 5 guard stop
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,30 +30,30 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, QA_ENV_PATH, RUNS_DIR, loadConfig, resolveTarget, catalogSettings, isObject, docKey, visualSettings } from './config.mjs';
-import { buildPlan, confirmationText, expandTargets, VISUAL_ACTIONS } from './policy.mjs';
+import { CONFIG_PATH, QA_ENV_PATH, RUNS_DIR, loadConfig, resolveTarget, catalogSettings, isObject, docKey, specDir, visualSettings } from './config.mjs';
+import { accountOf, posix } from './catalog.mjs';
+import { buildPlan, buildWalkPlan, buildVerifyPlan, confirmationText, expandTargets, MODES, VISUAL_ACTIONS } from './policy.mjs';
+import { validateRouteList } from './walk.mjs';
 import { ownerLock, LockError, createLedger, groupAlive, scenarioId, guardedFetch } from './guard.mjs';
+import { GUARD_MODULE, OWN_ROUTE_CALLS, dropCommentLines, importsOf, resolveModule } from './speclint.mjs';
 import {
   SOURCES, assertDisjoint, verifyBaselines, treeDigest, readIndex, toleranceCheck, baselinesWatch, readEvidence, readVisualReport,
   classifyPass, classifyVisual, classifyUpdate, emptyPass, decideVisual, summaryLine, portabilityLine, hashCandidates,
   buildOffer, offerLine, issueAcceptToken, acceptOffer,
 } from './visual.mjs';
 
+export { RUNS_DIR };
+
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
 const SHA_KEYS = ['sha', 'commit', 'commit_sha', 'git_sha', 'build_sha', 'revision'];
 const HEX_SHA = /^[0-9a-f]{7,40}$/;
 const EXIT = { GREEN: 0, RED: 1, INCOMPLETE: 4, 'BLOCKED/ENV': 5 };
-const GUARD_MODULE = /\.claude\/lib\/regression\/guard\.mjs$/;
 const VISUAL_SPEC_MODULE = /\.claude\/lib\/regression\/visual-spec\.mjs$/;
 // Playwright gives these precedence over the configured report path: never inherited by a runner.
 const REPORTER_ENV = ['PLAYWRIGHT_JSON_OUTPUT_FILE', 'PLAYWRIGHT_JSON_OUTPUT_DIR', 'PLAYWRIGHT_JSON_OUTPUT_NAME'];
-// Calls that install a route of the spec's own: a page or context route a spec adds is matched
-// before the guard's context route, and `continue()` there sends the request unguarded.
-const OWN_ROUTE_CALLS = ['.route(', 'routeFromHAR', '.routeWebSocket('];
 
 const h16 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 const now = () => (process.env.REGRESSION_NOW ? new Date(process.env.REGRESSION_NOW) : new Date());
-const posix = (p) => p.split(path.sep).join('/');
 
 // ---------------------------------------------------------------------------------------------
 // Refusals and inputs
@@ -86,59 +92,6 @@ export async function fetchBuildSha(root, cfg, envName, policy) {
   }
 }
 
-/**
- * The text with `//` and `/* *\/` comments removed, string literals kept whole: a `/*` inside a
- * string such as a route glob `'**\/*.png'` opens no comment. A backslash outside a string escapes
- * the next character (a regex literal's `\/\/` is no comment).
- */
-function stripComments(s) {
-  let out = '';
-  for (let i = 0; i < s.length; i += 1) {
-    const c = s[i];
-    if (c === '\\') { out += s.slice(i, i + 2); i += 1; continue; }
-    if (c === "'" || c === '"' || c === '`') {
-      let j = i + 1;
-      while (j < s.length && s[j] !== c && !(c !== '`' && s[j] === '\n')) j += s[j] === '\\' ? 2 : 1;
-      out += s.slice(i, j + 1);
-      i = j;
-      continue;
-    }
-    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i += 1; out += '\n'; continue; }
-    if (c === '/' && s[i + 1] === '*') {
-      const end = s.indexOf('*/', i + 2);
-      out += s.slice(i, end < 0 ? s.length : end + 2).replace(/[^\n]/g, '');
-      i = end < 0 ? s.length : end + 1;
-      continue;
-    }
-    out += c;
-  }
-  return out;
-}
-
-/** The text minus whole-line `//` comments only: a forbidden key is searched fail-closed (a mention elsewhere refuses). */
-const dropCommentLines = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-
-/** Import statements of a module: `[{bindings: [names], from}]` (named imports, comments stripped). */
-function importsOf(text) {
-  const out = [];
-  const re = /^\s*import\s+([^;]*?)\s+from\s+['"]([^'"]+)['"]/gm;
-  let m;
-  while ((m = re.exec(stripComments(text)))) {
-    const named = /\{([^}]*)\}/.exec(m[1]);
-    const bindings = named ? named[1].split(',').map((b) => b.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean) : [];
-    out.push({ bindings, from: m[2] });
-  }
-  return out;
-}
-
-function resolveModule(fromFile, spec) {
-  const base = path.resolve(path.dirname(fromFile), spec);
-  for (const c of [base, `${base}.ts`, `${base}.js`, `${base}.mjs`, path.join(base, 'index.ts')]) {
-    if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
-  }
-  return null;
-}
-
 const moduleLabel = (re) => re.source.replace(/\\/g, '').replace(/\$$/, '');
 
 /**
@@ -161,6 +114,8 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
     const imports = importsOf(configText);
     for (const need of configNeeds) {
       if (!imports.some((i) => need.module.test(i.from) && i.bindings.includes(need.binding))) findings.push({ file: configRel, reason: `does not import ${need.binding} from ${moduleLabel(need.module)}` });
+      // `uses`: what the config must do with the binding it imports (`missing` when it does not).
+      else if (need.uses && !dropCommentLines(configText).includes(need.uses)) findings.push({ file: configRel, reason: need.missing });
     }
   }
   const fixtures = new Set();
@@ -195,7 +150,9 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
 export function checkIntegration(root, cfg, plan) {
   const findings = [];
   if (plan.mode !== 'visual') {
-    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: [{ module: GUARD_MODULE, binding: 'runnerOptions' }], specs: plan.cases.map((c) => c.spec) }));
+    // Playwright loads every discovered file before grep: without testMatch an unclaimed draft loads too.
+    const needs = [{ module: GUARD_MODULE, binding: 'runnerOptions', uses: 'opts.testMatch', missing: 'does not set testMatch from runnerOptions' }];
+    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: needs, specs: plan.cases.map((c) => c.spec) }));
   }
   if (plan.visual) findings.push(...visualIntegration(root, cfg));
   return findings;
@@ -214,7 +171,8 @@ export function visualIntegration(root, cfg) {
 // ---------------------------------------------------------------------------------------------
 // Confirmation token (production)
 
-function ensureRunsDir(root) {
+/** The per-machine runs directory with its `*` .gitignore (walk, verify and inventory stages live there too). */
+export function ensureRunsDir(root) {
   const dir = path.resolve(root, RUNS_DIR);
   fs.mkdirSync(dir, { recursive: true });
   const ignore = path.join(dir, '.gitignore');
@@ -222,17 +180,24 @@ function ensureRunsDir(root) {
   return dir;
 }
 
+// One pending token per environment and lane: a walk or verify token never collides with a run's.
+const tokenLane = (plan) => (MODES.includes(plan.mode) ? 'run' : plan.mode);
+
 function issueToken(root, plan) {
   const dir = path.join(ensureRunsDir(root), '.confirm');
   fs.mkdirSync(dir, { recursive: true });
   const token = randomBytes(16).toString('hex');
-  fs.writeFileSync(path.join(dir, `${plan.env}.json`), `${JSON.stringify({ token, digest: plan.digests.plan, expires: new Date(Date.now() + CONFIRM_TTL_MS).toISOString() })}\n`);
+  fs.writeFileSync(path.join(dir, `${plan.env}.${tokenLane(plan)}.json`), `${JSON.stringify({ token, digest: plan.digests.plan, expires: new Date(Date.now() + CONFIRM_TTL_MS).toISOString() })}\n`);
   return token;
 }
 
 /** null when the token is valid (and consumes it), else the reason it is not. */
 function consumeToken(root, plan, token) {
-  const file = path.resolve(root, RUNS_DIR, '.confirm', `${plan.env}.json`);
+  const dir = path.resolve(root, RUNS_DIR, '.confirm');
+  // A token issued before the lanes were split (`<env>.json`) still confirms a run.
+  const legacy = path.join(dir, `${plan.env}.json`);
+  const lane = path.join(dir, `${plan.env}.${tokenLane(plan)}.json`);
+  const file = !fs.existsSync(lane) && tokenLane(plan) === 'run' && fs.existsSync(legacy) ? legacy : lane;
   let saved;
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return 'no pending confirmation for this environment (used, or never issued)'; }
   if (saved.token !== token) return 'token does not match the pending confirmation';
@@ -244,6 +209,20 @@ function consumeToken(root, plan, token) {
 
 // ---------------------------------------------------------------------------------------------
 // Locks
+
+/** The checkout lock every run, apply and claim takes: one writer of the checkout at a time. */
+export function checkoutLockName(root) {
+  let realRoot = root;
+  try { realRoot = fs.realpathSync(root); } catch { /* keep root */ }
+  return `checkout-${h16(realRoot)}`;
+}
+
+/** `{value: fn()}` under the checkout lock (released afterwards), or `{error}` when it is held. */
+export function withCheckoutLock(root, runId, fn) {
+  const lock = acquireLock(checkoutLockName(root), { pid: process.pid, pgid: null, run_id: runId });
+  if (lock.error) return { error: lock.error };
+  try { return { value: fn() }; } finally { try { lock.lock.release(); } catch { /* the lock holds its token */ } }
+}
 
 export const lockDir = () => process.env.REGRESSION_LOCK_DIR || path.join(os.homedir(), '.agent-ops/locks/regression');
 
@@ -319,6 +298,16 @@ export function classifyReport(report, plan, { idPattern, catalogIds, root, conf
     const tests = found.get(key) ?? [];
     let result;
     let duration = 0;
+    let evidence = { attempts: 0, retries: [], attachments: [] };
+    if (tests.length === 1) {
+      const rs = tests[0].results ?? [];
+      evidence = {
+        attempts: rs.length,
+        retries: rs.map((r) => r.retry ?? null),
+        attachments: rs.flatMap((r) => (Array.isArray(r.attachments) ? r.attachments : []))
+          .filter((a) => typeof a?.path === 'string').map((a) => repoRel(root, path.resolve(root, a.path))),
+      };
+    }
     if (!tests.length) result = 'missing';
     else if (tests.length > 1) result = 'duplicated';
     else {
@@ -336,7 +325,7 @@ export function classifyReport(report, plan, { idPattern, catalogIds, root, conf
       else result = 'invalid';
     }
     if (result !== 'missing') out.executed.push({ id: c.id, project: c.project });
-    out.cases.push({ id: c.id, project: c.project, spec: c.spec, result, duration_ms: duration });
+    out.cases.push({ id: c.id, project: c.project, spec: c.spec, result, duration_ms: duration, ...evidence });
   }
   return out;
 }
@@ -446,7 +435,8 @@ function applyVisual(parts, block, { production }) {
 // ---------------------------------------------------------------------------------------------
 // run
 
-function newRunDir(root, envName) {
+/** A fresh `<runs>/<prefix>-<UTC stamp>-<hex>` directory (prefix: the environment, or `inventory`). */
+export function newRunDir(root, envName) {
   const runs = ensureRunsDir(root);
   const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   for (;;) {
@@ -489,13 +479,13 @@ function runnerEnv(extra) {
   return { ...env, ...extra };
 }
 
-/** One runner launch: manifest written, the old report deleted, the runner run, the report read. */
-async function runPass({ root, plan, manifest, manifestFile, command, reportFile, locks }) {
+/** One runner launch: manifest written, the old report deleted, the runner run, the report read. `env`: the lane's own variables. */
+async function runPass({ root, plan, manifest, manifestFile, command, reportFile, locks, env = {} }) {
   fs.mkdirSync(path.dirname(manifestFile), { recursive: true });
   fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
   fs.rmSync(reportFile, { force: true });
   const runner = await runRunner(root, command, runnerEnv({
-    REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
+    ...env, REGRESSION_RUN: manifestFile, REGRESSION_ENV: plan.env, REGRESSION_ENV_KIND: plan.kind, REGRESSION_BASE_URL: plan.base_url,
   }), locks);
   let report = null;
   try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch { report = null; }
@@ -513,22 +503,81 @@ function printPlanSummary(plan) {
 }
 
 /**
- * Production, before any lock or traffic: refuse a runner that is not guard-integrated, then the
- * two-phase confirmation. `{confirmed: true}` to go on, `{exit: 3}` to stop (a fresh token printed).
+ * Production, before any lock or traffic: the two-phase confirmation, with the plan's own summary
+ * and confirmation text. `{confirmed: true}` to go on, `{exit: 3}` to stop (a fresh token printed).
  */
-function confirmProduction(root, plan, findings, token) {
-  if (findings.length) {
-    for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
-    return { exit: 3 };
-  }
+function confirmProduction(root, plan, token) {
   const why = token ? consumeToken(root, plan, token) : null;
   if (token && !why) return { confirmed: true };
   if (why) console.error(`confirmation invalid: ${why}`);
-  else printPlanSummary(plan);
-  console.log(confirmationText(plan));
+  else (plan.summaryFn ?? printPlanSummary)(plan);
+  console.log((plan.textFn ?? confirmationText)(plan));
   console.log(`confirmation-required: ${issueToken(root, plan)}`);
   return { exit: 3 };
 }
+
+/** The walk's summary: target, groups and the groups excluded by policy. */
+function printWalkSummary(plan) {
+  console.log(`target: ${plan.env} (${plan.kind}) ${plan.base_url} · walk · ${plan.walk.routes.length} routes in ${plan.cases.length} groups`);
+  for (const e of plan.excluded) console.log(`not walked — policy: ${e.id} — ${e.reason}`);
+}
+
+/**
+ * Everything a lane does before its runner starts: the refusals (not adopted, config errors, no
+ * baseline, a team clone), the target, the plan (`buildFn`; its errors and `refused` stop here,
+ * before any confirmation or lock), the visual baselines' disjointness from every runner output,
+ * the pre-flight (`strictIntegration`: a finding refuses on a test environment too), the production
+ * confirmation, then the env and checkout locks (`requireVisual`: no `visual` section refuses
+ * before the target is read). `{root, cfg, plan, locks, confirmed}` or `{exit}`.
+ */
+async function prepare(args, buildFn, { strictIntegration, requireVisual = false }) {
+  const root = path.resolve(args.root);
+  const pre = loadForRun(root);
+  if (pre.exit !== undefined) return pre;
+  const { cfg } = pre;
+  if (requireVisual && !isObject(cfg.visual)) { console.error('run: visual not configured — see .claude/skills/regression/references/visual.md'); return { exit: 2 }; }
+  const target = resolveTarget(cfg, args.env);
+  if (target.error) {
+    console.error(`run: ${target.error}`);
+    console.log(`environments: ${target.names.join(', ') || '(none)'}`);
+    return { exit: 2 };
+  }
+  const plan = buildFn(root, cfg, target.name);
+  if (plan.catalog_errors) {
+    for (const e of plan.catalog_errors) console.error(`${e.file}:${e.line}: ${e.message}`);
+    console.error('run: the catalog is invalid — refusing to run');
+    return { exit: 2 };
+  }
+  if (plan.error) { console.error(`run: ${plan.error}`); return { exit: 2 }; }
+  if (plan.refused?.length) {
+    for (const r of plan.refused) console.log(`refused: ${r.id} — ${r.reason}`);
+    return { exit: 3 };
+  }
+  // Before any token, lock, report deletion or runner: a runner must never clean the baselines.
+  if (isObject(cfg.visual)) {
+    const overlap = assertDisjoint(root, cfg, RUNS_DIR);
+    if (overlap) { console.error(`refused: ${overlap}`); return { exit: 3 }; }
+  }
+
+  const findings = checkIntegration(root, cfg, plan);
+  if (findings.length && (plan.kind === 'production' || strictIntegration)) {
+    for (const f of findings) console.error(`runner not guard-integrated — ${f.file}: ${f.reason} — re-copy the templates (regression.md §11)`);
+    return { exit: 3 };
+  }
+  for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
+  let confirmed = false;
+  if (plan.kind === 'production') {
+    const c = confirmProduction(root, plan, args.confirm);
+    if (c.exit !== undefined) return { exit: c.exit };
+    confirmed = true;
+  }
+
+  const taken = takeRunLocks(root, plan);
+  if (taken.exit !== undefined) return taken;
+  return { root, cfg, plan, locks: taken.locks, confirmed };
+}
+
+const releaseAll = (locks) => { for (const l of [...locks].reverse()) { try { l.release(); } catch { /* the lock holds its token */ } } };
 
 /** The run record (regression.md §12): digests, devices, results and guard facts — never model output. */
 function buildRecord({ root, plan, runId, startedAt, command, confirmed, build, runner, cls, guard, v, visual = null }) {
@@ -697,48 +746,16 @@ function loadForRun(root) {
   return { cfg };
 }
 
-/** Target, plan, disjointness, pre-flight and the production confirmation: `{plan, confirmed}` or `{exit}`. */
-function prepareRun(root, cfg, args, mode, visualAction) {
-  const target = resolveTarget(cfg, args.env);
-  if (target.error) {
-    console.error(`run: ${target.error}`);
-    console.log(`environments: ${target.names.join(', ') || '(none)'}`);
-    return { exit: 2 };
-  }
-  const plan = buildPlan(root, cfg, target.name, mode, { visualAction });
-  if (plan.catalog_errors) {
-    for (const e of plan.catalog_errors) console.error(`${e.file}:${e.line}: ${e.message}`);
-    console.error('run: the catalog is invalid — refusing to run');
-    return { exit: 2 };
-  }
-  if (plan.error) { console.error(`run: ${plan.error}`); return { exit: 2 }; }
-  // Before any token, lock, report deletion or runner: a runner must never clean the baselines.
-  if (isObject(cfg.visual)) {
-    const overlap = assertDisjoint(root, cfg, RUNS_DIR);
-    if (overlap) { console.error(`refused: ${overlap}`); return { exit: 3 }; }
-  }
-  const findings = checkIntegration(root, cfg, plan);
-  if (plan.kind === 'production') {
-    const c = confirmProduction(root, plan, findings, args.confirm);
-    if (c.exit !== undefined) return { exit: c.exit };
-    return { plan, confirmed: true };
-  }
-  for (const f of findings) console.log(`warning: runner not guard-integrated — ${f.file}: ${f.reason}`);
-  return { plan, confirmed: false };
-}
-
 /** The env and checkout locks of a run: `{locks}` or `{exit}`. */
 function takeRunLocks(root, plan) {
   const owner = { pid: process.pid, pgid: null, run_id: `${plan.env}-pending` };
   const envLock = acquireLock(`env-${h16(plan.base_url)}`, owner);
   if (envLock.error) { console.error(`refused: ${envLock.error}`); return { exit: 3 }; }
-  const coLock = acquireLock(`checkout-${h16(realRootOf(root))}`, owner);
+  const coLock = acquireLock(checkoutLockName(root), owner);
   if (coLock.error) { envLock.lock.release(); console.error(`refused: ${coLock.error}`); return { exit: 3 }; }
   return { locks: [envLock.lock, coLock.lock] };
 }
 
-const realRootOf = (root) => { try { return fs.realpathSync(root); } catch { return root; } };
-const releaseAll = (locks) => { for (const l of [...locks].reverse()) { try { l.release(); } catch { /* the lock holds its token */ } } };
 
 /** The visual tolerance rule, under the lock and against the index the run reads: null or the exit. */
 function toleranceRefusal(root, cfg, env) {
@@ -747,14 +764,6 @@ function toleranceRefusal(root, cfg, env) {
   if (!why) return null;
   console.error(`run: ${why}`);
   return 2;
-}
-
-function baseManifestOf(plan, runId, nonce, dir) {
-  return {
-    run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
-    workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
-    selection: plan.cases, policy: plan.policy.guard, run_dir: dir, accounts: [],
-  };
 }
 
 function printOutcome(root, v, before, after, recordFile) {
@@ -766,16 +775,9 @@ function printOutcome(root, v, before, after, recordFile) {
 }
 
 async function cmdRun(args) {
-  const root = path.resolve(args.root);
-  const pre = loadForRun(root);
-  if (pre.exit !== undefined) return pre.exit;
-  const { cfg } = pre;
-  const prep = prepareRun(root, cfg, args, args.mode);
-  if (prep.exit !== undefined) return prep.exit;
-  const { plan, confirmed } = prep;
-  const taken = takeRunLocks(root, plan);
-  if (taken.exit !== undefined) return taken.exit;
-  const { locks } = taken;
+  const p = await prepare(args, (root, cfg, env) => ({ ...buildPlan(root, cfg, env, args.mode), textFn: confirmationText, summaryFn: printPlanSummary }), { strictIntegration: false });
+  if (p.exit !== undefined) return p.exit;
+  const { root, cfg, plan, locks, confirmed } = p;
   try {
     const visualOn = isObject(cfg.visual);
     if (plan.visual) { const t = toleranceRefusal(root, cfg, plan.env); if (t !== null) return t; }
@@ -784,9 +786,9 @@ async function cmdRun(args) {
     const startedAt = new Date().toISOString();
     const nonce = randomBytes(8).toString('hex');
     const command = cfg.runner.commands[plan.mode];
-    const reportFile = path.resolve(root, cfg.runner.report);
     const manifestFile = path.join(dir, 'manifest.json');
-    const manifest = baseManifestOf(plan, runId, nonce, dir);
+    const reportFile = path.resolve(root, cfg.runner.report);
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases);
     fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     printPlanSummary(plan);
     const watch = visualOn ? baselinesWatch(root, visualSettings(cfg)) : null;
@@ -831,6 +833,230 @@ async function cmdRun(args) {
   }
 }
 
+/** The manifest of one runner pass; the visual passes spread a functional one with their own selection. */
+const manifestOf = (root, plan, dir, runId, nonce, selection, extra = {}) => ({
+  run_id: runId, nonce, env: plan.env, kind: plan.kind, base_url: plan.base_url, mode: plan.mode,
+  workers: plan.policy.workers, pacing: plan.policy.pacing, consent: plan.policy.consent,
+  selection, policy: plan.policy.guard, run_dir: dir, accounts: [], root, ...extra,
+});
+
+const guardFacts = (guard, plan) => ({
+  attested: guard.attested,
+  blocked: guard.blocked.map(({ reason, method, url, op, test, nonce }) => ({ reason, method, url, op, test: test ?? null, nonce: nonce ?? null })),
+  budget: { ceiling: plan.budget.ceiling, reserved: guard.budget.reserved, by_op: guard.budget.by_op },
+  stop: guard.stop ? { reason: guard.stop.reason, url: guard.stop.url ?? null } : null,
+});
+
+// ---------------------------------------------------------------------------------------------
+// walk
+
+async function cmdWalk(args) {
+  const root = path.resolve(args.root);
+  const routesFile = path.resolve(root, args.routes);
+  let doc;
+  try { doc = JSON.parse(fs.readFileSync(routesFile, 'utf8')); } catch (err) { console.error(`walk: route list unreadable — ${args.routes} (${err.code ?? err.message})`); return 2; }
+  const errors = validateRouteList(doc, { staged: true });
+  if (errors.length) { for (const e of errors) console.error(`walk: ${e}`); return 2; }
+  const p = await prepare(args, (r, cfg, env) => {
+    const stub = path.resolve(r, specDir(cfg), '_walk.spec.ts');
+    if (!fs.existsSync(stub)) return { error: 'walk stub missing — /setup:regression --inventory installs it' };
+    return { ...buildWalkPlan(r, cfg, env, doc, routesFile), summaryFn: printWalkSummary };
+  }, { strictIntegration: true });
+  if (p.exit !== undefined) return p.exit;
+  const { cfg, plan, locks, confirmed } = p;
+  try {
+    const { runId, dir } = newRunDir(root, plan.env);
+    for (const l of locks) l.update({ run_id: runId });
+    const nonce = randomBytes(8).toString('hex');
+    const manifestFile = path.join(dir, 'manifest.json');
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases, { walk: plan.walk });
+    printWalkSummary(plan);
+    let runner = { code: null, signal: null };
+    let report = null;
+    if (plan.cases.length) ({ runner, report } = await runPass({ root, plan, manifest, manifestFile, command: cfg.runner.commands.full, reportFile: path.resolve(root, cfg.runner.report), locks }));
+    else fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+    const cls = classifyReport(report, plan, { idPattern: '^WALK[0-9]+$', catalogIds: new Set(plan.cases.map((c) => c.id)), root, configDir: path.dirname(path.resolve(root, cfg.runner.config)) });
+    const guard = readGuard(dir, nonce, casesRan(cls));
+
+    const blocked = [];
+    const incomplete = [];
+    if (guard.stop) blocked.push(`guard stop: ${guard.stop.reason}`);
+    blocked.push(...guard.attestation, ...guard.session);
+    const observations = [];
+    const groups = [];
+    for (const g of plan.groups) {
+      if (g.excluded) {
+        groups.push({ key: g.key, account: g.account, result: null, done: false, routes: g.routes, excluded: g.excluded });
+        for (const r of g.routes) observations.push({ route: r, group: g.key, account: g.account, outcome: 'not-walked', reason: `policy: ${g.excluded}`, sample: null });
+        continue;
+      }
+      const c = cls.cases.find((x) => x.id === g.key);
+      const result = c?.result ?? 'missing';
+      if (!['passed', 'failed'].includes(result)) incomplete.push(`${result}: ${g.key}/${c?.project ?? plan.cases.find((x) => x.id === g.key)?.project}`);
+      let file = null;
+      try { file = JSON.parse(fs.readFileSync(path.join(dir, 'walk', `${g.key}.json`), 'utf8')); } catch { file = null; }
+      if (!file || file.done !== true) incomplete.push(`group ${g.key} not done`);
+      const seen = file?.routes ?? [];
+      for (const r of g.routes) {
+        const hits = seen.filter((o) => o.route === r);
+        if (file?.done === true && hits.length !== 1) incomplete.push(`route ${r} missing from group ${g.key}`);
+        if (hits[0]) observations.push({ ...hits[0], route: r, group: g.key, account: g.account });
+        else observations.push({ route: r, group: g.key, account: g.account, outcome: 'not-walked', reason: 'not in the group file', sample: null });
+      }
+      groups.push({ key: g.key, account: g.account, result, done: file?.done === true, routes: g.routes, excluded: null });
+    }
+    for (const o of cls.orphans) incomplete.push(`no walk group: ${o.title} (${o.project})`);
+    for (const o of cls.outside_selection) incomplete.push(`outside the selection: ${o.id}/${o.project} (${o.file})`);
+    if (guard.outsideTest) incomplete.push('blocked request outside a test');
+    if (!cls.valid && plan.cases.length) incomplete.push('runner report missing, unparseable or invalid');
+    if (cls.report_errors) incomplete.push(`report errors: ${cls.report_errors}`);
+    if (runner.signal) incomplete.push(`runner ended by ${runner.signal}`);
+    const verdict = blocked.length ? 'BLOCKED/ENV' : incomplete.length ? 'INCOMPLETE' : 'COMPLETE';
+
+    fs.mkdirSync(path.join(dir, 'walk'), { recursive: true });
+    const obsFile = path.join(dir, 'walk', 'observations.json');
+    fs.writeFileSync(obsFile, `${JSON.stringify(observations, null, 2)}\n`);
+    const record = {
+      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url,
+      routes_file: posix(path.relative(root, routesFile)), routes_digest: plan.digests.routes, redacted_samples: plan.redacted_samples,
+      confirmed, groups, excluded: plan.excluded_groups, guard: guardFacts(guard, plan), verdict, reasons: [...blocked, ...incomplete],
+    };
+    const recordFile = path.join(dir, 'walk.json');
+    fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
+    for (const r of record.reasons) console.log(`reason: ${r}`);
+    console.log(`walk: ${verdict}`);
+    console.log(`observations: ${posix(path.relative(root, obsFile))}`);
+    console.log(`record: ${posix(path.relative(root, recordFile))}`);
+    return verdict === 'COMPLETE' ? 0 : verdict === 'INCOMPLETE' ? 4 : 5;
+  } finally {
+    releaseAll(locks);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// verify
+
+/** A failed case's attachment copied to `<run dir>/context-<n>/<its path>`; its repo path, or `rel` when the file is gone. */
+function keepAttachment(root, dir, n, rel) {
+  const src = path.resolve(root, rel);
+  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) return rel;
+  const dest = path.join(dir, `context-${n}`, rel.replace(/^(\.\.\/)+/, ''));
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  return posix(path.relative(root, dest));
+}
+
+/** Why one case does not qualify in pass `n` — the complete reason — or null. */
+function caseProblem(c, scenario, guard, events, n) {
+  if (c.result !== 'passed') return `${c.result} in pass ${n}`;
+  if (c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0) return `a retry in pass ${n}`;
+  if (guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`)) return `no guard attestation in pass ${n}`;
+  const account = accountOf(scenario.needs);
+  if (!account) return null;
+  const tests = events.filter((e) => e.kind === 'installed' && e.id === c.id && e.project === c.project).map((e) => e.test);
+  const starts = events.filter((e) => e.kind === 'session-start' && e.account === account);
+  if (starts.length && starts.every((e) => e.test === undefined)) return 'fixture predates per-case sessions — re-copy fixtures.ts (regression.md §11)';
+  const signed = tests.some((t) => starts.some((e) => e.test === t) && events.some((e) => e.kind === 'session' && e.account === account && e.test === t));
+  if (!signed || guard.session.includes(`session not guard-attested for ${account}`)) return `no session evidence for account:${account} in pass ${n}`;
+  return null;
+}
+
+async function cmdVerify(args) {
+  const pairs = [];
+  for (const p of args.pairs) {
+    const m = /^([^=\s]+)=(\S+)$/.exec(p);
+    if (!m) { console.error(`run: malformed pair ${p} — expected <ID>=<spec path>\n${USAGE}`); return 2; }
+    pairs.push({ id: m[1], spec: m[2] });
+  }
+  if (!pairs.length) { console.error(`run: verify needs at least one <ID>=<spec path>\n${USAGE}`); return 2; }
+  const p = await prepare(args, (r, cfg, env) => ({ ...buildVerifyPlan(r, cfg, env, pairs), summaryFn: printPlanSummary }), { strictIntegration: true });
+  if (p.exit !== undefined) return p.exit;
+  const { root, cfg, plan, locks, confirmed } = p;
+  try {
+    const { runId, dir } = newRunDir(root, plan.env);
+    for (const l of locks) l.update({ run_id: runId });
+    printPlanSummary(plan);
+    const configDir = path.dirname(path.resolve(root, cfg.runner.config));
+    const catalogIds = new Set(plan.catalog_ids);
+    const state = new Map(plan.scenarios_list.map((s) => [s.id, { ...s, passes_ok: [], reason: null, context: [] }]));
+    const passes = [];
+    const blocked = [];
+    const byOp = {};
+    let reserved = 0;
+    let stopped = null;
+    for (let n = 1; n <= plan.repeats; n += 1) {
+      const live = [...state.values()].filter((s) => !s.reason);
+      if (!live.length) break;
+      const selection = plan.cases.filter((c) => live.some((s) => s.id === c.id));
+      const nonce = randomBytes(8).toString('hex');
+      const manifestFile = path.join(dir, `manifest-${n}.json`);
+      const reportFile = path.resolve(root, cfg.runner.report);
+      const { runner, report } = await runPass({
+        root, plan, manifest: manifestOf(root, plan, dir, runId, nonce, selection, { pass: n }), manifestFile,
+        command: cfg.runner.commands.full, reportFile, locks, env: { REGRESSION_PASS: String(n) },
+      });
+      if (fs.existsSync(reportFile)) fs.copyFileSync(reportFile, path.join(dir, `report-${n}.json`));
+      const cls = classifyReport(report, { cases: selection }, { idPattern: catalogSettings(cfg).id_pattern, catalogIds, root, configDir });
+      const guard = readGuard(dir, nonce, casesRan(cls));
+      failBlockedCases(cls, guard);
+      const events = createLedger(dir, { nonce }).events();
+      blocked.push(...guard.blocked.map((e) => ({ ...e, pass: n })));
+      reserved = Math.max(reserved, guard.budget.reserved);
+      for (const [op, cost] of Object.entries(guard.budget.by_op)) byOp[op] = (byOp[op] ?? 0) + cost;
+      const failed = cls.cases.filter((c) => c.result === 'failed');
+      const whole = [];
+      if (!cls.valid) whole.push('runner report missing, unparseable or invalid');
+      if (cls.report_errors) whole.push(`report errors: ${cls.report_errors}`);
+      if (runner.signal || cls.interrupted) whole.push(`runner ended by ${runner.signal ?? 'an interruption'}`);
+      if (cls.orphans.length) whole.push(`no scenario id: ${cls.orphans.map((o) => o.title).join(', ')}`);
+      if (cls.outside_selection.length) whole.push(`outside the selection: ${cls.outside_selection.map((o) => `${o.id}/${o.project}`).join(', ')}`);
+      if (guard.outsideTest) whole.push('blocked request outside a test');
+      // Exit 1 with an identified failed case is explained (decideVerdict's rule); anything else is not.
+      if (runner.code !== 0 && runner.code !== null && !(runner.code === 1 && failed.length)) whole.push(`runner exit ${runner.code}`);
+      passes.push({ n, nonce, cases: cls.cases.map(({ id, project, result, attempts }) => ({ id, project, result, attempts })), disqualified: whole });
+      if (guard.stop) { stopped = guard.stop; break; }
+      for (const s of live) {
+        const cs = cls.cases.filter((c) => c.id === s.id);
+        const problems = whole.length ? whole.map((w) => `pass ${n}: ${w}`) : cs.map((c) => caseProblem(c, s, guard, events, n)).filter(Boolean);
+        if (cs.length !== s.projects.length) problems.push(`pass ${n}: ${s.projects.length - cs.length} case(s) not reported`);
+        if (problems.length) {
+          s.reason = problems[0];
+          // The next pass's runner cleans its output directory: keep a copy in the run directory.
+          s.context = [...new Set(cs.filter((c) => c.result === 'failed').flatMap((c) => c.attachments))].map((a) => keepAttachment(root, dir, n, a));
+        } else s.passes_ok.push(n);
+      }
+    }
+    if (stopped) for (const s of state.values()) if (!s.reason && s.passes_ok.length < plan.repeats) s.reason = `guard stop: ${stopped.reason}`;
+    const scenarios = [...state.values()].map((s) => ({
+      id: s.id, spec: s.spec, spec_sha256: s.spec_sha256, inputs_sha256: s.inputs_sha256, block_sha256: s.block_sha256, projects: s.projects,
+      qualified: !s.reason && s.passes_ok.length === plan.repeats, passes_ok: s.passes_ok, reason: s.reason ?? (s.passes_ok.length === plan.repeats ? null : 'fewer than three passes'), context: s.context,
+    }));
+    const budgetFile = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'budget.json'), 'utf8')); } catch { return null; } })();
+    const record = {
+      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, confirmed, repeats: plan.repeats, passes, scenarios,
+      guard: {
+        blocked: blocked.map(({ reason, method, url, op, test, pass }) => ({ reason, method, url, op, test: test ?? null, pass })),
+        budget: { ceiling: plan.budget.ceiling, reserved: budgetFile?.reserved ?? reserved, by_op: budgetFile?.by_op ?? byOp },
+        stop: stopped ? { reason: stopped.reason, url: stopped.url ?? null } : null,
+      },
+    };
+    const recordFile = path.join(dir, 'verify.json');
+    fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
+    for (const s of scenarios) {
+      if (s.qualified) console.log(`verified: ${s.id} spec_sha256=${s.spec_sha256} inputs_sha256=${s.inputs_sha256} block_sha256=${s.block_sha256}`);
+      else {
+        console.log(`not verified: ${s.id} — ${s.reason}`);
+        for (const c of s.context) console.log(`context: ${c}`);
+      }
+    }
+    console.log(`record: ${posix(path.relative(root, recordFile))}`);
+    if (stopped) return 5;
+    return scenarios.every((s) => s.qualified) ? 0 : 1;
+  } finally {
+    releaseAll(locks);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // visual compare | update | accept
 
@@ -849,17 +1075,9 @@ function visualVerdict({ plan, guard, block, build }) {
 }
 
 async function cmdVisual(args) {
-  const root = path.resolve(args.root);
-  const pre = loadForRun(root);
-  if (pre.exit !== undefined) return pre.exit;
-  const { cfg } = pre;
-  if (!isObject(cfg.visual)) { console.error('run: visual not configured — see .claude/skills/regression/references/visual.md'); return 2; }
-  const prep = prepareRun(root, cfg, args, 'visual', args.action);
-  if (prep.exit !== undefined) return prep.exit;
-  const { plan, confirmed } = prep;
-  const taken = takeRunLocks(root, plan);
-  if (taken.exit !== undefined) return taken.exit;
-  const { locks } = taken;
+  const p = await prepare(args, (r, cfg, env) => ({ ...buildPlan(r, cfg, env, 'visual', { visualAction: args.action }), textFn: confirmationText, summaryFn: printPlanSummary }), { strictIntegration: false, requireVisual: true });
+  if (p.exit !== undefined) return p.exit;
+  const { root, cfg, plan, locks, confirmed } = p;
   try {
     const s = visualSettings(cfg);
     const verify = verifyBaselines(root, s, plan.env);
@@ -869,7 +1087,7 @@ async function cmdVisual(args) {
     for (const l of locks) l.update({ run_id: runId });
     const startedAt = new Date().toISOString();
     const nonce = randomBytes(8).toString('hex');
-    const manifest = baseManifestOf(plan, runId, nonce, dir);
+    const manifest = manifestOf(root, plan, dir, runId, nonce, plan.cases);
     fs.writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     printPlanSummary(plan);
     const watch = baselinesWatch(root, s);
@@ -920,7 +1138,7 @@ async function cmdVisualAccept(args) {
   if (!isObject(loaded.config.visual)) { console.error('run: visual not configured — see .claude/skills/regression/references/visual.md'); return 2; }
   const runsDir = path.resolve(root, RUNS_DIR);
   if (!fs.existsSync(path.join(runsDir, args.run, 'visual', 'offer.json'))) { console.error(`refused: no offer for run ${args.run} — run visual update first`); return 3; }
-  const co = acquireLock(`checkout-${h16(realRootOf(root))}`, { pid: process.pid, pgid: null, run_id: args.run });
+  const co = acquireLock(checkoutLockName(root), { pid: process.pid, pgid: null, run_id: args.run });
   if (co.error) { console.error(`refused: ${co.error}`); return 3; }
   try {
     const r = await acceptOffer({ root, settings: visualSettings(loaded.config), runId: args.run, token: args.token, runsDir });
@@ -940,6 +1158,8 @@ function cmdStatus(args) {
   if (!loaded.adopted) { console.log(args.json ? JSON.stringify({ adopted: false, message: 'regression not adopted' }) : 'regression not adopted'); return 0; }
   const dir = path.resolve(root, RUNS_DIR);
   const newest = new Map();
+  // Only record.json counts: walk and verify write walk.json / verify.json on purpose, so neither
+  // ever shows as the environment's last run.
   if (fs.existsSync(dir)) {
     for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!d.isDirectory() || d.name.startsWith('.')) continue;
@@ -977,15 +1197,24 @@ const USAGE = [
   'usage: node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]',
   '       node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]',
   '       node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]',
   '       node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]',
 ].join('\n');
 const RUN_MODES = ['smoke', 'full'];
+const COMMANDS = {
+  run: cmdRun,
+  visual: (args) => (args.action === 'accept' ? cmdVisualAccept(args) : cmdVisual(args)),
+  walk: cmdWalk,
+  verify: cmdVerify,
+  status: cmdStatus,
+};
 
 function parseArgs(argv) {
   let [cmd, ...rest] = argv;
-  if (!['run', 'status', 'visual'].includes(cmd)) throw new UsageError(cmd ? `unknown command ${cmd}` : 'a command is required');
-  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false, action: undefined, run: undefined, token: undefined };
-  let flags = cmd === 'run' ? ['--env', '--confirm', '--root'] : ['--env', '--root'];
+  if (!Object.hasOwn(COMMANDS, cmd ?? '')) throw new UsageError(cmd ? `unknown command ${cmd}` : 'a command is required');
+  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false, action: undefined, run: undefined, token: undefined, routes: undefined, pairs: [] };
+  let flags = cmd === 'status' ? ['--env', '--root'] : cmd === 'walk' ? ['--env', '--confirm', '--root', '--routes'] : ['--env', '--confirm', '--root'];
   if (cmd === 'visual') {
     const [action, ...more] = rest;
     if (action === 'accept') flags = ['--run', '--token', '--root'];
@@ -1002,9 +1231,13 @@ function parseArgs(argv) {
     else if (flags.includes(a)) {
       if (i + 1 >= rest.length) throw new UsageError(`${a} needs a value`);
       args[a.slice(2)] = rest[++i];
-    } else throw new UsageError(`unknown argument ${a}`);
+    } else if (cmd === 'verify' && !a.startsWith('--')) args.pairs.push(a);
+    else throw new UsageError(`unknown argument ${a}`);
   }
   if (args.action === 'accept' && (!args.run || !args.token)) throw new UsageError('visual accept needs --run <run id> and --token <token>');
+  if (cmd === 'walk' && !args.routes) throw new UsageError('walk needs --routes <file>');
+  if (cmd === 'walk') args.mode = 'walk';
+  if (cmd === 'verify') args.mode = 'verify';
   return args;
 }
 
@@ -1015,9 +1248,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.error(`run: ${err.message}\n${USAGE}`);
     return 2;
   }
-  if (args.cmd === 'run') return cmdRun(args);
-  if (args.cmd === 'visual') return args.action === 'accept' ? cmdVisualAccept(args) : cmdVisual(args);
-  return cmdStatus(args);
+  return COMMANDS[args.cmd](args);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

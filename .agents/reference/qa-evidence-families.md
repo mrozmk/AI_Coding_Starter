@@ -84,7 +84,7 @@ At the time of writing, `qa-contract` and `qa-runtime-ui` are built. The other t
 | **1 — inspection** | the app running + an inspector connection | rendered element tree, runtime errors, device screenshots — *state*, never *change* |
 | **2 — interaction** | Tier 1 + a driver extension (`qa-env.json → local_serve_command_tier1` starts the app *without* it; the default `local_serve_command` starts it *with* it, or vice-versa — the project decides) | tap · scroll · text entry · wait-for · semantics finders · before/after deltas |
 
-A criterion that can only be settled by *doing something* to the app is `NEEDS-HUMAN` while the driver is absent — never a `PASS` inferred from the static tree. The verifier detects its own tier (a driver health call) and stamps it in every row's `notes`; a matrix row without a tier is not attributable. `MOUNT_TARGETS` for such apps is a navigation recipe, not a URL. **A Tier-2 run is worth more than its verdict**: the recorded call sequence is promotable into a regression test — see `.agents/reference/qa-to-regression-test.md`.
+A criterion that can only be settled by *doing something* to the app is `NEEDS-HUMAN` while the driver is absent — never a `PASS` inferred from the static tree. The verifier detects its own tier (a driver health call) and stamps it in every row's `notes`; a matrix row without a tier is not attributable. `MOUNT_TARGETS` for such apps is a navigation recipe, not a URL. **A Tier-2 run is worth more than its verdict**: the recorded call sequence is promotable into a regression test — a web app through `/regression-tests author --from-qa`; a non-browser app's sequence stays a manual hand-off to the developer (the regression kit is web-only).
 
 ---
 

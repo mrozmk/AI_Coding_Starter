@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "routes": [
+    { "route": "/cart", "source": "app/cart.tsx", "sample": "/cart", "scenarios": ["CART-001"] },
+    { "route": "/cart/edit", "source": "app/cart-edit.tsx", "scenarios": ["CART-002"] }
+  ]
+}

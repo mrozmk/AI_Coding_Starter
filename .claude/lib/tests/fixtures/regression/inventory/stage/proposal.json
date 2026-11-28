@@ -1,0 +1,15 @@
+{
+  "routes": {
+    "/p/:id": { "scenarios": ["PDP-001"] },
+    "/search": { "scenarios": ["SRCH-001"] },
+    "/checkout": { "scenarios": ["CART-004"] },
+    "/account": { "scenarios": ["CART-005"] },
+    "/orders/:id": { "scenarios": [], "exclusion": "needs a placed order — no sample on the walk" }
+  },
+  "sources": {
+    "PDP-001": { "code": null, "covered_by": null, "submit": null },
+    "SRCH-001": { "code": null, "covered_by": null, "submit": "search" },
+    "CART-004": { "code": null, "covered_by": null, "submit": null },
+    "CART-005": { "code": ["app/account.tsx:12"], "covered_by": null, "submit": null }
+  }
+}

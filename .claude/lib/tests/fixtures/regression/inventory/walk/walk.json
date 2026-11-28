@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "run_id": "test-20261127T120000Z-abcd",
+  "env": "test",
+  "kind": "test",
+  "base_url": "https://test.shop.example.com",
+  "routes_file": ".agents/regression/runs/inventory-x/routes.staged.json",
+  "routes_digest": "23d11ab63f53436cec902a53ba2dd25a1b8f92cd51ccbef8ea556d9e248a1784",
+  "redacted_samples": [],
+  "groups": [
+    { "key": "WALK1", "account": null, "result": "passed", "done": true, "routes": ["/cart", "/p/:id", "/search", "/checkout", "/account", "/orders/:id"] }
+  ],
+  "excluded": [],
+  "guard": { "attested": true, "blocked": [], "budget": { "ceiling": null, "reserved": 0, "by_op": {} }, "stop": null },
+  "verdict": "COMPLETE",
+  "reasons": []
+}

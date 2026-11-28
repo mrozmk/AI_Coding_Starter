@@ -50,7 +50,7 @@ You are **observe-only**: no edits, no fixes, no reload/restart, no build or tes
 5. **Prove an interactive-state delta by measuring both sides** and reporting both values.
 6. **Design tokens: check the source of the value, not just the value** — a matching literal is evidence *against* token usage.
 7. **Wait for a condition, never for a duration.** Explicit timeouts; "passed after 3 s" is not evidence. {If the stack has a frame-sync / idle-wait switch and the app never settles (animations, shimmers), disable it first and say so.}
-8. **Record the sequence you executed, call by call (Tier 2)** — command + finder type + actual finder value (`tap ByText "Checkout"`, not "tapped checkout"). This makes the run replayable and promotable into a regression test (`.agents/reference/qa-to-regression-test.md`).
+8. **Record the sequence you executed, call by call (Tier 2)** — command + finder type + actual finder value (`tap ByText "Checkout"`, not "tapped checkout"). This makes the run replayable: the developer can turn the recorded calls into a test of the app's own framework by hand. There is no command for a non-browser app — the regression kit is web-only.
 
 ## Hazards — recover or report, never silently retry
 

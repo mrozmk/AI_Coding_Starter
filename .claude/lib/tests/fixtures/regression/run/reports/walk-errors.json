@@ -1,0 +1,57 @@
+{
+  "config": {
+    "version": "1.64.0",
+    "rootDir": "e2e/regression"
+  },
+  "suites": [
+    {
+      "title": "_walk.spec.ts",
+      "file": "_walk.spec.ts",
+      "specs": [
+        {
+          "title": "WALK1 — anonymous",
+          "file": "_walk.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "WALK2 — shopper",
+          "file": "_walk.spec.ts",
+          "tests": [
+            {
+              "projectName": "desktop-chrome",
+              "expectedStatus": "passed",
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 100,
+                  "retry": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [
+    {
+      "message": "Error: a worker crashed"
+    }
+  ],
+  "stats": {}
+}

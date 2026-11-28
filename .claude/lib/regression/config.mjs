@@ -23,7 +23,7 @@ const RUNNER_COMMANDS = ['smoke', 'full'];
 export const TEST_DATA_COMMANDS = ['check', 'provision', 'reset', 'session'];
 
 export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
+export const isFilled = (v) => typeof v === 'string' && v.trim() !== '';
 export const docKey = (k) => k.startsWith('_');
 
 /** An http(s) URL with a host, no credentials and no whitespace. */
@@ -61,7 +61,7 @@ export function isLoopbackHost(hostname) {
 
 const urlHost = (s) => { try { return new URL(s).hostname; } catch { return ''; } };
 const compiles = (s) => { try { new RegExp(s); return true; } catch { return false; } };
-const isRegex = (v) => isFilled(v) && compiles(v);
+export const isRegex = (v) => isFilled(v) && compiles(v);
 const nonNeg = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const positive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
@@ -108,6 +108,8 @@ export function envPolicy(entry) {
         : [],
     },
     build_sha_url: isFilled(e.build_sha_url) ? e.build_sha_url : null,
+    // Patterns the walk replaces in every observation it persists (regression.md §14).
+    redact: Array.isArray(e.redact) ? e.redact.filter((r) => typeof r === 'string') : [],
   };
 }
 
@@ -130,6 +132,9 @@ function validateEnvPolicy(name, entry) {
   if ('guard' in entry) errors.push(...validateGuard(at, entry.guard, { means, production: envKind(entry) === 'production' }));
   if ('consent' in entry) errors.push(...validateConsent(at, entry.consent));
   if ('build_sha_url' in entry && !isHttpUrl(entry.build_sha_url)) errors.push(`${at('build_sha_url')}: must be an http(s) URL without credentials`);
+  if ('redact' in entry && (!Array.isArray(entry.redact) || entry.redact.some((r) => typeof r !== 'string' || !compiles(r)))) {
+    errors.push(`${at('redact')}: must be an array of compilable regexes`);
+  }
   return errors;
 }
 
@@ -308,6 +313,9 @@ export function loadConfig(root, configPath = CONFIG_PATH) {
   }
   return { adopted: true, config, errors: validateConfig(config) };
 }
+
+/** `runner.spec_dir` without a trailing `/`. */
+export const specDir = (cfg) => String(cfg.runner?.spec_dir ?? '').replace(/\/+$/, '');
 
 /** The `catalog` section merged over the defaults. */
 export function catalogSettings(cfg) {

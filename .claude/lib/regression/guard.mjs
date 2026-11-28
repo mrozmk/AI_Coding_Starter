@@ -44,14 +44,25 @@ export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The scenario id of a test title `<ID> — <title>` (the text before the separator), or null. */
 export const scenarioId = (title) => (typeof title === 'string' && title.includes(TITLE_SEP) ? title.split(TITLE_SEP)[0].trim() : null);
 
+/** The absolute path of a repo-relative spec, and its real path when that differs (a symlinked tmp). */
+function absolutes(root, spec) {
+  const abs = path.resolve(root, spec);
+  try { const real = fs.realpathSync(abs); return real === abs ? [abs] : [abs, real]; } catch { return [abs]; }
+}
+
 /**
  * Config-side options: workers, a per-project grep of the selected ids, service workers blocked,
- * slowMo, and the output directory under the run directory (Playwright cleans it at start — it
- * must never sit near committed files such as the visual baselines).
+ * slowMo, `testMatch` — exactly the selected spec files, so Playwright loads nothing else (it
+ * loads every discovered file before it applies grep; an unclaimed draft would load too) — and the
+ * output directory under the run directory (Playwright cleans it at start — it must never sit near
+ * committed files such as the visual baselines).
  */
 export function runnerOptions(manifest) {
   const selection = Array.isArray(manifest.selection) ? manifest.selection : [];
+  const root = manifest.root ?? process.cwd();
+  const files = [...new Set(selection.flatMap((c) => (typeof c.spec === 'string' ? absolutes(root, c.spec) : [])))];
   return {
+    testMatch: files.length ? new RegExp(`^(${files.map(escapeRe).join('|')})$`) : /(?!)/,
     workers: manifest.workers ?? 1,
     outputDir: manifest.run_dir ? path.join(manifest.run_dir, 'output') : undefined,
     grepFor(projectName) {
@@ -387,7 +398,8 @@ export function stopRun(reason, manifest = loadRunManifest()) {
 
 /** The session adapter's attestation that its sign-in for `account` went through the guard. */
 export function attestSession(manifest, account) {
-  return ledgerFor(manifest).record({ kind: 'session', account });
+  // REGRESSION_TEST_ID: the fixture passes the case's test id, so a verify sees per-case sign-ins.
+  return ledgerFor(manifest).record({ kind: 'session', account, test: process.env.REGRESSION_TEST_ID ?? null });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -505,6 +517,9 @@ async function routeHandler(g, raw, route) {
   if (result.aborted) return route.abort('blockedbyclient');
   if (result.failed) return route.abort('failed');
   const test = currentTest?.testId ?? null;
+  // The walk (walk.mjs) reads a navigation's true final URL from here: on production the page
+  // keeps the first URL of a collapsed redirect. `record` reduces only `url`.
+  if (navigation) g.ledger.record({ kind: 'navigation', url: first.url, final: reduceUrl(result.final.url), status: result.response.status(), hops: result.hops, test });
   if (result.hops > 1 && navigation && !g.policy.production && result.final.method === 'GET') {
     // Test environments: the page lands on the verified final URL; the browser's follow-up GET is
     // the one hop not routed (regression.md §11) — recorded, reserved again when costed.
@@ -516,7 +531,7 @@ async function routeHandler(g, raw, route) {
     }
     return route.fulfill({ status: 302, headers: { location: result.final.url } });
   }
-  if (result.hops > 1 && navigation) g.ledger.record({ kind: 'redirect-collapsed', url: first.url, test });
+  if (result.hops > 1 && navigation) g.ledger.record({ kind: 'redirect-collapsed', url: first.url, final: reduceUrl(result.final.url), test });
   return route.fulfill({ response: result.response });
 }
 

@@ -6,11 +6,15 @@
 //   <ID>, <title>    the scenario's id and title
 //   <Source copied verbatim from the catalog>  the scenario's Source value as written — the header is what
 //                    the computed automation state compares with the current criteria (regression.md §7)
+//   <, '@smoke'>     `, '@smoke'` when the scenario's Priority is in catalog.smoke; otherwise nothing
+// A clause of Expected a browser cannot observe is not asserted; it gets one line, which
+// `catalog.mjs --status` lists (regression.md §15):
+// regression-unobservable: <ID> · <clause> — <reason>
 import { test, expect } from '<relative-path>/fixtures';
 
 test.use({ account: <account-key> });
 
 // regression: <ID> · source: <Source copied verbatim from the catalog>
-test('<ID> — <title>', async ({ page }) => {
+test('<ID> — <title>', { tag: ['@regression'<, '@smoke'>] }, async ({ page }) => {
   /* one assertion per Expected clause */
 });

@@ -1,7 +1,7 @@
 ---
-description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status); production needs a confirmation every time
-argument-hint: "[run [smoke|full] | smoke | full | status | visual compare | visual update] [--env <name>]"
-allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/lib/regression/policy.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Read
+description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status | visual compare | visual update), or write specs for READY scenarios (author — 3 green passes, a critic, then a claim); production needs a confirmation every time
+argument-hint: "[run [smoke|full] | smoke | full | status | visual compare | visual update | author (<ID>… | --area <CODE> | --pending | --from-qa <file>)] [--env <name>]"
+allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/lib/regression/policy.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(node .claude/lib/regression/author.mjs:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Agent, Read, Write, Edit, Glob, Grep
 ---
 
 # Regression tests — the deterministic run
@@ -9,8 +9,9 @@ allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/li
 ## Input: $ARGUMENTS
 
 Runs in the project's repo root. Contract: [.agents/reference/regression.md](../../.agents/reference/regression.md)
-§10 (selection), §11 (the request guard), §12 (the run), §13 (the visual lane). The verdict is the script's — this command
-never judges a run, never reads a spec to decide pass/fail, never edits a spec or the catalog.
+§10 (selection), §11 (the request guard), §12 (the run), §13 (the visual lane), §15 (the author
+lane). The verdict is the script's — this command never judges a run and never reads a spec to
+decide pass/fail.
 
 ## Guardrails (absolute)
 
@@ -21,10 +22,14 @@ never judges a run, never reads a spec to decide pass/fail, never edits a spec o
 - **Never pass `--token` to `visual accept` without an `Accept baselines` answer to the acceptance
   question in this turn.** The same rule as the production token: never reuse one from an earlier
   turn, never accept on your own judgement, never retry a refused acceptance without asking again.
-- Never start `heal` or `author`; never start `visual update` from a `run` or on your own
-  initiative — only when the user typed it. A red run prints the `heal` command; you only relay it.
-- Never edit `.claude/regression.json`, a spec, the fixtures or `.claude/settings*.json`; never
-  start the app; never commit.
+- `run`, `status` and `visual` never edit a spec or the catalog and never start a lane — a red run
+  prints the `heal` command; you only relay it. A red run never starts `heal` or `author`; never
+  start `visual update` from a `run` or on your own initiative — only when the user typed it.
+- `author` writes only its own candidate spec files (created by `author.mjs draft`) and the critic
+  and provenance verdict files in its verify run directory; it changes the catalog only through
+  `author.mjs claim` and moves every unclaimed draft out with `author.mjs reject`.
+- Never edit `.claude/regression.json`, the fixtures, the runner config or `.claude/settings*.json`;
+  never start the app; never commit.
 - In a team clone the script refuses (exit 3): say so and stop — a regression run happens from the
   developer's own checkout.
 
@@ -38,7 +43,8 @@ never judges a run, never reads a spec to decide pass/fail, never edits a spec o
 | `status` | `catalog.mjs --status`, then `run.mjs status` |
 | `visual compare` | `run.mjs visual compare` (§ Visual) |
 | `visual update` | `run.mjs visual update`, then the acceptance question (§ Visual) |
-| `author`, `heal` | "not yet shipped" (regression.md §4) — stop |
+| `author <ID>…`, `author --area <CODE[,CODE]>`, `author --pending`, `author --from-qa <file>` | `## Author` |
+| `heal` | "not yet shipped" (regression.md §4) — stop |
 
 `--env <name>` passes through to `run.mjs` (and to `run.mjs status`). Anything else → print the
 argument hint and stop.
@@ -110,6 +116,47 @@ portability:` line (`run full` and `visual …`), and the record path (`record: 
 printed, and say that `heal` is not started (and not yet shipped). INCOMPLETE → name what kept it
 from green (a skipped / flaky case, no build SHA, a report error). BLOCKED/ENV → the stop reason;
 the environment pushed back or the guard could not be attested — do not retry.
+
+## Author
+
+Writes specs for READY scenarios without one, following
+[.claude/skills/regression/references/author.md](../skills/regression/references/author.md) (the
+procedure) and [spec-rules.md](../skills/regression/references/spec-rules.md) (how a spec is
+written). A spec is claimed only after three green passes with zero retries on every device project
+of the scenario and a critic pass on the same digests. Run directory for the drafts:
+`.agents/regression/runs/author-<UTC yyyymmddThhmmssZ>`.
+
+1. **Select:** `node .claude/lib/regression/author.mjs select <the author arguments> [--env <name>]`.
+   Exit 2 with `environments:` → one `AskUserQuestion` (a test environment first), rerun with
+   `--env`. Exit 1 → nothing eligible: report the `refused:` / `not promoted:` / `skipped:` /
+   `ambiguous:` lines and stop.
+2. **Draft** each `eligible:` scenario: `node .claude/lib/regression/author.mjs draft <ID> --run <run dir>`
+   (`--qa <ac_id>` for a `--from-qa` row) creates the empty target; then Write the spec at the
+   printed path from the scenario, the code and the newest walk observations (and, `--from-qa`, the
+   recorded sequence `select` printed).
+3. **Lint:** `node .claude/lib/regression/author.mjs lint <spec> --id <ID>` — fix until clean.
+4. **Verify:** `node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>]`, one batch.
+   Exit 3 with `confirmation-required:` → the production confirmation of Run step 3, verbatim; the
+   token covers this verify's three passes only, and `Cancel` → step 7 for every draft. Exit 3
+   otherwise (`refused: <ID> — …`) → fix what the refusal names or drop the scenario. `not
+   verified:` → read the `context:` files, fix, verify again (at most two verify rounds before the
+   critic).
+5. **Critic:** for each `verified:` scenario spawn `@regression-critic` with `SCENARIO` (the block
+   text, verbatim), `SPEC` and `ROUND`; write its JSON plus the three digests of the `verified:`
+   line to `<verify run dir>/critic-<ID>.json`. `--from-qa` only: also spawn `@regression-critic`
+   `MODE=provenance` with `QA_SEQUENCE` and `SPEC`, and write `<verify run dir>/provenance-<ID>.json`
+   with the same three digests; an action without a recorded step is `revise`. `revise` → fix,
+   re-verify, ask again. Limits: at most two clause rounds and two provenance rounds, at most four
+   verify rounds in total.
+6. **Claim:** `node .claude/lib/regression/author.mjs claim <ID> --spec <spec> --verify <verify run dir> --critic <critic file> [--provenance <file>]`
+   → `claimed: <ID> — <spec>`. A `refused:` is reported; the draft goes to step 7.
+7. **Reject** every registered draft that was not claimed, on every exit:
+   `node .claude/lib/regression/author.mjs reject <ID> --run <run dir>`.
+8. **Check:** `node .claude/lib/regression/catalog.mjs` and `node .claude/lib/regression/catalog.mjs --status`.
+
+**Report** (in the project's language): claimed (spec path), rejected (and why), refused, not
+promoted, ambiguous, the unobservable clauses (`unobservable:` lines of `--status`), and for
+`--from-qa` the step map of every claimed spec (`spec step n ← QA step k`). Nothing is committed.
 
 ## Status
 

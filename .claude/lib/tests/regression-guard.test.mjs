@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   installGuard, newGuardedContext, guardRequestContext, guardedFetch, attestSession, createLedger, ownerLock,
-  setCurrentTest, clearCurrentTest,
+  setCurrentTest, clearCurrentTest, runnerOptions,
 } from '../regression/guard.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +44,9 @@ function handler(origin) {
         case '/r302post': return send(302, '', { location: '/sink' });
         case '/sink': return send(200, 'sunk');
         case '/nav1': return send(302, '', { location: '/page' });
+        case '/a': return send(302, '', { location: '/b?x=1' });
+        case '/b': return send(200, '<html><body>b</body></html>', { 'content-type': 'text/html' });
+        case '/cart': return send(200, '<html><body>cart</body></html>', { 'content-type': 'text/html' });
         case '/to-other': return send(302, '', { location: `${B}/echo` });
         case '/echo': return send(200, 'echo');
         case '/forbidden': return send(403, 'no');
@@ -398,6 +401,41 @@ test('collapses a redirected navigation on production', async () => {
   assert.equal(tout.fulfilled.status, 302, 'test environment: the page lands on the verified URL');
   assert.equal(tout.fulfilled.headers.location, `${A}/page`);
   assert.equal(events(t, 'followed-by-browser').length, 1);
+});
+
+test('a collapsed production redirect records the reduced final URL', async () => {
+  const m = manifest();
+  const ctx = await guarded(m);
+  setCurrentTest({ testId: 't-a', id: 'WALK1', project: 'desktop' });
+  try { await send(ctx, { url: `${A}/a`, isNavigation: true }); } finally { clearCurrentTest(); }
+  const [collapsed] = events(m, 'redirect-collapsed');
+  assert.equal(collapsed.url, `${A}/a`);
+  assert.equal(collapsed.final, `${A}/b`, 'the final hop is reduced: no query string');
+  const nav = events(m, 'navigation');
+  assert.equal(nav.length, 1);
+  assert.deepEqual({ url: nav[0].url, final: nav[0].final, status: nav[0].status, hops: nav[0].hops, test: nav[0].test }, { url: `${A}/a`, final: `${A}/b`, status: 200, hops: 2, test: 't-a' });
+});
+
+test('a direct production navigation records a navigation event', async () => {
+  const m = manifest();
+  const ctx = await guarded(m);
+  setCurrentTest({ testId: 't-c', id: 'WALK1', project: 'desktop' });
+  try { await send(ctx, { url: `${A}/cart?q=1`, isNavigation: true }); } finally { clearCurrentTest(); }
+  const nav = events(m, 'navigation');
+  assert.deepEqual(nav.map((e) => ({ url: e.url, final: e.final, status: e.status, hops: e.hops, test: e.test })), [{ url: `${A}/cart`, final: `${A}/cart`, status: 200, hops: 1, test: 't-c' }]);
+  assert.equal(events(m, 'redirect-collapsed').length, 0);
+  await send(ctx, { url: `${A}/ok` });
+  assert.equal(events(m, 'navigation').length, 1, 'a non-navigation request records none');
+});
+
+test('runnerOptions testMatch matches exactly the selected spec files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'regression-guard-root-'));
+  const opts = runnerOptions({ root, selection: [{ id: 'CART-001', project: 'd', spec: 'e2e/regression/cart.spec.ts' }, { id: 'CART-002', project: 'm', spec: 'e2e/regression/cart.spec.ts' }, { id: 'PDP-001', project: 'd', spec: 'e2e/regression/pdp.spec.ts' }] });
+  assert.equal(opts.testMatch.test(path.join(root, 'e2e/regression/cart.spec.ts')), true);
+  assert.equal(opts.testMatch.test(path.join(root, 'e2e/regression/pdp.spec.ts')), true);
+  assert.equal(opts.testMatch.test(path.join(root, 'e2e/regression/cart/cart-008.spec.ts')), false, 'an unclaimed draft beside them is not loaded');
+  assert.equal(opts.testMatch.test(path.join(root, 'e2e/regression/cart.spec.ts.bak')), false);
+  assert.equal(runnerOptions({ root, selection: [] }).testMatch.test(path.join(root, 'e2e/regression/cart.spec.ts')), false, 'no selection matches nothing');
 });
 
 test('attributes a context created inside a test to that test', async () => {

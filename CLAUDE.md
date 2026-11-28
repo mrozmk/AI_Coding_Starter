@@ -93,7 +93,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 - **Before any task:** read `.agents/memory/index.md`. **Before any non-trivial response:** `.agents/memory/user-profile.md` (skip if absent or `status: empty`).
 - **Before implementing something new:** check `.agents/plans/active/`.
 - **When uncertain:** make routine judgment calls yourself; ask when different readings would lead to materially different work.
-- **After a `/qa-verify` run with interaction rows:** offer to promote the recorded sequence into a regression test per [.agents/reference/qa-to-regression-test.md](.agents/reference/qa-to-regression-test.md) — QA never writes tests itself.
+- **After a `/qa-verify` run with interaction rows:** offer the `/regression-tests author --from-qa <working file>` line the run printed (a web app with regression adopted) — QA never writes tests itself.
 - **After fixing a bug, and when writing memory at run end:** follow [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md); the default is to write nothing.
 - **Skip rule:** a memory file with `status: empty` is a placeholder — do not load it.
 - **Authoring slash commands:** Loader and Output-Discipline Conventions in `.agents/memory/index.md`.

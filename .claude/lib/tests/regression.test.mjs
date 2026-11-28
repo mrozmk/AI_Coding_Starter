@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   catalogFiles, parseCatalog, validateCatalog, sourceTokens, automationState, statusReport,
-  extractFingerprintBlock, fingerprint, currentFingerprint,
+  extractFingerprintBlock, fingerprint, currentFingerprint, blockTexts,
 } from '../regression/catalog.mjs';
 import { loadConfig, validateConfig, catalogSettings, resolveEnvBaseUrl, isBaseUrl, envKind } from '../regression/config.mjs';
 import { checkFoundation } from '../regression/setup.mjs';
@@ -566,4 +566,46 @@ test('templates wire the session into storageState', () => {
   assert.match(header, /import \{ test, expect \} from '[^']*fixtures';/);
   assert.match(header, /\/\/ regression: <ID> · source:/);
   assert.doesNotMatch(fs.readFileSync(path.join(dir, 'playwright.config.ts.template'), 'utf8'), /webServer:/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Live BLOCKED, block texts and unobservable clauses (#332)
+// ---------------------------------------------------------------------------------------------
+
+test('BLOCKED (live: <reason>) is accepted and an empty live reason is rejected', () => {
+  assert.deepEqual(errorsOf({ 'cart.md': catalogFile(scenario('CART-001', { status: 'BLOCKED (live: 500 on /checkout)', steps: '—', expected: '—' })) }), []);
+  const errors = errorsOf({ 'cart.md': catalogFile(scenario('CART-001', { status: 'BLOCKED (live: )', steps: '—', expected: '—' })) });
+  has(errors, new RegExp(`^${CAT}/cart\\.md:4: BLOCKED without a reference — expected BLOCKED \\(<Task id \\| tracker key \\| #n \\| live: <reason>>\\)$`));
+});
+
+test("blockTexts returns each block's exact text", () => {
+  const a = scenario('CART-001');
+  const b = scenario('CART-002', { title: 'Second' });
+  const root = mkRoot({ '.claude/regression.json': CONFIG, [`${CAT}/cart.md`]: `# Cart\n\n${a}\n\n\n${b}\n\n## Notes\n\ntext\n` });
+  const texts = blockTexts(root, [`${CAT}/cart.md`]);
+  assert.deepEqual([...texts.keys()], ['CART-001', 'CART-002']);
+  assert.deepEqual(texts.get('CART-001'), { file: `${CAT}/cart.md`, line: 3, text: a });
+  assert.equal(texts.get('CART-002').text, b, 'trailing blank lines and the next heading are not part of the block');
+});
+
+test('--status lists the regression-unobservable lines of a spec', () => {
+  const spec = [
+    "import { test, expect } from '../fixtures';",
+    '// regression: CART-004 · source: live',
+    '// regression-unobservable: CART-004 · an email is sent — not observable in a browser',
+    '// regression-unobservable: CART-009 · another scenario — not this row',
+    "test('CART-004 — Check out', async ({ page }) => {});",
+    '',
+  ].join('\n');
+  const root = mkRoot({
+    '.claude/regression.json': CONFIG,
+    [`${CAT}/cart.md`]: catalogFile(scenario('CART-004', { title: 'Check out', spec: 'e2e/regression/cart/cart-004.spec.ts › CART-004 — Check out' })),
+    'e2e/regression/cart/cart-004.spec.ts': spec,
+  });
+  const s = run('catalog.mjs', ['--root', root, '--status']);
+  assert.equal(s.status, 0, s.stdout + s.stderr);
+  assert.match(s.stdout, /^unobservable: CART-004 — an email is sent — not observable in a browser$/m);
+  assert.doesNotMatch(s.stdout, /CART-009/);
+  const j = JSON.parse(run('catalog.mjs', ['--root', root, '--json']).stdout);
+  assert.deepEqual(rowOf(j, 'CART-004').unobservable, [{ clause: 'an email is sent', reason: 'not observable in a browser' }]);
 });

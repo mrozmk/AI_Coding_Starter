@@ -6,6 +6,7 @@ const opts = runnerOptions(loadRunManifest());
 
 export default defineConfig({
   testDir: './regression',
+  testMatch: opts.testMatch,
   retries: 0,
   workers: opts.workers,
   reporter: [['json', { outputFile: './.results/report.json' }]],
