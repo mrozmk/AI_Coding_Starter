@@ -153,7 +153,7 @@ through you: one card per decision, in their language, in this exact shape —
 
 **Polecam <n>:** <one line why>
 
-**Wpisz:** `<team> d-<n> <reply exactly as the TeamLead window takes it>`
+**Wybierz:** <n>. <the option's label, as the team's dialog shows it>
 ```
 
 - **Sources:** the decision file (question, options, recommendation, dialog), the evidence it
@@ -161,15 +161,21 @@ through you: one card per decision, in their language, in this exact shape —
   one; the stages of the run's mode, a `cli` run has one). Read them; never ask the team.
 - **Head:** 🟡 waits for the Operator; 🔴 when the run is stopped on it and nothing else moves
   (a gate, a stop, an abandon decision).
-- **Options:** the decision's own, in its order, the consequence in plain words. ✅ marks the
-  option you recommend — the team's recommendation unless you see a reason against it; then say
-  both in **Polecam**. A decision with no options (a permission, free text): one row per reply
-  the window takes (`allow`, `deny: <what instead>`).
+- **Options:** the decision's own, in the dialog's order and with the dialog's numbers and
+  labels (`## Dialog` of the decision file), so option 2 of the card is option 2 of the dialog;
+  the consequence in plain words. ✅ marks the option you recommend — the team's recommendation
+  unless you see a reason against it; then say both in **Polecam**. A decision with no options
+  (a permission, free text): one row per reply the window takes (`allow`, `deny: <what instead>`).
+- **Last line:** the Operator answers by picking an option in the team's dialog, so the card
+  ends with **Wybierz:** and that option's number and label. **Wpisz:** replaces it only when a
+  pick cannot carry the answer — a reply that needs words (`deny: <what instead>`, free text
+  through the dialog's "Other", a gate reply with words) or a TeamLead window they cannot reach;
+  then it gives the exact text: `<team> d-<n> <reply exactly as the TeamLead window takes it>`.
 - **Short:** no script names, no paths, no ids beyond the head and the last line. Details only
   when the Operator asks.
-- **The answer is theirs.** After they type the `<team> d-<n> …` line, relay it
-  ([Relaying a team's decision](#relaying-a-teams-decision)); your own words are never the
-  answer. They may also answer in the team's own window — then the card is done.
+- **The answer is theirs.** A pick in the team's dialog ends the card. A `<team> d-<n> …` line
+  typed to you is relayed ([Relaying a team's decision](#relaying-a-teams-decision)); your own
+  words are never the answer.
 - **Idempotent:** a `decision` message whose decision is no longer `pending` is moved out of
   `new/` without a card. Several pending decisions → one card each, the stopped runs first.
 
