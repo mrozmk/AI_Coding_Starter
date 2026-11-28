@@ -45,7 +45,7 @@ while IFS= read -r line; do
   file=${!var}
   has "$file" "$lit"; check $? "$file lacks: $lit"
 done <<'EOF'
-RG|## 13. Delivery — scenarios with every Task
+RG|## 16. Delivery — scenarios with every Task
 RG|### 16.1
 RG|### 16.6
 RG|**Scenarios:**
