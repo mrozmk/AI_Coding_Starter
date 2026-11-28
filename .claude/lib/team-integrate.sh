@@ -72,6 +72,12 @@ finalize_lead() {
     || echo "warn: TeamLead not finalized — retry: bash .claude/lib/team-lead.sh finalize $TEAM merged" >&2
 }
 
+# The batch gate's due line from the main checkout (this shell sits in the clone); never changes the
+# exit. $B is the base actually integrated into: a merge into another base does not move the gate.
+batch_due() {
+  [ ! -f "$root/.claude/lib/batch-gate.sh" ] || bash "$root/.claude/lib/batch-gate.sh" -C "$root" due --merged "here=$M@$B" || true
+}
+
 ls_rem() {  # ls_rem <ref> → the sha on origin, empty when absent; rc 1 when the call itself failed
   local o
   o="$(git -C "$CLONE" ls-remote origin "$1" 2>&1)" || { printf '%s\n' "$o" >&2; return 1; }
@@ -183,6 +189,7 @@ if [ -f "$INTENT" ]; then
     echo "already integrated: PR #$PR M=$M"
     delete_source
     finalize_lead
+    batch_due
     exit 0
   fi
   # `stale` and `rejected` are not skipped: the base may have become readable or returned to T.
@@ -362,6 +369,7 @@ if [ "$status" = completed ]; then
   echo "integrated: PR #$PR into $B T=$T S=$S M=$M"
   delete_source
   finalize_lead
+  batch_due
   exit 0
 fi
 # The code is published either way; what is left is a PR that GitHub did not close. The usual

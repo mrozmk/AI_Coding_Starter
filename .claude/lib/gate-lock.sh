@@ -40,4 +40,7 @@ gate_lock_release() {  # owner-only; a no-op when this shell holds nothing
 
 gate_lock_held() { [ -n "${1:-}" ] && python3 -I "$GATE_LOCK_PY" held "$1"; }
 
+# Read-only occupancy: rc 0 + "held<TAB><what><TAB><describe>" while occupied, 1 free, ≥ 2 an error.
+gate_lock_holder() { python3 -I "$GATE_LOCK_PY" holder; }
+
 gate_load_avg() { python3 -I "$GATE_LOCK_PY" load 2>/dev/null || echo '?'; }

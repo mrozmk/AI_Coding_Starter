@@ -307,6 +307,22 @@ for src in startup clear compact; do
     || fail "(9) $src: session.json not on the live id"
   [ "$(jq -r .session_id "$REG/Supervisor.json")" = "aaaaaaaa-000$n" ] || fail "(9) $src: record not on the live id"
 done
+# The batch gate's due lines follow the Supervisor's contract line — the Supervisor's only. The
+# fixture suite only has to exist (`due` validates the command, never runs it).
+cp "$P" "$WORK/prof.9"
+mkdir -p "$MAIN/.claude/lib/tests"
+printf '#!/usr/bin/env bash\ntouch "%s/suite-ran"; exit 1\n' "$WORK" > "$MAIN/.claude/lib/tests/team-suite.sh"
+jq --arg l "$(git -C "$MAIN" symbolic-ref --short HEAD)" '.teams.batch_gate = {line: $l, gates: {here: {repo: "."}}}' \
+  "$WORK/prof.9" > "$P"
+hook aaaaaaaa-0009 startup TEAM_SESSION_ROLE=Supervisor HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+case "$(sed -n 1p "$WORK/out")" in "Session role: Supervisor. Contract:"*) ;; *) fail "(9) due: the contract line is not first" ;; esac
+case "$(sed -n 2p "$WORK/out")" in "batch due (here):"*) ;; *) fail "(9) due: no batch due (here): line second" ;; esac
+hook bbbbbbbb-0009 startup TEAM_SESSION_ROLE=Astra HARNESS_ADDRESS=Astra HARNESS_REGISTRY="$REG"
+noline "batch" "$WORK/out" "(9) due: Astra got a batch line"
+cp "$WORK/prof.9" "$P"
+hook aaaaaaaa-0010 startup TEAM_SESSION_ROLE=Supervisor HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+[ "$(wc -l < "$WORK/out" | tr -d ' ')" = 1 ] || fail "(9) due: without a block the Supervisor got more than its line"
+[ ! -e "$WORK/suite-ran" ] || fail "(9) due: the hook ran the suite"
 hook bbbbbbbb-0001 startup TEAM_SESSION_ROLE=Astra HARNESS_ADDRESS=Astra HARNESS_REGISTRY="$REG"
 line "Contract: .agents/reference/roles/advisor.md." "$WORK/out" "(9) Astra without a record"
 hook cccccccc-0001 startup TEAM_SESSION_ROLE=Ghost

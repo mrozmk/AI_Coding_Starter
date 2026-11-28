@@ -191,6 +191,32 @@ touch "$WORK/wl.stop"; wait "$G" 2>/dev/null
 fg_caller w7b
 check "reclaim after the workload ended" test "$RC" = 0
 
+# ---- (7b) holder: read-only occupancy ----
+holder_out() { HOLDER_OUT="$(bash -c '. "$LIB"; gate_lock_holder' 2>&1)"; HOLDER_RC=$?; }
+reset
+holder_out
+check "holder: a free lock exits 1" test "$HOLDER_RC" = 1
+live l7c; fake_holder "$SPAWNED" t7c
+holder_out
+check "holder: a live holder exits 0" test "$HOLDER_RC" = 0
+check "holder: the live line names what" test "${HOLDER_OUT%%$'\t'fake pid*}" = "held$(printf '\t')fake"
+reset
+spawn wl2 bash -c 'exec -a "dotnet test smoke" bash -c "$0" "$1"' "$LOOP" "$WORK/wl2.stop"
+G=$SPAWNED
+wait_for "workload renamed" cmd_is "$G" "dotnet test smoke"
+dead_pid; fake_holder "$DEAD" t7d "$G"
+holder_out
+check "holder: a dead holder with workload exits 0" test "$HOLDER_RC" = 0
+check "holder: holder dead, workload running" has "(holder dead, workload running)" <(printf '%s\n' "$HOLDER_OUT")
+touch "$WORK/wl2.stop"; wait "$G" 2>/dev/null
+holder_out
+check "holder: free after the workload ended" test "$HOLDER_RC" = 1
+check "holder: read-only, the dead holder stays" test "$(token)" = t7d
+reset
+mkdir -p "$ROOT/lock"; printf 'pid=1\n' > "$ROOT/lock/holder"
+holder_out
+check "holder: an incomplete holder is unreadable" test "$HOLDER_RC:$HOLDER_OUT" = "0:held$(printf '\t')?$(printf '\t')holder unreadable"
+
 # ---- (8) crash during acquisition ----
 reset
 dead_pid; mkdir -p "$ROOT/tmp-$DEAD-x"; echo "pid=$DEAD" > "$ROOT/tmp-$DEAD-x/holder"

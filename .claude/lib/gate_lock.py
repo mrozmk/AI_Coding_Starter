@@ -3,6 +3,8 @@
 Usage: python3 -I gate_lock.py acquire <owner_pid> <clone> <what>  → "<token> <waited s>", exit 0
        python3 -I gate_lock.py release <owner_pid> <token>          → exit 0 (owner-only, else no-op)
        python3 -I gate_lock.py held <token>                         → exit 0 iff that live holder
+       python3 -I gate_lock.py holder        → "held<TAB><what><TAB><describe>", exit 0 while occupied;
+                                               exit 1 when free (read-only: no ticket, no reclaim)
        python3 -I gate_lock.py load                                 → "<1m> <5m> <15m>"
 acquire exits 4 on timeout, 5 on a lock error or a vanished caller, 130 when cancelled; usage 2.
 The lock is <root>/lock/holder, published by one rename. Waiters queue as <root>/queue/ tickets;
@@ -24,9 +26,9 @@ import sys
 import time
 
 # A surviving member of the holder's process group still running a gate keeps the lock (no
-# reclaim). The engine knows only its own scripts; a project adds its build/test tools with
-# TEAM_GATE_LOCK_WORKLOAD, e.g. 'dotnet (build|test)|testhost' or 'pytest|jest'.
-WORKLOAD = re.compile(r'test-gate\.sh|team-merge-check\.sh'
+# reclaim). The engine knows its own scripts and the team suite (a batch-gate run's workload); a
+# project adds its build/test tools with TEAM_GATE_LOCK_WORKLOAD, e.g. 'dotnet (build|test)|testhost'.
+WORKLOAD = re.compile(r'test-gate\.sh|team-merge-check\.sh|team-suite\.sh'
                       + ('|' + os.environ['TEAM_GATE_LOCK_WORKLOAD']
                          if os.environ.get('TEAM_GATE_LOCK_WORKLOAD') else ''))
 SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -341,6 +343,23 @@ def held(token):
     return 0 if ok else 1
 
 
+def holder_state():
+    """The acquisition's occupancy rules (step), read-only: 0 + one line while occupied, 1 free."""
+    h = read_kv(os.path.join(lock_root(), 'lock', 'holder'))
+    if h is None:
+        return 1
+    if not complete(h):
+        print('held\t?\tholder unreadable')
+        return 0
+    if alive(int(h['pid']), h['pid_start']):
+        print(f"held\t{h['what']}\t{describe(h)}")
+        return 0
+    if workload(h['pgid'], {str(os.getpid()), str(os.getppid())}):
+        print(f"held\t{h['what']}\t{describe(h)} (holder dead, workload running)")
+        return 0
+    return 1
+
+
 def main(argv):
     if argv[:1] == ['acquire'] and len(argv) == 4 and argv[1].isdigit():
         return run_acquire(int(argv[1]), argv[2], argv[3])
@@ -352,6 +371,8 @@ def main(argv):
             return 5
     if argv[:1] == ['held'] and len(argv) == 2:
         return held(argv[1])
+    if argv == ['holder']:
+        return holder_state()
     if argv == ['load']:
         print(' '.join(f'{x:.2f}' for x in os.getloadavg()))
         return 0

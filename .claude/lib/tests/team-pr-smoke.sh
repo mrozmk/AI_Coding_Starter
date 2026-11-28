@@ -285,7 +285,7 @@ setprofile
 # ================================================================================================
 # (B1) prompt render per provider — github leaves no {{key}} and no `az`, ADO keeps its text
 # ================================================================================================
-KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|RUN_DIR|ROUND|REWORK|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
+KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|RUN_DIR|ROUND|REWORK|ATTEMPT|MODE|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
 PROMPTS="planner planner-quick cli coder qa wrapup"
 b1_render() {  # b1_render <provider> <host kind> <host> <gates> <prompt> <out>
   ( set -e
@@ -796,8 +796,16 @@ expect 0 "VERDICT: ok" "merge check on a non-trunk line"
 run "$MAIN" $IT gamma
 expect 3 "team line is it-base, not $TRUNK" "integrate defaults to the trunk and refuses"
 M_G="$Mx"
+# A batch gate on the trunk: a merge into it-base does not move it (no `line behind`). The fixture
+# suite sits in the ignored .agents/team/ so the main checkout stays clean; `due` never runs it.
+BG_TD=".agents/team/fixture-tests"; mkdir -p "$MAIN/$BG_TD"
+printf '#!/usr/bin/env bash\ntouch "%s/suite-ran"; exit 1\n' "$WORK" > "$MAIN/$BG_TD/team-suite.sh"
+BG_PROFILE="$C_PROFILE | .teams.batch_gate = {line: \"$TRUNK\", tests_dir: \"$BG_TD\", gates: {here: {repo: \".\"}}}"
+setprofile "$BG_PROFILE"
 run "$MAIN" $IT gamma --base it-base
 expect 0 "integrated: PR #43 into it-base" "integrate publishes onto the explicit base"
+! has "line behind" "$WORK/out" || fail "a merge into it-base reported the trunk gate behind"
+setprofile "$C_PROFILE"
 [ "$(bare rev-parse refs/heads/it-base)" = "$M_G" ] || fail "it-base is not the tested merge commit"
 [ "$(bare rev-parse "refs/heads/$TRUNK")" = "$TRUNK_BEFORE" ] || fail "the trunk moved"
 bare rev-parse -q --verify refs/heads/it-base >/dev/null \
@@ -826,8 +834,15 @@ expect 0 "sol:7" "the lock status names its owner"
 run "$MAIN" /bin/bash "$LOCK" release "$TRUNK" --owner sol:7
 expect 0 "" "the solo integrator releases the base lock"
 
+setprofile "$BG_PROFILE"
 run "$MAIN" $IT alfa
 expect 0 "integrated: PR #41 into $TRUNK" "integrate publishes the tested merge commit"
+# integrate reports the batch due line: it pushed M from the clone, the main checkout's local trunk
+# stayed where it was, so the gate is behind M and counts nothing.
+awk '/^integrated: PR #41/ { i = 1 } i && /line behind/ { f = 1 } END { exit !f }' "$WORK/out" \
+  && has "line behind ${M_A:0:7} — update" "$WORK/out" && ! has "merges since" "$WORK/out" \
+  && [ ! -e "$WORK/suite-ran" ] || fail "integrate reports the batch due line"
+setprofile "$C_PROFILE"
 [ "$(bare rev-parse "refs/heads/$TRUNK")" = "$M_A" ] || fail "the trunk is not alfa's merge commit"
 has "deleted: $BR_A" "$WORK/out" && ! bare rev-parse -q --verify "refs/heads/$BR_A" >/dev/null \
   || fail "integrate deletes the team's remote branch at S"

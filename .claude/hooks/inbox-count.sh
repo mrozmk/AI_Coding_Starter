@@ -6,7 +6,9 @@
 # never pruned). Two identities: the registry address (HARNESS_ADDRESS, else adhoc-<handle> from
 # Herdr's HC_TERMINAL_ID or the tmux session) and the inbox address (the same, except a team's
 # TeamLead <team>-lead reads the team's inbox <team>). Runs on every prompt, so it stays cheap: no
-# git, no hc, one jq write at most. Silent otherwise; always exits 0.
+# git, no hc, one jq write at most. For the Supervisor with a teams.batch_gate block, once a day
+# while today has no accepted day plan: `day plan: none for <date>` (one jq read, a stamp file).
+# Silent otherwise; always exits 0.
 
 cat >/dev/null 2>&1
 ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
@@ -39,6 +41,18 @@ if [ -f "$rec" ] && [ -z "$(find "$rec" -mmin -1 2>/dev/null)" ] && command -v j
   ( umask 077
     jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.last_seen = $at' "$rec" > "$rec.tmp.$$" 2>/dev/null \
       && mv "$rec.tmp.$$" "$rec" || rm -f "$rec.tmp.$$" )
+fi
+
+# The Supervisor's first prompt of a day without an accepted day plan (the regression cadence),
+# once a day; only where the profile has a teams.batch_gate block.
+if [ "$ra" = Supervisor ] && command -v jq >/dev/null 2>&1 \
+  && jq -e '(.teams | type == "object") and (.teams | has("batch_gate"))' "$MAIN/.claude/project-profile.json" >/dev/null 2>&1; then
+  d="$(date +%F)" p="$MAIN/.agents/team/day-plan.md" s="$MAIN/.agents/team/day-plan.nudged"
+  if ! { grep -qx "date: $d" "$p" 2>/dev/null && grep -q '^accepted:' "$p" 2>/dev/null; } \
+    && [ "$(cat "$s" 2>/dev/null)" != "$d" ]; then
+    echo "day plan: none for $d"
+    { mkdir -p "$MAIN/.agents/team" && printf '%s\n' "$d" > "$s"; } 2>/dev/null
+  fi
 fi
 
 ia="$ra"
