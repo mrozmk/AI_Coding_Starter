@@ -500,7 +500,9 @@ if group release; then
   mkdir -p "$T/nojq32"; ln -s "$(command -v git)" "$T/nojq32/git"
   OUT=$(cd "$M" && PATH="$T/nojq32" /bin/bash "$BG" due --release "$S=$SH" 2>/dev/null); a="$?"
   cp "$M/.claude/project-profile.json" "$T/p32.json"; echo '{' > "$M/.claude/project-profile.json"
-  bg "$M" due --release "$S=$SH"; b="$RC"; cp "$T/p32.json" "$M/.claude/project-profile.json"
+  bg "$M" due --release "$S=$SH"; b="$RC"
+  echo '{"teams":[]}' > "$M/.claude/project-profile.json"; bg "$M" due --release "$S=$SH"; b2="$RC"
+  cp "$T/p32.json" "$M/.claude/project-profile.json"
   mkdir -p "$M/.agents/team"; echo '{}' > "$M/.agents/team/team.json"; bg "$M" due --release "$S=$SH"; c="$RC"
   rm "$M/.agents/team/team.json"
   O="$W/other"; mkrepo "$O" "$T/ctl/e32-o"; bg "$M" due --release "$O=$(hsha "$O")"; d="$RC"
@@ -513,14 +515,16 @@ if group release; then
   (cd "$M" && exec env -u TEAM_GATE_LOCK_DIR HOME="$H32" BATCH_GATE_TODAY=$TODAY bash "$BG" run here > /dev/null 2>&1) & P=$!
   i=0; until [ -e "$CH/ran" ] || [ "$i" -ge 300 ]; do sleep 0.1; i=$((i + 1)); done
   kill -TERM "$P" 2>/dev/null; wait "$P"; g3=$?; lk; l3=$?; rm -f "$CH/sleep"
-  # The predicate of .claude/commands/release.md Step 5, verbatim.
-  q() { jq -s -e 'length == 1 and (.[0] | type == "object") and ((.[0].teams // {}) | type == "object") and ((.[0].teams // {}) | has("batch_gate") | not)' "$1" >/dev/null 2>&1; echo $?; }
+  # The predicate of .claude/commands/release.md Step 5, verbatim (pinned to its text below).
+  PRED='length == 1 and (.[0] | type == "object") and ((.[0].teams // {}) | type == "object") and ((.[0].teams // {}) | has("batch_gate") | not)'
+  q() { jq -s -e "$PRED" "$1" >/dev/null 2>&1; echo $?; }
+  grep -qF -- "jq -s -e '$PRED'" "$SRC/.claude/commands/release.md"; qp=$?
   echo '{"teams":{"trunk":"main"}}' > "$T/q1.json"; echo '{"teams":{"batch_gate":false}}' > "$T/q2.json"
   echo '{"teams":{"batch_gate":null}}' > "$T/q3.json"; printf '{}\n{}\n' > "$T/q4.json"
   qs="$(q "$T/q1.json")$(q "$T/q2.json")$(q "$T/q3.json")$(q "$T/q4.json")"
-  [ "$a:$b:$c" = "3:3:3" ] && [ "$st" = 0 ] && [ "$g1:$g2:$g3:$l1:$l2:$l3" = "0:1:130:0:0:0" ] \
-    && [ "${qs:0:1}" = 0 ] && [ "${qs:1:1}" != 0 ] && [ "${qs:2:1}" != 0 ] && [ "${qs:3:1}" != 0 ]
-  ok "release preflight — no jq, bad profile, team clone, no gate; lock released under the caller's HOME; release.md predicate ($a:$b:$c $g1:$g2:$g3 $l1$l2$l3 $qs)" $?
+  [ "$a:$b:$b2:$c" = "3:3:3:3" ] && [ "$st" = 0 ] && [ "$g1:$g2:$g3:$l1:$l2:$l3" = "0:1:130:0:0:0" ] \
+    && [ "${qs:0:1}" = 0 ] && [ "${qs:1:1}" != 0 ] && [ "${qs:2:1}" != 0 ] && [ "${qs:3:1}" != 0 ] && [ "$qp" = 0 ]
+  ok "release preflight — no jq, bad profile, team clone, no gate; lock released under the caller's HOME; release.md predicate ($a:$b:$b2:$c $g1:$g2:$g3 $l1$l2$l3 $qs $qp)" $?
 
   # 35. settings change voids green
   world e35 starter; green "$M" here; green "$M" starter; SH=$(hsha "$S")

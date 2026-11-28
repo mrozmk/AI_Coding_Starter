@@ -77,19 +77,19 @@ for n in ${TEAM_SUITE_SKIP:-}; do
 done
 want() { [ -z "${TEAM_SUITE_ONLY:-}" ] || [[ " $TEAM_SUITE_ONLY " == *" $1 "* ]]; }
 skipped() { [[ " ${TEAM_SUITE_SKIP:-} " == *" $1 "* ]]; }
+serial() { grep -qx '# team-smoke: serial' "$TESTS/team-smoke-$1.sh" 2>/dev/null; }
 
 # --list-steps mirrors each section's own condition below, so the list equals the report's step lines.
 if [ -n "$LIST" ]; then
   lst() { if want "$1"; then echo "$1"; fi; }
-  smoke_serial() { grep -qx '# team-smoke: serial' "$TESTS/team-smoke-$1.sh" 2>/dev/null; }
   [ "${TEAM_SUITE_SELFTEST:-1}" = 0 ] || lst self-test
   lst purity
   if [ -f "$TESTS/team-smoke.sh" ]; then
     if [ -n "$PARALLEL" ]; then
       lst smoke-parallel
     else
-      for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" != purity ] && ! smoke_serial "$p" && lst "smoke-$p"; done
-      for p in ${ALL[@]+"${ALL[@]}"}; do smoke_serial "$p" && lst "smoke-$p"; done
+      for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" != purity ] && ! serial "$p" && lst "smoke-$p"; done
+      for p in ${ALL[@]+"${ALL[@]}"}; do serial "$p" && lst "smoke-$p"; done
     fi
   fi
   for s in "${STANDALONE[@]}"; do lst "$s"; done
@@ -530,7 +530,6 @@ add 0 purity bash "$TESTS/team-purity.sh"
 # ---- 2. smoke parts, by name, serial parts last -------------------------------------------------
 if [ -f "$TESTS/team-smoke.sh" ]; then
   [ "${#ALL[@]}" -gt 0 ] || { say "FAIL smoke — no parts list in team-smoke.sh"; RC=1; [ -n "$KEEP" ] || finish; }
-  serial() { grep -qx '# team-smoke: serial' "$TESTS/team-smoke-$1.sh" 2>/dev/null; }
   if [ -n "$PARALLEL" ]; then
     step smoke-parallel env TEAM_SMOKE_PARALLEL=1 bash "$TESTS/team-smoke.sh"
   else

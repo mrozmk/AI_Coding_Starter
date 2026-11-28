@@ -70,7 +70,10 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
      `resume_hint`) and PRs `awaiting_merge` (the Supervisor's merge gate; it reaches the Operator
      only when that gate refuses). Every `BATCH_DUE` row of the same call (its output reused)
      whose hold column is `-`: who acts `Supervisor`, next action
-     `bash .claude/lib/batch-gate.sh run <gate>` (state `behind`: `update <repo>'s line`). Name who acts. A pending decision delegated to the Supervisor
+     `bash .claude/lib/batch-gate.sh run <gate>` (state `behind`: `update <repo>'s line`; state
+     `unknown`: `fix teams.batch_gate, the checkout or the record — <line>`, never `run`; when the
+     call printed a `record unreadable` row, that fix is every row's next action, since `run` refuses
+     an unreadable record). Name who acts. A pending decision delegated to the Supervisor
      under the Operator's mandate (`team-lead.sh decision list <team>` shows
      `pending [delegated to the Supervisor]`) belongs here, never under **Waiting for you**.
    - **Delegated answers** — only with a `teams` block: run `bash .claude/lib/team-mandate.sh show`

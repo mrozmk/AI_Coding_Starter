@@ -120,18 +120,15 @@ one_object() {  # <file> — exactly one JSON object (jq empty alone accepts "" 
 }
 
 # ---- profile ---------------------------------------------------------------------------------------
-NO_BLOCK="no teams.batch_gate block"
-if [ ! -e "$PROFILE_FILE" ] && [ ! -L "$PROFILE_FILE" ]; then
-  [ "$RELMODE" = 1 ] && exit 0
-  stop_or_silent "$NO_BLOCK"
-fi
+no_block() { [ "$RELMODE" = 1 ] && exit 0; stop_or_silent "no teams.batch_gate block"; }
+[ -e "$PROFILE_FILE" ] || [ -L "$PROFILE_FILE" ] || no_block
 one_object "$PROFILE_FILE" || stop_or_silent "the profile is not one readable JSON object"
 PROF=$(jq -c . "$PROFILE_FILE" 2>/dev/null) || stop_or_silent "the profile is not readable"
-if ! printf '%s' "$PROF" | jq -e '(.teams | type == "object") and (.teams | has("batch_gate"))' >/dev/null 2>&1; then
-  [ "$RELMODE" = 1 ] && exit 0
-  stop_or_silent "$NO_BLOCK"
-fi
-if [ -e "$TEAMDIR/team.json" ] || [ -e "$TEAMDIR/session.json" ]; then
+printf '%s' "$PROF" | jq -e '(.teams // {}) | type == "object"' >/dev/null 2>&1 \
+  || stop_or_silent "teams is not an object in the profile"
+printf '%s' "$PROF" | jq -e '(.teams | type == "object") and (.teams | has("batch_gate"))' >/dev/null 2>&1 \
+  || no_block
+if in_clone "$TOP"; then
   [ "$CMD" = due ] || { echo "batch-gate: $NOT_CLONE" >&2; exit 2; }
   stop_or_silent "a team clone"
 fi
@@ -190,10 +187,7 @@ def word: type == "string" and test("^[A-Za-z0-9._/-]+$");
 CFG=$(printf '%s' "$PROF" | jq -c "$CFG_JQ" 2>/dev/null) || CFG='{"err":"batch_gate"}'
 CFG_ERR=$(printf '%s' "$CFG" | jq -r '.err // empty')
 if [ -n "$CFG_ERR" ]; then
-  case "$CMD" in
-    run | hold | lift) echo "batch-gate: invalid $CFG_ERR in teams.batch_gate" >&2; exit 2 ;;
-  esac
-  if [ "$RELMODE" = 1 ]; then echo "release blocked: invalid $CFG_ERR in teams.batch_gate"; exit 3; fi
+  [ "$QUIET" = 1 ] || stop_or_silent "invalid $CFG_ERR in teams.batch_gate"
   case "$FORMAT" in
     line) echo "batch gate: invalid $CFG_ERR" ;;
     prime) printf 'BATCH_DUE\t-\tunknown\t-\tbatch gate: invalid %s\n' "$CFG_ERR" ;;
@@ -224,11 +218,11 @@ relpath() {  # <target> <base>, both absolute and physical → target relative t
   printf '%s' "$r"
 }
 SUITE_RE='^bash ([A-Za-z0-9._/-]+)( --keep-going)?$'
-G_NAME=() G_REPO=() G_ONLY=() G_SKIP=() G_CFG=() G_DIR=() G_DISP=() G_ERR=() G_SUITE=() G_KEEP=()
+G_NAME=() G_ONLY=() G_SKIP=() G_CFG=() G_DIR=() G_DISP=() G_ERR=() G_SUITE=() G_KEEP=()
 while IFS="$SEP" read -r n repo cmd only skip cj; do
   [ -n "$n" ] || continue
   i=${#G_NAME[@]}
-  G_NAME[i]="$n" G_REPO[i]="$repo" G_ONLY[i]="$only" G_SKIP[i]="$skip" G_ERR[i]="" G_SUITE[i]="" G_KEEP[i]=""
+  G_NAME[i]="$n" G_ONLY[i]="$only" G_SKIP[i]="$skip" G_ERR[i]="" G_SUITE[i]="" G_KEEP[i]=""
   G_CFG[i]=$(printf '%s' "$cj" | jq -cS . | "${SHA1[@]}" | cut -c1-40)
   d=$(cd "$TOP" && cd -- "$repo" 2>/dev/null && pwd -P) || d=""
   top=""; [ -z "$d" ] || top=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null) || top=""
@@ -252,10 +246,13 @@ NG=${#G_NAME[@]}
 
 # ---- the record, the hold, the day plan, the lock ------------------------------------------------
 REC_FILE="$TEAMDIR/batch-gate.json"
-REC='{}' REC_ERR=0
-if [ -e "$REC_FILE" ] || [ -L "$REC_FILE" ]; then
-  if one_object "$REC_FILE"; then REC=$(jq -c . "$REC_FILE"); else REC_ERR=1; fi
-fi
+read_rec() {  # → REC, REC_ERR
+  REC='{}' REC_ERR=0
+  if [ -e "$REC_FILE" ] || [ -L "$REC_FILE" ]; then
+    if one_object "$REC_FILE"; then REC=$(jq -c . "$REC_FILE"); else REC_ERR=1; fi
+  fi
+}
+read_rec
 
 read_hold() {  # → HOLD none|held|lifted|bad, HOLD_SINCE, HOLD_WORDS — the writer's constraints apply
   local f="$TEAMDIR/batch-hold.md" l st="" si="" by="" wo="" ns=0 nsi=0 nb=0 nw=0 other=0
@@ -459,60 +456,95 @@ tail_of() {  # <gate> <next-point tickets> → E_REC and TAIL, the line's end (h
   TAIL=" · $E_REC"
   [ -z "$E_EST" ] || TAIL="$TAIL · ~$E_EST min"
 }
-eval_gate() {  # <i>
-  local i="$1" g="${G_NAME[$1]}" R="${G_DIR[$1]}" m name rest sha br full behind="" reasons="" next=""
-  local l cur ct files f k pat counted heavy areas a oldest n line reached dn tks shas s unsat="" pts=""
+on_line() {  # <repo> <sha> <head> → FULL; non-zero when the line lacks the commit
+  is_hex "$2" && FULL=$(commit_of "$1" "$2") && git -C "$1" merge-base --is-ancestor "$FULL" "$3" 2>/dev/null
+}
+set_behind() {  # <i> <sha> → the gate's `behind` E_* values
+  E_STATE=behind E_REASONS="behind"
+  E_LINE="batch gate (${G_NAME[$1]}): line behind ${2:0:7} — update ${G_DISP[$1]}'s $LINE first"
+}
+# Weighting: first-parent commits since the green; each with its files against its first parent.
+weigh_commit() {  # <repo> "<sha> <ct>" <file>… → adds to W_COUNTED W_HEAVY W_AREAS W_OLDEST
+  local R="$1" cur="$2" hit=0 isheavy=0 f k x pat=()
+  shift 2
+  for f in "$@"; do
+    for ((k = 0; k < ${#HV_AREA[@]}; k++)); do
+      # shellcheck disable=SC2053
+      if [[ "$f" == ${HV_GLOB[k]} ]]; then
+        isheavy=1
+        case ", $W_AREAS, " in *", ${HV_AREA[k]}, "*) ;; *) W_AREAS="$W_AREAS${W_AREAS:+, }${HV_AREA[k]}" ;; esac
+      fi
+    done
+  done
+  if [ "$isheavy" = 1 ]; then hit=1; else
+    for f in "$@"; do
+      case "$f" in "$TD"/*) hit=1; break ;; esac
+      case "$f" in *.md) pat+=(-e "$f") ;; *) pat+=(-e "${f##*/}") ;; esac
+    done
+    # One grep per commit, every pattern at once: "a test names one of its files".
+    if [ "$hit" = 0 ] && [ "${#pat[@]}" -gt 0 ] \
+      && git -C "$R" grep -q -F "${pat[@]}" "${cur%% *}" -- "$TD" 2>/dev/null; then hit=1; fi
+  fi
+  [ "$hit" = 1 ] || return 0
+  W_COUNTED=$((W_COUNTED + 1)); [ "$isheavy" = 0 ] || W_HEAVY=$((W_HEAVY + 1))
+  x="${cur#* }"; if [ -z "$W_OLDEST" ] || [ "$x" -lt "$W_OLDEST" ]; then W_OLDEST="$x"; fi
+}
+weigh() {  # <repo> <from> <to> → W_COUNTED W_HEAVY W_AREAS W_OLDEST
+  local R="$1" l cur="" files=()
+  W_COUNTED=0 W_HEAVY=0 W_AREAS="" W_OLDEST=""
+  while IFS= read -r l; do
+    case "$l" in
+      $'\001'*) [ -z "$cur" ] || weigh_commit "$R" "$cur" ${files[@]+"${files[@]}"}; cur="${l#?}"; files=() ;;
+      "") ;;
+      *) files+=("$l") ;;
+    esac
+  done < <(git -C "$R" log --no-renames --first-parent --diff-merges=first-parent --name-only \
+             --format='%x01%H %ct' "$2..$3" 2>/dev/null)
+  [ -z "$cur" ] || weigh_commit "$R" "$cur" ${files[@]+"${files[@]}"}
+}
+eval_gate() {  # <i> → the gate's E_* values
+  local i="$1" g="${G_NAME[$1]}" R="${G_DIR[$1]}" m name rest sha br reasons="" next=""
+  local n line reached dn tks shas s unsat pts=""
   E_GATE="$g" E_STATE=ok E_LINE="" E_REASONS="" E_C=0 E_H=0 E_AREAS="" E_SINCE="" E_HEAD="" E_BASE=""
   E_REC="" E_EST=""
   if [ -n "${G_ERR[$i]}" ]; then
     E_STATE=unknown
     case "${G_ERR[$i]}" in invalid*) E_LINE="batch gate: ${G_ERR[$i]}" ;; *) E_LINE="batch gate ($g): ${G_ERR[$i]}" ;; esac
-    emit; return 0
+    return 0
   fi
   E_HEAD=$(commit_of "$R" "refs/heads/$LINE") || E_HEAD=""
   if [ -z "$E_HEAD" ]; then
-    E_STATE=unknown E_LINE="batch gate ($g): ${G_DISP[$i]} has no branch $LINE"; emit; return 0
+    E_STATE=unknown E_LINE="batch gate ($g): ${G_DISP[$i]} has no branch $LINE"; return 0
   fi
   read_lock
-  if [ "$LOCK" = held ] && [ "$LOCK_WHAT" = "batch-gate $g" ]; then E_STATE=running; emit; return 0; fi
+  if [ "$LOCK" = held ] && [ "$LOCK_WHAT" = "batch-gate $g" ]; then E_STATE=running; return 0; fi
   for m in ${MERGED[@]+"${MERGED[@]}"}; do
     name="${m%%=*}" rest="${m#*=}"; sha="${rest%%@*}" br=""
     case "$rest" in *@*) br="${rest#*@}" ;; esac
     [ "$name" = "$g" ] || continue
     [ -z "$br" ] || [ "$br" = "$LINE" ] || continue
-    if ! is_hex "$sha" || ! full=$(commit_of "$R" "$sha") || ! git -C "$R" merge-base --is-ancestor "$full" "$E_HEAD" 2>/dev/null; then
-      behind="${sha:0:7}"; break
-    fi
+    on_line "$R" "$sha" "$E_HEAD" || { set_behind "$i" "$sha"; return 0; }
   done
-  if [ -n "$behind" ]; then
-    E_STATE=behind E_REASONS="behind" E_LINE="batch gate ($g): line behind $behind — update ${G_DISP[$i]}'s $LINE first"
-    emit; return 0
-  fi
   gate_entry "$i"; ent_fields
   [ -z "$LG_SECS" ] || [ "$LG_CFG" != "${G_CFG[$i]}" ] || E_EST=$(mins "${LG_SECS%.*}")
   if [ "$LR_RESULT" = red ] && [ "$LR_CFG" = "${G_CFG[$i]}" ]; then
     E_STATE=red E_REASONS=red
     E_LINE="batch red ($g) at ${LR_COMMIT:0:7}: ${LR_STEPS:-the suite exited non-zero} — fix and rerun"
     hold_stands && E_LINE="$E_LINE — $(hold_text)"
-    emit; return 0
+    return 0
   fi
   # Points of the day plan for this gate: the next unreached one names the teams to wait for.
   while IFS="$SEP" read -r reached dn tks shas; do
     [ -n "$reached" ] || continue
     if [ "$reached" = false ]; then [ -n "$next" ] || next="$tks"; continue; fi
     [ "$dn" = true ] && continue
+    unsat=""
     for s in $shas; do
-      if ! is_hex "$s" || ! full=$(commit_of "$R" "$s") || ! git -C "$R" merge-base --is-ancestor "$full" "$E_HEAD" 2>/dev/null; then
-        behind="${s:0:7}"; break 2
-      fi
-      if [ -z "$LG_COMMIT" ] || ! git -C "$R" merge-base --is-ancestor "$full" "$LG_COMMIT" 2>/dev/null; then unsat=1; fi
+      on_line "$R" "$s" "$E_HEAD" || { set_behind "$i" "$s"; return 0; }
+      if [ -z "$LG_COMMIT" ] || ! git -C "$R" merge-base --is-ancestor "$FULL" "$LG_COMMIT" 2>/dev/null; then unsat=1; fi
     done
-    if [ -n "$unsat" ]; then pts="$pts${pts:+, }after $tks"; unsat=""; fi
+    [ -z "$unsat" ] || pts="$pts${pts:+, }after $tks"
   done < <(printf '%s' "$PLAN" | jq -r --arg g "$g" --arg today "$TODAY" "$POINTS_JQ" 2>/dev/null)
-  if [ -n "$behind" ]; then
-    E_STATE=behind E_REASONS="behind" E_LINE="batch gate ($g): line behind $behind — update ${G_DISP[$i]}'s $LINE first"
-    emit; return 0
-  fi
   # No usable baseline: due without walking the history (the bootstrap hook has a 5 s budget).
   line=""
   if [ -z "$LG_COMMIT" ]; then line="no green baseline"
@@ -525,64 +557,26 @@ eval_gate() {  # <i>
     E_LINE="batch due ($g): $line at ${E_HEAD:0:7}"
     hold_stands && E_STATE=held
     tail_of "$g" "$next"; E_LINE="$E_LINE$TAIL"
-    emit; return 0
+    return 0
   fi
   E_BASE="$LG_COMMIT"
   E_SINCE="${LG_AT:0:10} ${LG_AT:11:5}Z"; [ -n "$LG_AT" ] || E_SINCE="${LG_COMMIT:0:7}"
-  # Weighting: first-parent commits since the green; each with its files against its first parent.
-  counted=0 heavy=0 areas="" oldest=""
-  classify() {
-    local hit=0 isheavy=0 x
-    [ -n "$cur" ] || return 0
-    for f in ${files[@]+"${files[@]}"}; do
-      for ((k = 0; k < ${#HV_AREA[@]}; k++)); do
-        # shellcheck disable=SC2053
-        if [[ "$f" == ${HV_GLOB[k]} ]]; then
-          isheavy=1
-          case ", $areas, " in *", ${HV_AREA[k]}, "*) ;; *) areas="$areas${areas:+, }${HV_AREA[k]}" ;; esac
-        fi
-      done
-    done
-    if [ "$isheavy" = 1 ]; then hit=1; else
-      pat=()
-      for f in ${files[@]+"${files[@]}"}; do
-        case "$f" in "$TD"/*) hit=1; break ;; esac
-        case "$f" in *.md) pat+=(-e "$f") ;; *) pat+=(-e "${f##*/}") ;; esac
-      done
-      # One grep per commit, every pattern at once: "a test names one of its files".
-      if [ "$hit" = 0 ] && [ "${#pat[@]}" -gt 0 ] \
-        && git -C "$R" grep -q -F "${pat[@]}" "${cur%% *}" -- "$TD" 2>/dev/null; then hit=1; fi
-    fi
-    [ "$hit" = 1 ] || return 0
-    counted=$((counted + 1)); [ "$isheavy" = 0 ] || heavy=$((heavy + 1))
-    x="${cur#* }"; if [ -z "$oldest" ] || [ "$x" -lt "$oldest" ]; then oldest="$x"; fi
-  }
-  cur="" files=()
-  while IFS= read -r l; do
-    case "$l" in
-      $'\001'*) classify; cur="${l#?}"; files=() ;;
-      "") ;;
-      *) files+=("$l") ;;
-    esac
-  done < <(git -C "$R" log --no-renames --first-parent --diff-merges=first-parent --name-only \
-             --format='%x01%H %ct' "$LG_COMMIT..$E_HEAD" 2>/dev/null)
-  classify
-  E_C=$counted E_H=$heavy E_AREAS="$areas"
-  [ "$counted" -lt "$TH_M" ] || reasons="$reasons${SEP}merges"
-  [ "$heavy" -lt "$TH_H" ] || reasons="$reasons${SEP}heavy"
-  if [ -n "$oldest" ] && [ "$(days_between "$(ldate "$oldest")" "$TODAY")" -ge "$TH_D" ]; then
+  weigh "$R" "$LG_COMMIT" "$E_HEAD"
+  E_C=$W_COUNTED E_H=$W_HEAVY E_AREAS="$W_AREAS"
+  [ "$W_COUNTED" -lt "$TH_M" ] || reasons="$reasons${SEP}merges"
+  [ "$W_HEAVY" -lt "$TH_H" ] || reasons="$reasons${SEP}heavy"
+  if [ -n "$W_OLDEST" ] && [ "$(days_between "$(ldate "$W_OLDEST")" "$TODAY")" -ge "$TH_D" ]; then
     reasons="$reasons${SEP}days"
   fi
   [ -z "$pts" ] || reasons="$reasons${SEP}point"
-  if [ -z "$reasons" ]; then emit; return 0; fi
+  [ -n "$reasons" ] || return 0
   E_STATE=due E_REASONS="${reasons#"$SEP"}"
-  n="$counted merges"; [ "$counted" != 1 ] || n="1 merge"
+  n="$W_COUNTED merges"; [ "$W_COUNTED" != 1 ] || n="1 merge"
   E_LINE="batch due ($g): $n since $E_SINCE at ${E_HEAD:0:7}"
-  [ "$heavy" = 0 ] || E_LINE="$E_LINE ($heavy heavy: $areas)"
+  [ "$W_HEAVY" = 0 ] || E_LINE="$E_LINE ($W_HEAVY heavy: $W_AREAS)"
   [ -z "$pts" ] || E_LINE="$E_LINE · point $pts reached"
   hold_stands && E_STATE=held
   tail_of "$g" "$next"; E_LINE="$E_LINE$TAIL"
-  emit
 }
 
 # ---- due --release ---------------------------------------------------------------------------------
@@ -593,7 +587,8 @@ release_check() {
     [ -n "$ckt" ] && [ "${G_DIR[i]}" = "$ckt" ] && { match=$i; nm=$((nm + 1)); }
   done
   if [ "$nm" != 1 ]; then echo "release blocked ($ck): no gate for this checkout"; exit 3; fi
-  read_lock
+  # The lock first, then a fresh record and hold: a run that ended before the lock read is in them.
+  read_lock; read_rec; read_hold
   for ((i = 0; i < NG; i++)); do
     g="${G_NAME[i]}" reason="" target=""
     if [ -n "${G_ERR[i]}" ]; then reason="${G_ERR[i]}"
@@ -634,7 +629,7 @@ if [ "$CMD" = due ]; then
     OUTL="batch gate: record unreadable"$'\n'
     ROWS="$(printf 'BATCH_DUE\t-\tunknown\t-\tbatch gate: record unreadable')"$'\n'
   fi
-  for ((gi = 0; gi < NG; gi++)); do eval_gate "$gi"; done
+  for ((gi = 0; gi < NG; gi++)); do eval_gate "$gi"; emit; done
   case "$FORMAT" in
     line) printf '%s' "$OUTL" ;;
     prime) printf '%s' "$ROWS" ;;
