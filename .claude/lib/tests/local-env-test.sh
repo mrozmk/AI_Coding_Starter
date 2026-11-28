@@ -71,8 +71,9 @@ fi
 if has trap; then
   # The background sleep ignores TERM: when the group TERM also killed it, bash 3.2 sometimes
   # returned from `wait` on the child's death and dropped its own trap (about 1 run in 6).
+  # The child writes the ready marker only after its own trap, so no TERM can land before it.
   trap 'echo got-term > "$TERM_FILE"; kill -KILL $! 2>/dev/null; exit 143' TERM
-  ( trap '' TERM; exec sleep 30 ) & : > "$READY_FILE"; wait
+  ( trap '' TERM; : > "$READY_FILE"; exec sleep 30 ) & wait
 fi
 for w in $mode; do case "$w" in rc=*) exit "${w#rc=}" ;; esac; done
 exit 0
@@ -201,6 +202,7 @@ echo trap > "$T/mode"; rm -f "$T/ready" "$T/term"
   READY_FILE="$T/ready" RESULTS_FILE="$T/results" bash .claude/lib/local-env/with-local-env.sh it \
   > "$T/sig.out" 2>&1) & pid=$!
 for _ in $(seq 1 100); do [ -e "$T/ready" ] && break; sleep 0.1; done
+[ -e "$T/ready" ] || { kill -TERM "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fail "TERM: the stub never got ready"; }
 kill -TERM "$pid"; set +e; wait "$pid"; RC=$?; set -e; N=$((N + 1))
 cat "$T/sig.out" >> "$T/all"
 [ "$RC" = 130 ] || fail "TERM: rc $RC (want 130)"

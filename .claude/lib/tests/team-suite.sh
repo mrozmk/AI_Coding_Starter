@@ -17,11 +17,13 @@
 # the serial tail one at a time — smoke parts marked `# team-smoke: serial` and standalone suites
 # marked `# team-suite: serial` (an exact line, with `# serial because: <reason>` on the next line).
 # The log keeps the serial run's order whatever finishes first; without --keep-going a failure
-# starts nothing more, the running steps drain and a step that never started has no line. INT/TERM
-# ends every running step's process group, then the run reports FAIL. Serial stays the default until
-# the pool has run green several times. Known limit: a process that moved itself into its own group
-# (pr_timebox's timed command, team-lib.sh) outlives an interrupt until its own sleep ends; it never
-# writes to --out. Exclusive with --parallel.
+# starts nothing more, the running steps drain and a step that never started has no line. INT/TERM/HUP
+# ends every running step's process group, reports every started step in order, then the run reports
+# FAIL. A step whose wrapper wrote no status (`no result`) has its process group drained before its
+# slot is reused; a group that survives KILL stops the run, even with --keep-going. A relative TMPDIR
+# is refused. Serial stays the default until the pool has run green several times. Known limit: a
+# process that moved itself into its own group (pr_timebox's timed command, team-lib.sh) outlives an
+# interrupt until its own sleep ends; it never writes to --out. Exclusive with --parallel.
 #
 # Refuses to start (exit 2, before any test) unless HOME is not the account's real home and
 # TMPDIR is set and not the system default: a test that reaches the real ~/.agent-mail or
@@ -120,6 +122,11 @@ SYS_TMP=""; [ "$(uname)" != Darwin ] || SYS_TMP="$(getconf DARWIN_USER_TEMP_DIR 
 if [ -z "${TMPDIR:-}" ] || { [ -n "$SYS_TMP" ] && [ "$(canon "$TMPDIR")" = "$(canon "$SYS_TMP")" ]; }; then
   echo "team-suite: refused: run with a scratch TMPDIR (unset or the system default)" >&2; exit 2
 fi
+# Before OUT is derived: the steps cd "$ROOT", so a relative TMPDIR would point somewhere else.
+case "$TMPDIR" in
+  /*) ;;
+  *) echo "team-suite: refused: TMPDIR must be an absolute path (got $TMPDIR)" >&2; exit 2 ;;
+esac
 
 # No step may reach the calling Claude session: a fixture that inherits its messaging socket writes it
 # into a fixture registration, and a fixture doorbell then rings that real session. A case that needs
@@ -245,23 +252,40 @@ jobs_launch() {
   mkdir -p "$JR/$name/home" "$JR/$name/tmp"
   if [ -n "$CASES_ON" ]; then cases="$OUT/$name.cases"; printf '%s\tstart\n' "$(case_now)" > "$cases"; fi
   JT0[i]=$(date +%s)
-  { ( cd "$ROOT" && export HOME="$JR/$name/home" TMPDIR="$JR/$name/tmp/" TEAM_CASE_TIMES="$cases" || exit 1
+  # Job control only around the fork: the job leads its own group (for the group kill) while the
+  # poll's sleep stays in the suite's group, the terminal's foreground one, so a Ctrl-C reaches bash.
+  set -m; { ( cd "$ROOT" && export HOME="$JR/$name/home" TMPDIR="$JR/$name/tmp/" TEAM_CASE_TIMES="$cases" || exit 1
       eval "${QC[$i]}"; rc=$?
       [ -z "$cases" ] || printf '%s\tend\n' "$(case_now)" >> "$cases"
       exit "$rc" ) > "$OUT/$name.out" 2>&1
-    echo $? > "$JR/$name.rc"; } &
-  JPID[i]=$!; JST[i]=run; RUNNING=$((RUNNING + 1))
+    echo $? > "$JR/$name.rc"; } & JPID[i]=$!; set +m
+  JST[i]=run; RUNNING=$((RUNNING + 1))
+}
+
+# jobs_drain <i> — end job i's process group: TERM, up to 5 s, then KILL, up to 5 s more. Its members
+# are no longer our children, so `wait` cannot tell; a poll does. 0 = the group is gone, 1 = alive.
+jobs_drain() {
+  local g="${JPID[$1]}" sig n
+  for sig in TERM KILL; do
+    kill -"$sig" -- "-$g" 2>/dev/null || return 0
+    for n in $(seq 1 50); do kill -0 -- "-$g" 2>/dev/null || return 0; sleep 0.1; done
+  done
+  return 1
 }
 
 # jobs_reap — classify every finished job; finished = its pid is gone (never a file that a killed
-# wrapper will not write: no .rc → `noresult`). The suite's own rule: rc ≠ 0 or 0 checks fails, and
-# without --keep-going a failure stops scheduling.
+# wrapper will not write: no .rc → `noresult`, whose group is drained before the slot is reused).
+# The suite's own rule: rc ≠ 0 or 0 checks fails, and without --keep-going a failure stops
+# scheduling; a group that survives KILL stops it even with --keep-going.
 jobs_reap() {
   local i rc
   for ((i = 0; i < ${#QN[@]}; i++)); do
     [ "${JST[i]:-}" = run ] && ! kill -0 "${JPID[i]}" 2>/dev/null || continue
     wait "${JPID[i]}" 2>/dev/null
     rc="$(cat "$JR/${QN[i]}.rc" 2>/dev/null)"; [ -n "$rc" ] || rc=noresult
+    if [ "$rc" = noresult ] && ! jobs_drain "$i"; then
+      say "FAIL ${QN[i]} — process group ${JPID[i]} still alive after KILL"; RC=1; STOP=1
+    fi
     JRCV[i]="$rc"; JSECS[i]=$(( $(date +%s) - JT0[i] )); JST[i]=done; RUNNING=$((RUNNING - 1))
     if [ "$rc" != 0 ] || [ "$(count "$OUT/${QN[i]}.out")" = 0 ]; then [ -n "$KEEP" ] || STOP=1; fi
   done
@@ -280,43 +304,49 @@ jobs_flush() {
   done
 }
 
-jobs_interrupt() {  # INT/TERM: stop scheduling, end every running job's process group, report FAIL
+# jobs_interrupt — called from run_jobs after a signal, never from the trap: end every running job's
+# process group, report every started job in the serial order, then FAIL.
+jobs_interrupt() {
   local i
-  trap - INT TERM
   for ((i = 0; i < ${#QN[@]}; i++)); do [ "${JST[i]:-}" != run ] || kill -TERM -- "-${JPID[i]}" 2>/dev/null; done
   for ((i = 0; i < ${#QN[@]}; i++)); do [ "${JST[i]:-}" != run ] || wait "${JPID[i]}" 2>/dev/null; done
-  set +m
-  say "interrupted"; RC=1; finish
+  for ((i = 0; i < ${#QN[@]}; i++)); do
+    [ "${JST[i]:-}" != run ] || jobs_drain "$i" || say "FAIL ${QN[i]} — process group ${JPID[i]} still alive after KILL"
+  done
+  jobs_reap; jobs_flush all
+  say "interrupted"; RC=1; trap - INT TERM HUP; finish
 }
 
 run_jobs() {
   local i
   [ "${#QN[@]}" -gt 0 ] || return 0
   JR="$(mktemp -d "${TMPDIR%/}/team-suite-jobs.XXXXXX")" || { say "FAIL jobs — no job root"; RC=1; finish; }
-  JST=() JPID=() JRCV=() JSECS=() JT0=(); RUNNING=0; STOP=""; HEAD=0
+  JST=() JPID=() JRCV=() JSECS=() JT0=(); RUNNING=0; STOP=""; JINTR=""; HEAD=0
   for ((i = 0; i < ${#QN[@]}; i++)); do
     if [ -n "${QR[i]}" ]; then JST[i]=skip; elif [ "${QS[i]}" = 1 ]; then JST[i]=tail; else JST[i]=queued; fi
   done
-  trap jobs_interrupt INT TERM
-  set -m   # every job leads its own process group, so an interrupt can end all of it
+  # A signal only sets the flag: the loops leave and jobs_interrupt cleans up from here, so it never
+  # lands between a fork and its bookkeeping or inside jobs_flush; a second Ctrl-C changes nothing.
+  trap 'JINTR=1' INT TERM HUP
   for ((i = 0; i < ${#QN[@]}; i++)); do
+    [ -z "$JINTR" ] || break
     [ "${JST[i]}" = queued ] || continue
     # Classify before every launch: a failure the parent could already see starts nothing more.
     jobs_reap
-    while [ -z "$STOP" ] && [ "$RUNNING" -ge "$JOBS" ]; do sleep 0.2; jobs_reap; jobs_flush; done
-    [ -z "$STOP" ] || break
+    while [ -z "$STOP$JINTR" ] && [ "$RUNNING" -ge "$JOBS" ]; do sleep 0.2; jobs_reap; jobs_flush; done
+    [ -z "$STOP$JINTR" ] || break
     jobs_launch "$i"; jobs_flush
   done
-  while [ "$RUNNING" -gt 0 ]; do sleep 0.2; jobs_reap; jobs_flush; done
+  while [ -z "$JINTR" ] && [ "$RUNNING" -gt 0 ]; do sleep 0.2; jobs_reap; jobs_flush; done
   for ((i = 0; i < ${#QN[@]}; i++)); do   # the serial tail: alone, one at a time
-    [ -z "$STOP" ] || break
+    [ -z "$STOP$JINTR" ] || break
     [ "${JST[i]}" = tail ] || continue
     jobs_launch "$i"
-    while [ "$RUNNING" -gt 0 ]; do sleep 0.2; jobs_reap; done
+    while [ -z "$JINTR" ] && [ "$RUNNING" -gt 0 ]; do sleep 0.2; jobs_reap; done
     jobs_flush
   done
-  set +m
-  trap - INT TERM
+  [ -z "$JINTR" ] || jobs_interrupt
+  trap - INT TERM HUP
   jobs_flush all   # after a stop: what ran, in order; never a step that did not start
 }
 
@@ -386,14 +416,19 @@ self_test() {
   [ "$rc" = 0 ] && grep -q '^  slowest: .*(b) two' "$t/r7" && grep -q '^  slowest: .*(b) two' "$t"/o7/suite-*.log \
     && ! grep -q slowest "$t/o7/purity.out" \
     || { echo "FAIL: case times did not report the last case"; rm -rf "$t"; return 1; }
+  (cd "$t" && TMPDIR=rel/ TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 \
+    TEAM_SUITE_CASE_TIMES= TEAM_SUITE_JOBS= bash "$HERE/team-suite.sh" > "$t/r8" 2>&1); rc=$?
+  [ "$rc" = 2 ] && grep -q 'refused: TMPDIR must be an absolute path' "$t/r8" && [ ! -e "$t/rel/team-suite" ] \
+    || { echo "FAIL: a relative TMPDIR was not refused before any output (rc $rc)"; rm -rf "$t"; return 1; }
   self_test_list "$t" || { rm -rf "$t"; return 1; }
   self_test_jobs "$t" || { rm -rf "$t"; return 1; }
   rm -rf "$t"
   echo "self-test: failing step OK"; echo "self-test: 0-check step OK"; echo "self-test: real HOME OK"
   echo "self-test: skip OK"; echo "self-test: unknown skip OK"; echo "self-test: session env OK"
-  echo "self-test: case times OK"; echo "self-test: list-steps OK"
+  echo "self-test: case times OK"; echo "self-test: relative TMPDIR OK"; echo "self-test: list-steps OK"
   echo "self-test: jobs overlap OK"; echo "self-test: jobs fail-fast OK"; echo "self-test: jobs tail order OK"
-  echo "self-test: jobs status with timing OK"; echo "self-test: jobs interrupt OK"
+  echo "self-test: jobs status with timing OK"; echo "self-test: jobs interrupt OK"; echo "self-test: jobs hangup OK"
+  echo "self-test: jobs ctrl-c OK"; echo "self-test: jobs noresult drain OK"
   echo "self-test: jobs skip order OK"; echo "self-test: jobs zero checks OK"
   echo "self-test: jobs isolation OK"; echo "self-test: jobs refusals OK"
 }
@@ -477,17 +512,53 @@ self_test_jobs() {
   jrun b3 TEAM_SUITE_CASE_TIMES=1; rc=$?
   [ "$rc" = 1 ] && grep -q '^FAIL team-setup-smoke rc 7' "$t/r-b3" && grep -q "$(printf '\tend$')" "$t/o-b3/team-setup-smoke.cases" \
     || { echo "FAIL: jobs status with timing (rc $rc, $(lines "$t/r-b3"))"; return 1; }
-  # (b4) an interrupt ends the running steps' process groups and never reports OK.
-  jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'wait'; for n in 2 3 4; do jf "$n" 'w "[ -e \"\$H/never\" ]"'; done
+  # (b4) TERM and HUP: the running head's group is ended and it is reported FAIL with incomplete case
+  # times, the step that finished behind it keeps its ok line, the serial tail never starts.
+  upto() { local n; for n in $(seq 1 100); do eval "$1" && return 0; sleep 0.1; done; return 1; }
+  rc2() { local f; for f in "$1"/team-suite-jobs.*/team-profile-smoke.rc; do [ -s "$f" ] && return 0; done; return 1; }
+  gone() { ! kill -0 "$(cat "$H/child.pid" 2>/dev/null)" 2>/dev/null; }
+  reap_child() { kill -KILL "$(cat "$H/child.pid" 2>/dev/null)" 2>/dev/null; }
+  intr() { grep -E '^(ok |FAIL |skip |interrupted$|team-suite: |  slowest: incomplete$)' "$1" \
+    | awk '{ printf "%s%s%s", (NR > 1 ? "," : ""), $1, ($2 == "" ? "" : " " $2) } END { print "" }'; }
+  local exp4="FAIL team-setup-smoke,slowest: incomplete,ok team-profile-smoke,interrupted,team-suite: FAIL" sig
+  jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'wait'; jf 2 'echo "PASS 2"' 'touch "$H/2.done"'
+  jf 3 'echo "PASS 3"'; jser 3; jf 4 'echo "PASS 4"'; jser 4
+  for sig in TERM HUP; do
+    rm -rf "$H" "$t/j-$sig"; mkdir -p "$H" "$t/j-$sig"
+    env TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY="$J4" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES=1 \
+      TEAM_SUITE_JOBS=2 TMPDIR="$t/j-$sig/" bash "$HERE/team-suite.sh" --out "$t/o-b4-$sig" > "$t/r-b4-$sig" 2>&1 & bp=$!
+    upto '[ -s "$H/child.pid" ] && rc2 "$t/j-$sig"'
+    kill -"$sig" "$bp" 2>/dev/null; wait "$bp"; rc=$?
+    v=""; ! upto gone || v=gone
+    order="$(intr "$(ls "$t/o-b4-$sig"/suite-*.log 2>/dev/null | head -n 1)")"
+    [ "$rc" != 0 ] && [ -s "$H/child.pid" ] && [ "$v" = gone ] && [ "$order" = "$exp4" ] \
+      && [ ! -e "$H/3.started" ] && [ ! -e "$H/4.started" ] \
+      || { echo "FAIL: jobs interrupt by $sig (rc $rc, child ${v:-alive}, $order)"; reap_child; return 1; }
+  done
+  # (b6) Ctrl-C in a real terminal: the pty sends SIGINT to the suite's foreground group. The pty
+  # stays open until the log has its result line, so a pass cannot come from the later hang-up.
+  rm -rf "$H" "$t/j-b6"; mkdir -p "$H" "$t/j-b6"
+  { upto '[ -s "$H/child.pid" ] && rc2 "$t/j-b6"'; printf '\003'
+    upto 'grep -q "^team-suite: " "$t"/o-b6/suite-*.log 2>/dev/null'; } \
+    | env TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY="$J4" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES= \
+      TEAM_SUITE_JOBS=2 TMPDIR="$t/j-b6/" script -q /dev/null bash "$HERE/team-suite.sh" --out "$t/o-b6" > "$t/r-b6" 2>&1
+  v=""; ! upto gone || v=gone
+  f="$(ls "$t"/o-b6/suite-*.log 2>/dev/null | head -n 1)"
+  [ -s "$H/child.pid" ] && [ "$v" = gone ] && [ -n "$f" ] && grep -qx interrupted "$f" && grep -qx 'team-suite: FAIL' "$f" \
+    || { echo "FAIL: jobs ctrl-c (child ${v:-alive}, $(tail -n 3 "${f:-/dev/null}" | tr '\n' ' '))"; reap_child; return 1; }
+  # (b7) a job whose wrapper wrote no status (its .rc path is a directory) leaves a child behind; its
+  # group is drained before the slot is reused, so the step that takes the slot sees no survivor.
+  jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'mkdir "${TMPDIR%/}/../../team-setup-smoke.rc"' 'exit 0'
+  jf 2 'w "[ -e \"\$H/3.started\" ]"' 'echo "PASS 2"'
+  jf 3 'if kill -0 "$(cat "$H/child.pid")" 2>/dev/null; then touch "$H/3.overlap"; exit 1; fi' 'echo "PASS 3"'
+  jf 4 'echo "PASS 4"'
   rm -rf "$H"; mkdir -p "$H"
-  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY="$J4" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES= \
-    TEAM_SUITE_JOBS=2 bash "$HERE/team-suite.sh" --out "$t/o-b4" > "$t/r-b4" 2>&1 & bp=$!
-  for n in $(seq 1 100); do [ -s "$H/child.pid" ] && break; sleep 0.1; done
-  kill -TERM "$bp" 2>/dev/null; wait "$bp"; rc=$?
-  v=""; for n in $(seq 1 20); do kill -0 "$(cat "$H/child.pid" 2>/dev/null)" 2>/dev/null || { v=gone; break; }; sleep 0.1; done
-  [ "$rc" != 0 ] && [ -s "$H/child.pid" ] && [ "$v" = gone ] && ! grep -q '^team-suite: OK' "$t"/o-b4/suite-*.log \
-    && grep -q '^interrupted' "$t/r-b4" \
-    || { echo "FAIL: jobs interrupt (rc $rc, child ${v:-alive}, $(tail -n 3 "$t/r-b4" | tr '\n' ' '))"; return 1; }
+  env TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY="$J4" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES= \
+    TEAM_SUITE_JOBS=2 bash "$HERE/team-suite.sh" --keep-going --out "$t/o-b7" > "$t/r-b7" 2>&1; rc=$?
+  v=""; ! upto gone || v=gone
+  [ "$rc" = 1 ] && grep -q '^FAIL team-setup-smoke rc 255 (no result)' "$t/r-b7" && grep -q '^ok team-tracker-smoke' "$t/r-b7" \
+    && [ -s "$H/child.pid" ] && [ ! -e "$H/3.overlap" ] && [ "$v" = gone ] \
+    || { echo "FAIL: jobs noresult drain (rc $rc, child ${v:-alive}, $(lines "$t/r-b7"), $(ls "$H" | tr '\n' ' '))"; reap_child; return 1; }
   # (b5) a skipped step keeps its place in the log.
   jf 1 'sleep 0.5' 'echo "PASS 1"'; for n in 2 3 4; do jf "$n" "echo \"PASS $n\""; done
   jrun b5 TEAM_SUITE_SKIP=team-profile-smoke; rc=$?
