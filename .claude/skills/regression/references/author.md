@@ -13,6 +13,7 @@ times with zero retries on every device project of the scenario and a critic fou
   is reported as is: `refused:` (not READY, already has a spec, policy, no device, target exists),
   `not promoted:`, `skipped:`, `ambiguous:`, `no scenario:`.
 - Exit 2 with `environments:` → ask which environment (test first); production is confirmed later.
+- A `stale` spec is re-authored with `author --refresh <ID>` — `heal.md` → Refresh.
 
 ## 2. Draft
 

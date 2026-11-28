@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Offline unit test of the opt-in regression kit (.claude/lib/regression/: catalog validator and
 # status matrix, computed automation state, setup.mjs catalog|baseline|check|env, config, templates,
-# the environment policy and selection, the request guard against a local 127.0.0.1 stub, the run).
+# the environment policy and selection, the request guard against a local 127.0.0.1 stub, the run,
+# the author and heal lanes (author.mjs, heal.mjs, run.mjs probe/verify), weaken-check).
 # No browser, no external network, fixture and temp roots only. Runs every regression*.test.mjs
 # (node:test).
 #

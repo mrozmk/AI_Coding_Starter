@@ -375,6 +375,18 @@ test('automationState is a pure function of the files', () => {
   assert.ok(!/Automation:/.test(catalogText), 'the state is never stored in the catalog');
 });
 
+test('automationState reads ctx.specText instead of the file', () => {
+  const root = copyFixture('valid');
+  const settings = catalogSettings(loadConfig(root).config);
+  const cart = parseCatalog(root, catalogFiles(root, settings)).find((b) => b.id === 'CART-001');
+  const specFile = path.join(root, cart.fields.Spec.value.split(' › ')[0]);
+  const text = fs.readFileSync(specFile, 'utf8');
+  assert.equal(automationState(root, cart, { specText: text.replace(/\/\/ regression: CART-001 · source: .*/, '// nothing') }).state, 'stale', 'the given bytes decide, not the file');
+  fs.rmSync(specFile);
+  assert.equal(automationState(root, cart, {}).state, 'missing');
+  assert.equal(automationState(root, cart, { specText: text }).state, 'verified', 'no existence check for given bytes');
+});
+
 // ---------------------------------------------------------------------------------------------
 // setup.mjs — catalog, baseline, check, env
 // ---------------------------------------------------------------------------------------------

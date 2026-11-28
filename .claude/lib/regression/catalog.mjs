@@ -313,14 +313,19 @@ export function currentFingerprint(root, id, ctx = {}) {
   return res;
 }
 
-/** `{state, reason}` — computed from the spec header and the current criteria, never stored. */
+/**
+ * `{state, reason}` — computed from the spec header and the current criteria, never stored.
+ * `ctx.specText` (a string) stands in for the spec file's bytes: heal judges a refresh before it renames.
+ */
 export function automationState(root, scenario, ctx = {}) {
   const spec = parseSpec(scenario.fields.Spec?.value ?? '—', scenario.id);
   if (!spec || spec.error) return { state: 'missing', reason: 'Spec: —' };
-  const file = path.resolve(root, spec.path);
-  if (!fs.existsSync(file)) return { state: 'missing', reason: `spec file ${spec.path} absent` };
-  let text;
-  try { text = fs.readFileSync(file, 'utf8'); } catch (err) { return { state: 'stale', reason: `spec file ${spec.path} unreadable (${err.code ?? err.message})` }; }
+  let text = typeof ctx.specText === 'string' ? ctx.specText : null;
+  if (text === null) {
+    const file = path.resolve(root, spec.path);
+    if (!fs.existsSync(file)) return { state: 'missing', reason: `spec file ${spec.path} absent` };
+    try { text = fs.readFileSync(file, 'utf8'); } catch (err) { return { state: 'stale', reason: `spec file ${spec.path} unreadable (${err.code ?? err.message})` }; }
+  }
   const header = text.replace(/\r/g, '').split('\n').map((l) => HEADER.exec(l)).find((m) => m && m[1] === scenario.id);
   if (!header) return { state: 'stale', reason: `no // regression: header for ${scenario.id} in ${spec.path}` };
   const cited = sourceTokens(scenario.fields.Source?.value ?? '');
@@ -342,6 +347,35 @@ export function automationState(root, scenario, ctx = {}) {
     }
   }
   return { state: 'verified', reason: notes.join('; ') };
+}
+
+const CRITERION_GONE = /withdrawn|no longer found|not found/;
+const HEADER_LAG = /^no \/\/ regression: header|^header source \(|header fingerprint \[.*\] differs from the (current criterion|catalog's)/;
+
+/**
+ * The heal lane's stale rule for block `b` with automation `state`, or null: `{rule, reason}` with
+ * `rule` `catalog-outdated` (a cited criterion withdrawn, gone or changed since the catalog cited it —
+ * a changed `Expected` a human decides), `refresh needed` (the spec's header lags a current catalog)
+ * or `inconclusive`. The catalog is judged first, whatever `state` says. `fingerprint(id)` →
+ * `{fp}` | `{error}` (currentFingerprint at call sites, a stub in tests).
+ */
+export function staleRule(b, state, { fingerprint: fp }) {
+  for (const t of sourceTokens(b.fields.Source?.value ?? '')) {
+    if (t.kind !== 'criterion') continue;
+    const cur = fp(t.id);
+    if (cur.error) return { rule: CRITERION_GONE.test(cur.error) ? 'catalog-outdated' : 'inconclusive', reason: cur.error };
+    if (cur.fp !== t.fp) return { rule: 'catalog-outdated', reason: `${t.id}: the catalog cites [${t.fp}], the current criterion is [${cur.fp}]` };
+  }
+  if (state.state === 'verified') return null;
+  if (state.state === 'stale' && HEADER_LAG.test(state.reason)) return { rule: 'refresh needed', reason: state.reason };
+  return { rule: 'inconclusive', reason: state.reason };
+}
+
+/** `{state, rule}` — the automation state and the stale rule of `b` now (rule null = verified). */
+export function staleNow(root, b) {
+  const ctx = {};
+  const state = automationState(root, b, ctx);
+  return { state, rule: staleRule(b, state, { fingerprint: (cid) => currentFingerprint(root, cid, ctx) }) };
 }
 
 /** One scenario's JSON row (the block's fields plus its computed automation state). */

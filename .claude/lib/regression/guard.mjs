@@ -472,6 +472,8 @@ async function walk(g, first, send) {
       return { failed: err.message };
     }
     const status = resp.status();
+    // Evidence for heal, never a stop: `guard.stop.statuses` alone decides that, just below.
+    if (status >= 500) ledger.record({ kind: 'server-error', url: reduceUrl(cur.url), status, test });
     const rh = lowerKeys(resp.headers());
     const body = needsBody(policy) ? bodyText(await resp.body()) : '';
     const c = classifyResponse(policy, { url: cur.url, status, headers: rh, body });

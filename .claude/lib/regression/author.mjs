@@ -27,11 +27,11 @@ const PASS_NUMBERS = Array.from({ length: VERIFY_PASSES }, (_, i) => i + 1);
 const RECORD_MARKER = /^qa-verify:v1 record /;
 const ROW = /^- (\S+) \[([0-9a-f]{6})\] — ([^—]+?) — /;
 
-class UsageError extends Error {}
-class Refusal extends Error {}
-const refuse = (m) => { throw new Refusal(m); };
+export class UsageError extends Error {}
+export class Refusal extends Error {}
+export const refuse = (m) => { throw new Refusal(m); };
 
-function loadAdopted(root) {
+export function loadAdopted(root) {
   const loaded = loadConfig(root);
   if (!loaded.adopted) return null;
   if (loaded.errors.length) throw new UsageError(loaded.errors.map((e) => `.claude/regression.json: ${e}`).join('\n'));
@@ -283,13 +283,13 @@ function liveDraft(root, spec) {
 }
 
 /** Run `fn` under the checkout lock; a held lock refuses. */
-function underCheckoutLock(root, owner, fn) {
+export function underCheckoutLock(root, owner, fn) {
   const r = withCheckoutLock(root, owner, fn);
   if (r.error) refuse(`checkout lock held — ${r.error}`);
   return r.value;
 }
 
-const readJson = (file, what) => {
+export const readJson = (file, what) => {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return refuse(`${what} unreadable — ${file}`); }
 };
 
@@ -307,30 +307,44 @@ function withSpec(text, specLine, value) {
   return lines.join('\n');
 }
 
+/**
+ * The verify record of `spec` and its own evidence (claim and heal apply share it): schema 1, the
+ * entry for `id` naming `spec`, qualified with passes 1–3, three passes with distinct nonces, the
+ * scenario's projects, a single passed attempt per pass and project; with `heal` (a heal.json pin)
+ * also the attempt's id and its pinned target. `{entry, block, files, settings}`.
+ */
+export function checkVerified(root, cfg, { id, spec, verifyDir, heal = null }) {
+  const rec = readJson(path.join(path.resolve(root, verifyDir), 'verify.json'), 'verify.json');
+  if (rec.schema !== 1) refuse(`${id} — verify.json is not schema 1`);
+  const entry = (rec.scenarios ?? []).find((s) => s.id === id);
+  if (!entry) refuse(`${id} — not in verify.json`);
+  if (entry.spec !== spec) refuse(`${id} — verify.json verified ${entry.spec}, not ${spec}`);
+  if (entry.qualified !== true || JSON.stringify(entry.passes_ok) !== JSON.stringify(PASS_NUMBERS)) refuse(`${id} — not three green passes (passes_ok ${JSON.stringify(entry.passes_ok ?? [])})`);
+  const passes = rec.passes ?? [];
+  if (passes.length !== VERIFY_PASSES || new Set(passes.map((p) => p.nonce)).size !== VERIFY_PASSES) refuse(`${id} — verify.json does not hold three passes with distinct nonces`);
+  if (heal) {
+    if (rec.heal_id !== heal.id) refuse(`${id} — verify.json belongs to ${rec.heal_id ? `heal attempt ${rec.heal_id}` : 'no heal attempt'}, not ${heal.id}`);
+    for (const k of ['env', 'kind', 'base_url']) if (rec[k] !== heal[k]) refuse(`${id} — verify.json ran on ${rec.env} (${rec.kind} ${rec.base_url}), not the pinned ${heal.env} (${heal.kind} ${heal.base_url})`);
+  }
+  const { settings, files, blocks } = loadCatalog(root, cfg);
+  const b = blocks.find((x) => x.id === id);
+  if (!b) refuse(`${id} — not in the catalog`);
+  const projects = viewportProjects(cfg, b.fields.Viewport?.value).map((d) => d.project);
+  if (JSON.stringify([...(entry.projects ?? [])].sort()) !== JSON.stringify([...projects].sort())) refuse(`${id} — verified projects ${JSON.stringify(entry.projects)} are not the scenario's ${JSON.stringify(projects)}`);
+  for (const p of passes) {
+    for (const project of projects) {
+      if (!(p.cases ?? []).some((c) => c.id === id && c.project === project && c.result === 'passed' && c.attempts === 1)) refuse(`${id} — pass ${p.n} has no single passed attempt on ${project}`);
+    }
+  }
+  return { entry, block: b, files, settings };
+}
+
 function cmdClaim(root, args) {
   const cfg = loadAdopted(root);
   if (!cfg) throw new UsageError('regression not adopted');
   return underCheckoutLock(root, `claim-${args.id}`, () => {
     const id = args.id;
-    // The verify record and its own evidence.
-    const rec = readJson(path.join(path.resolve(root, args.verify), 'verify.json'), 'verify.json');
-    if (rec.schema !== 1) refuse(`${id} — verify.json is not schema 1`);
-    const entry = (rec.scenarios ?? []).find((s) => s.id === id);
-    if (!entry) refuse(`${id} — not in verify.json`);
-    if (entry.spec !== args.spec) refuse(`${id} — verify.json verified ${entry.spec}, not ${args.spec}`);
-    if (entry.qualified !== true || JSON.stringify(entry.passes_ok) !== JSON.stringify(PASS_NUMBERS)) refuse(`${id} — not three green passes (passes_ok ${JSON.stringify(entry.passes_ok ?? [])})`);
-    const passes = rec.passes ?? [];
-    if (passes.length !== VERIFY_PASSES || new Set(passes.map((p) => p.nonce)).size !== VERIFY_PASSES) refuse(`${id} — verify.json does not hold three passes with distinct nonces`);
-    const { settings, files, blocks } = loadCatalog(root, cfg);
-    const b = blocks.find((x) => x.id === id);
-    if (!b) refuse(`${id} — not in the catalog`);
-    const projects = viewportProjects(cfg, b.fields.Viewport?.value).map((d) => d.project);
-    if (JSON.stringify([...(entry.projects ?? [])].sort()) !== JSON.stringify([...projects].sort())) refuse(`${id} — verified projects ${JSON.stringify(entry.projects)} are not the scenario's ${JSON.stringify(projects)}`);
-    for (const p of passes) {
-      for (const project of projects) {
-        if (!(p.cases ?? []).some((c) => c.id === id && c.project === project && c.result === 'passed' && c.attempts === 1)) refuse(`${id} — pass ${p.n} has no single passed attempt on ${project}`);
-      }
-    }
+    const { entry, block: b, files, settings } = checkVerified(root, cfg, { id, spec: args.spec, verifyDir: args.verify });
     // The digests against the current files, and the lint.
     if (specOf(b) !== null) refuse(`${id} — already has a spec`);
     const specAbs = path.resolve(root, args.spec);

@@ -30,7 +30,7 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 |---|---|
 | A model is never the sole judge | The run is a plain command; its record is written by a script from the runner's JSON report. |
 | Independent reproduction | A new spec passes repeated runs with zero retries on every device project of the scenario; a critic that did not write it reviews it. |
-| Never weaken | A removed or loosened assertion, or an added `skip` / `fixme` / `fail` marker, stops a spec change. |
+| Never weaken | A removed or loosened assertion, or an added `skip` / `fixme` / `fail` marker, stops a spec change — enforced by `weaken-check.mjs` (§17) in heal and refresh, by `/gates:verify-implementation` §4 in a code change. |
 | Two human decisions only | A changed `Expected` of an existing scenario, and a release waiver. A run against a production environment is confirmed by a human each time. |
 | No auto-commit | Authoring and healing write to the working tree; committing stays `/commit`. |
 | The catalog is the only list | A spec's title starts with its scenario id. |
@@ -56,7 +56,9 @@ command runs the specs with no model in the loop; that run is the only pass/fail
 | `/regression-tests author` | A spec per READY scenario without one — three green passes, a critic — and the `Spec` field written back (§15). | yes |
 | `/regression-tests run [smoke\|full] [--env <name>]` | A per-machine run record for one environment and one build (§12). | yes |
 | `/regression-tests status` | The catalog status matrix and the newest run record per environment. | yes |
-| `/regression-tests heal` | Repairs. | (not yet shipped) |
+| `/regression-tests heal` | A class per red spec after a critic-qualified probe; a `TEST` repair kept only behind `weaken-check`, 3 green passes and a critic (§17). | yes |
+| `/regression-tests author --refresh` | A stale spec header re-authored under the same checks; installed only when the scenario then computes `verified` (§17). | yes |
+| Pilot | `regression-pilot.md` (protocol, metrics, thresholds, record template) and `regression-runbook-existing-app.md`; explore waits for a GO record. | yes (template) |
 | `/regression-tests visual compare \| update` | The visual lane on its own; `update` offers new baselines that only a human's `Accept baselines` writes (§13). | yes |
 | `/setup:regression`, Visual stage | The `visual` section; the visual config and spec from the templates. | yes |
 | `/release` | The release gate: a green full record from a test environment for the exact build. | (not yet shipped) |
@@ -203,9 +205,11 @@ node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>
   exit 0
 node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]
   exit 0 COMPLETE · 2 usage / route list / no walk stub · 3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
-node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]
+node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--heal <heal dir>] [--root <dir>]
   exit 0 every scenario verified · 1 some not verified · 2 usage / config · 3 refused (a candidate,
   retries, team clone, lock, not guard-integrated, confirmation) · 5 guard stop
+node .claude/lib/regression/run.mjs probe <ID> --heal <heal dir> [--env <name>] [--confirm <token>] [--root <dir>]
+  exit 0 recorded · 2 usage · 3 refused · 5 guard stop
 node .claude/lib/regression/inventory.mjs stage [--root <dir>]
 node .claude/lib/regression/inventory.mjs check-staged --routes <file> [--root <dir>]
 node .claude/lib/regression/inventory.mjs check [--root <dir>]
@@ -219,6 +223,15 @@ node .claude/lib/regression/author.mjs claim <ID> --spec <path> --verify <run di
 node .claude/lib/regression/author.mjs reject <ID> --run <run dir> [--root <dir>]
 node .claude/lib/regression/author.mjs suggest --from-qa <file> [--root <dir>]
   exit 0 ok · 1 none eligible / violations / refused · 2 usage / config / no target (prints `environments:`)
+node .claude/lib/regression/heal.mjs select (--run <run-id> | <spec>[ › <title>] | --refresh <ID>…) [--env <n>] [--root <dir>]
+node .claude/lib/regression/heal.mjs start <ID> --env <n> [--from-run <run-id>] [--refresh] [--root <dir>]
+node .claude/lib/regression/heal.mjs probe-key <ID> --run <heal dir> [--root <dir>]
+node .claude/lib/regression/heal.mjs classify <ID> --run <heal dir> --probe <probe run dir> [--root <dir>]
+node .claude/lib/regression/heal.mjs apply <ID> --run <heal dir> --verify <verify run dir> --critic <file> [--refresh] [--root <dir>]
+node .claude/lib/regression/heal.mjs discard <ID> --run <heal dir> [--root <dir>]
+  exit 0 ok · 1 refused / nothing eligible / a stop · 2 usage / config / no target (prints `environments:`) · 3 team clone
+node .claude/lib/regression/weaken-check.mjs <before> <after> [--refresh] [--json]
+  exit 0 ok · 1 weakened · 2 usage / unreadable file
 ```
 
 - `walk.mjs` (the walk of one group, the route-list grammar) and `speclint.mjs` (the static spec
@@ -404,6 +417,8 @@ sessions`): re-copy both again.
   `redirect-collapsed` carries the same `final`. A page that leaves that URL by itself after load
   (an SPA guard's `history.pushState`) makes no request and no event: the walk then takes the
   page's own URL, so such a route is `redirected`, never `ok`.
+- Every guarded response ≥ 500 records a `server-error` event (`url` reduced, `status`, `test`); it
+  is evidence for heal, not a stop.
 
 ## 12. The run
 
@@ -836,3 +851,94 @@ does not run for it.
 - `team-mode.md` §7: a `deferred` ledger row from `Proof: scenario` ends `manual check: regression
   scenario <ID> — /regression-tests author, then run`.
 - No team stage, role or report line is added.
+
+## 17. The heal lane
+
+`/regression-tests heal (--run <run-id> | <spec>[ › <title>])` and `/regression-tests author --refresh
+<ID>…` — procedure: `.claude/skills/regression/references/heal.md`. Every browser contact is a guarded
+runner pass; the scripts own the files and the class; the model only writes spec text into files the
+scripts created. Heal writes its candidate, its probe and its heal directory
+(`.agents/regression/runs/heal-<stamp>-<hex>/`, per machine); it never writes the catalog, never calls
+a visual writer, never commits, and every command refuses in a team clone (exit 3).
+
+- **Select** (`heal.mjs select`): `--run` reads `record.json` — `RED` → the scenarios with a failed
+  case and `env: <the record's environment>`; `BLOCKED/ENV` → nothing heal-able, each red scenario
+  printed `env:` (a `verified` spec) or `stale:`; `GREEN` → `nothing to heal`. The spec form matches the
+  `Spec` field's path (and title). Refused: not READY, no spec, excluded by the environment's policy,
+  the spec file absent, a file with more than one `test(`, an open attempt for the id.
+- **Start** (`heal.mjs start`, under the checkout lock) pins the attempt in `heal.json`: a random
+  heal id, `env`, `kind`, `base_url`, `effect`, the spec and its title, a byte snapshot
+  (`before/<file>`, `spec_sha256`), the sha256 of every other file of its lint closure, the block's
+  sha256, the automation state, `source_run` with `--from-run` (which re-checks under the lock that
+  the scenario failed there and that the target's name, kind and base URL are the record's). It
+  refuses a spec with a screenshot assertion (a renamed candidate would change its snapshot path —
+  the visual lane owns those) and a runner config that does not take `testMatch` from
+  `runnerOptions` (a candidate or probe would load in ordinary runs). Then the **stale rules**, before
+  any traffic, the catalog judged first (`catalog.mjs` `staleRule`): a cited criterion withdrawn, not
+  found or with a fingerprint other than the catalog cites → class `catalog-outdated`; the spec's
+  header missing, its ids not the catalog `Source`, its fingerprint not the current one (or a tracker
+  key's not the catalog's) → stop `refresh needed`; any other unreadable evidence → stop
+  `inconclusive`. A stale attempt is closed with no target. Otherwise it creates exclusively the
+  candidate `<spec dir>/<id>.heal.spec.ts` (a byte copy) and the empty probe
+  `<spec_dir>/_heal/<id>.probe.spec.ts`; a refusal after a target was created removes it.
+- **The probe** is written by a sub-agent from the block without its `Spec` field, never from the
+  spec; `heal.mjs probe-key` prints its evidence key, and `@regression-critic` `MODE=probe` must map
+  every `Steps` item to an interaction and assert every clause (`<heal dir>/probe-critic-<ID>.json`).
+- **`run.mjs probe <ID> --heal <dir>`** (`policy.mjs` `buildProbePlan`): the run's refusals, locks,
+  strict pre-flight over both files and production confirmation (lane `probe`, one token for both
+  passes). It refuses a target other than the pin (`pinProblem`), a closed or refresh attempt, a
+  scenario no longer READY or excluded, a spec, block or helper changed since start, a lint
+  violation in the spec or the probe, a probe screenshot assertion, a stale rule that now fires,
+  retries, and a probe critic file that is absent, not `mode: probe` / `verdict: pass` for this id,
+  maps no interaction to a `Steps` item, holds no clauses, names a clause without an
+  `<file>:<line>` assertion or with `would_fail` other than `true` or an accepted unobservable, or
+  predates the probe's current bytes. Pass 1 runs the claimed spec, pass 2 the probe, each with its
+  own nonce; a guard stop or an interrupted pass 1 skips pass 2. The plan digest binds the
+  environment, base URL, config, catalog, heal id, both passes' cases, both evidence keys and the
+  budget. `probe.json`: `heal_id`, `plan_digest`, `build {before, after}` read through the guard on
+  the run's ledger (none after a stop), and per pass the cases (`result`, `attempts`, `retries`,
+  `attested`, `session_ok`, the failed results' attachments) and the **environment facts** — `stop`,
+  `server_error`, `navigation_5xx`, `network_failed` and `blocked` events of the pass's own tests,
+  `whole` (the verify lane's pass disqualifiers) and, on production, `attestation`.
+- **Classify** (`heal.mjs classify`, `classifyProbe`): refuses unless the spec, block and closure
+  still equal the snapshot (the live check precedes any diff) and `probe.json` carries this heal id,
+  the pinned target and the plan digest `buildProbePlan` recomputes now. Per project `R_p` (pass 1)
+  and `P_p` (pass 2): `APP` — no environment fact, no aborted request, every result passed or failed,
+  every case qualified, some `R_p = P_p = failed`; `TEST` — the same, some `R_p` failed, every `P_p`
+  passed, `Effect: read`; `catalog-outdated` — at start only; `env` — any environment fact (an unknown
+  or changed build included). Stops: `not reproduced` (every `R_p` passed; `the spec may assert too
+  little on <p>` per failed `P_p`) and `inconclusive` (an aborted request, pass 2 not run, another
+  result, unqualified evidence, a `write` scenario, a crossed pairing). The probe moves into the heal
+  directory; `APP` writes `bug-<ID>.md` (target, build, failing projects, `Expected` verbatim,
+  context); every class but `TEST` closes the attempt and moves the candidate to `discarded/`.
+- **`weaken-check.mjs <before> <after> [--refresh] [--json]`** — a token grammar over the stripped
+  text: imports, the header and unobservable lines (raw), at most one literal `test.use({ account })`,
+  exactly one `test(title, details, async (…) => { … })` whose body is `const` locator bindings,
+  awaited actions and condition waits, and `expect` / `expect.soft` / `expect.poll` assertions on a
+  known matcher (options at the matcher's options position only; every argument of a generic matcher
+  is data). Refused: `removed-assertion`, `loosened-matcher` (another matcher, `.not`, `soft`/`poll`,
+  `exact: true` dropped, a string name turned into a regex, an anchored regex relaxed), `changed-value`, `changed-tolerance`
+  (any non-`timeout` option), `added-marker` (`.skip|.fixme|.fail|.only|.slow(` anywhere, `test.abort(`),
+  `added-unobservable`, `changed-identity` (title, tags, header, `test.use`) and `unclassified`
+  (anything else: a removed, reordered or changed statement, an assertion subject changed outside a locator, a dropped `await`, a new import, more
+  control flow — `if`, `else`, `switch`, `try`, `catch`, `finally`, a loop, `?:`, `.catch(` —, `||` /
+  `&&` / `??` in an assertion, an unknown matcher, a body outside the grammar). Allowed, each reported:
+  `retargeted` (a locator changed, all else equal), `timeout`, `added-assertion`, `added-action`,
+  `added-wait`, `added-binding`. `--refresh` allows the header and nothing else.
+- **Repair and apply** (`TEST`): the model edits only the candidate; `run.mjs verify <ID>=<candidate>
+  --heal <dir>` accepts exactly this attempt's candidate on its pin (the attempt open, `TEST` or a
+  refresh, no screenshot assertion, the scenario's `Spec` still the pinned spec) and writes `heal_id`
+  into `verify.json`; `@regression-critic` `MODE=heal` judges every `retargeted` and `added-action`
+  entry. `heal.mjs apply` (under the lock) re-checks the class, the block, the stale rules, the claimed
+  spec against the snapshot (else `conflict:` — both files kept), the snapshot copy, weaken-check
+  (recomputed), the lint and title, the closure, the verify record (`author.mjs` `checkVerified` with
+  the attempt: its heal id and pinned target), the digests and a `MODE=heal` critic pass with this
+  heal id and snapshot sha256 on the same digests — then one rename of the candidate over the spec,
+  `healed: <ID> — <spec>`. `heal.mjs discard` moves the candidate and the probe into `discarded/` and
+  never touches the claimed spec.
+- **Refresh** (`author --refresh`): `select --refresh` takes a scenario whose rule is `refresh
+  needed`; `start --refresh` creates the candidate only; the header is rewritten, then verify
+  `--heal`, the critic and `apply --refresh`, which also requires that the scenario computes
+  `verified` over the candidate's bytes (`automationState` with `ctx.specText`) before the rename.
+  A refresh that would change anything but the header is a changed `Expected`: `Spec: —`, remove the
+  spec, `author <ID>`.

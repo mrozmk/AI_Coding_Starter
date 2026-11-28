@@ -6,7 +6,9 @@
 //
 //   node fake-runner.mjs <report|-> [attest-all|attest-pass|attest-none|attest-skip-first|stop-429|session-missing|session-failed|
 //        blocked-case|blocked-outside|attest-cases-only|session-first-only|session-no-test|attest-budget|
-//        walk-groups|walk-groups-missing-last|walk-groups-session-missing|-] [exit]
+//        walk-groups|walk-groups-missing-last|walk-groups-session-missing|
+//        server-error-case|nav-500-case|network-failed-case|-] [exit]
+// The last three attest every case, then log one environment event for the first selected case.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,6 +88,15 @@ if (events !== '-' && process.env.REGRESSION_RUN) {
   } else if (events === 'blocked-outside') {
     attestAll();
     line({ kind: 'blocked', reason: 'foreign host', method: 'GET', url: 'https://foreign.example.net/x', op: null, test: null });
+  } else if (events === 'server-error-case') {
+    attestAll();
+    line({ kind: 'server-error', url: 'https://test.shop.example.com/api/price', status: 503, test: testId(manifest.selection[0]) });
+  } else if (events === 'nav-500-case') {
+    attestAll();
+    line({ kind: 'navigation', url: 'https://test.shop.example.com/cart', final: 'https://test.shop.example.com/cart', status: 500, hops: 1, test: testId(manifest.selection[0]) });
+  } else if (events === 'network-failed-case') {
+    attestAll();
+    line({ kind: 'failed', reason: 'network error', method: 'GET', url: 'https://test.shop.example.com/api/price', op: null, test: testId(manifest.selection[0]) });
   }
 }
 

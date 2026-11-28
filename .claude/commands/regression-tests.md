@@ -1,7 +1,7 @@
 ---
-description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status | visual compare | visual update), or write specs for READY scenarios (author — 3 green passes, a critic, then a claim); production needs a confirmation every time
-argument-hint: "[run [smoke|full] | smoke | full | status | visual compare | visual update | author (<ID>… | --area <CODE> | --pending | --from-qa <file>)] [--env <name>]"
-allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/lib/regression/policy.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(node .claude/lib/regression/author.mjs:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Agent, Read, Write, Edit, Glob, Grep
+description: Run the regression suite against one named deployed environment and report the deterministic verdict (run | smoke | full | status | visual compare | visual update), or write specs for READY scenarios (author — 3 green passes, a critic, then a claim; author --refresh re-authors a stale header), or heal (diagnose a red spec; a TEST repair kept only behind weaken-check, 3 green passes and a critic); production needs a confirmation every time
+argument-hint: "[run [smoke|full] | smoke | full | status | visual compare | visual update | author (<ID>… | --area <CODE> | --pending | --from-qa <file>) | heal (--run <run-id> | <spec>[ › <title>]) | author --refresh <ID>…] [--env <name>]"
+allowed-tools: Bash(node .claude/lib/regression/run.mjs:*), Bash(node .claude/lib/regression/policy.mjs:*), Bash(node .claude/lib/regression/catalog.mjs:*), Bash(node .claude/lib/regression/author.mjs:*), Bash(node .claude/lib/regression/heal.mjs:*), Bash(node .claude/lib/regression/weaken-check.mjs:*), Bash(bash .claude/lib/costs/runtime-mark.sh stage end *), AskUserQuestion, Agent, Read, Write, Edit, Glob, Grep
 ---
 
 # Regression tests — the deterministic run
@@ -28,6 +28,9 @@ decide pass/fail.
 - `author` writes only its own candidate spec files (created by `author.mjs draft`) and the critic
   and provenance verdict files in its verify run directory; it changes the catalog only through
   `author.mjs claim` and moves every unclaimed draft out with `author.mjs reject`.
+- `heal` writes only its candidate, its probe and its heal directory; the claimed spec changes only
+  through `heal.mjs apply`; it never writes the catalog, never calls `visual update` / `visual accept`,
+  never commits.
 - Never edit `.claude/regression.json`, the fixtures, the runner config or `.claude/settings*.json`;
   never start the app; never commit.
 - In a team clone the script refuses (exit 3): say so and stop — a regression run happens from the
@@ -44,7 +47,8 @@ decide pass/fail.
 | `visual compare` | `run.mjs visual compare` (§ Visual) |
 | `visual update` | `run.mjs visual update`, then the acceptance question (§ Visual) |
 | `author <ID>…`, `author --area <CODE[,CODE]>`, `author --pending`, `author --from-qa <file>` | `## Author` |
-| `heal` | "not yet shipped" (regression.md §4) — stop |
+| `heal --run <run-id>`, `heal <spec>[ › <title>]` | `## Heal` |
+| `author --refresh <ID>…` | `## Heal` → Refresh |
 
 `--env <name>` passes through to `run.mjs` (and to `run.mjs status`). Anything else → print the
 argument hint and stop.
@@ -113,7 +117,7 @@ argument hint and stop.
 In the project's language: the target environment and host, the mode, the verdict, the build SHA,
 the `reason:` and `warning:` lines, the `not run — policy` list, the `visual:` and every `visual
 portability:` line (`run full` and `visual …`), and the record path (`record: …`). RED → print the `next: /regression-tests heal --run <run-id>` line the script
-printed, and say that `heal` is not started (and not yet shipped). INCOMPLETE → name what kept it
+printed, and say that `heal` is not started. INCOMPLETE → name what kept it
 from green (a skipped / flaky case, no build SHA, a report error). BLOCKED/ENV → the stop reason;
 the environment pushed back or the guard could not be attested — do not retry.
 
@@ -157,6 +161,43 @@ of the scenario and a critic pass on the same digests. Run directory for the dra
 **Report** (in the project's language): claimed (spec path), rejected (and why), refused, not
 promoted, ambiguous, the unobservable clauses (`unobservable:` lines of `--status`), and for
 `--from-qa` the step map of every claimed spec (`spec step n ← QA step k`). Nothing is committed.
+
+## Heal
+
+Gives each red spec a class from a critic-qualified live check and repairs only a `TEST` spec,
+following [.claude/skills/regression/references/heal.md](../skills/regression/references/heal.md)
+(the procedure, the probe brief, the classes). Only when the user typed `heal` — a red run never
+starts it.
+
+1. **Select:** `node .claude/lib/regression/heal.mjs select --run <run-id>` (or `select <spec>[ › <title>]`
+   with `--env <name>`). Exit 1 → report the `env:` / `stale:` / `refused:` / `nothing to heal` lines and stop.
+2. **Start** each `eligible:` scenario: `node .claude/lib/regression/heal.mjs start <ID> --env <the record's env> --from-run <run-id>`
+   → `heal: <dir>`. A `class: catalog-outdated` or `stop:` line ends that scenario (report it).
+3. **Probe:** the probe sub-agent with heal.md § The probe brief (the block with `**Spec:**`
+   removed; it never reads the existing spec), `node .claude/lib/regression/author.mjs lint <probe> --id <ID>`,
+   `node .claude/lib/regression/heal.mjs probe-key <ID> --run <heal dir>`, `@regression-critic`
+   `MODE=probe` → `<heal dir>/probe-critic-<ID>.json` (its JSON plus the three digests).
+4. **Run the probe:** `node .claude/lib/regression/run.mjs probe <ID> --heal <heal dir> [--env <name>]`.
+   Exit 3 with `confirmation-required:` → the production confirmation of Run step 3, verbatim; the
+   token covers this probe's two passes only, and `Cancel` → `discard`.
+5. **Classify:** `node .claude/lib/regression/heal.mjs classify <ID> --run <heal dir> --probe <probe run dir>`
+   (the directory of the `record:` line) → `class: APP | TEST | env — …` or `stop: … — …`.
+6. **Repair** (`TEST` only): edit the candidate only;
+   `node .claude/lib/regression/weaken-check.mjs <heal dir>/before/<file> <candidate> --json`;
+   `node .claude/lib/regression/run.mjs verify <ID>=<candidate> --heal <heal dir> [--env <name>]`;
+   `@regression-critic` `MODE=heal` with `SCENARIO`, `SPEC`, `BEFORE`, `WEAKEN`, `HEAL_ID`,
+   `BEFORE_SHA256`, `ROUND` → `<verify run dir>/critic-<ID>.json`. The author lane's round limits hold.
+7. **Apply:** `node .claude/lib/regression/heal.mjs apply <ID> --run <heal dir> --verify <verify run dir> --critic <critic file>`
+   → `healed: <ID> — <spec>`. A `conflict:` keeps both files for a human.
+8. **Discard** on every other exit: `node .claude/lib/regression/heal.mjs discard <ID> --run <heal dir>`.
+
+**Refresh** (`author --refresh <ID>…`): `heal.mjs select --refresh <ID>…`, `heal.mjs start <ID> --env <name> --refresh`,
+rewrite only the candidate's header, then steps 6–7 with `weaken-check … --refresh` and `apply … --refresh`
+→ `refreshed: <ID> — <spec>`.
+
+**Report** (in the project's language): per scenario the class or stop and its evidence lines,
+`healed:` / `refreshed:`, every `bug candidate:` (offer `/create-task`), every attempt discarded or
+left open. Nothing is committed.
 
 ## Status
 

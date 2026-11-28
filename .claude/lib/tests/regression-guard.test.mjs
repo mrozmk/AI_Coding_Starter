@@ -36,6 +36,8 @@ function handler(origin) {
       hits.push({ origin, method: req.method, path: u.pathname, search: u.search, body: Buffer.concat(chunks).toString('utf8'), headers: req.headers });
       const send = (status, body = '', headers = {}) => { res.writeHead(status, headers); res.end(body); };
       switch (u.pathname) {
+        case '/': return send(200, '<html><body>home</body></html>', { 'content-type': 'text/html' });
+        case '/api/price': return send(503, 'unavailable');
         case '/ok': return send(200, 'ok');
         case '/r1': return send(302, '', { location: '/r2' });
         case '/r2': return send(302, '', { location: 'http://foreign.invalid/x' });
@@ -426,6 +428,35 @@ test('a direct production navigation records a navigation event', async () => {
   assert.equal(events(m, 'redirect-collapsed').length, 0);
   await send(ctx, { url: `${A}/ok` });
   assert.equal(events(m, 'navigation').length, 1, 'a non-navigation request records none');
+});
+
+test('records a server-error event for any guarded response of 500 or more, a document or an API call', async () => {
+  const m = manifest({ kind: 'test' });
+  const ctx = await guarded(m);
+  setCurrentTest({ testId: 't-s', id: 'CART-008', project: 'desktop' });
+  try {
+    assert.ok((await send(ctx, { url: `${A}/`, isNavigation: true })).fulfilled);
+    assert.ok((await send(ctx, { url: `${A}/api/price?sku=1` })).fulfilled, 'a 503 is a plain response, never an abort');
+    assert.equal((await ctx.request.get(`${A}/api/price?sku=2`)).status(), 503);
+    const api = guardRequestContext(fakeContext().request, m);
+    assert.equal((await api.get(`${A}/api/price`)).status(), 503);
+  } finally { clearCurrentTest(); }
+  const errs = events(m, 'server-error');
+  assert.deepEqual(errs.map((e) => ({ url: e.url, status: e.status, test: e.test })), [
+    { url: `${A}/api/price`, status: 503, test: 't-s' },
+    { url: `${A}/api/price`, status: 503, test: 't-s' },
+    { url: `${A}/api/price`, status: 503, test: 't-s' },
+  ]);
+  assert.equal(stopOf(m), null, 'the run is not stopped');
+});
+
+test('records the server-error event before a configured stop on that status', async () => {
+  const m = manifest({ kind: 'test', stop: { statuses: [503] } });
+  const ctx = await guarded(m);
+  const out = await send(ctx, { url: `${A}/api/price` });
+  assert.equal(out.aborted, 'blockedbyclient');
+  assert.deepEqual(events(m, 'server-error').map((e) => ({ url: e.url, status: e.status })), [{ url: `${A}/api/price`, status: 503 }]);
+  assert.equal(stopOf(m).reason, 'status 503');
 });
 
 test('runnerOptions testMatch matches exactly the selected spec files', () => {
