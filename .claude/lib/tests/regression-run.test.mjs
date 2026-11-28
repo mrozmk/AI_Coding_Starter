@@ -14,8 +14,9 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { validateConfig, envPolicy, isLoopbackHost, resolveTarget, resolveEnvBaseUrl, loadConfig, catalogSettings } from '../regression/config.mjs';
-import { catalogFiles, parseCatalog, validateCatalog, needsKeys } from '../regression/catalog.mjs';
-import { buildPlan, confirmationText, worstCaseBackendCalls } from '../regression/policy.mjs';
+import { catalogFiles, parseCatalog, validateCatalog, needsKeys, blockTexts } from '../regression/catalog.mjs';
+import { lintSpec } from '../regression/speclint.mjs';
+import { buildPlan, confirmationText, worstCaseBackendCalls, evidenceKey } from '../regression/policy.mjs';
 import { runnerOptions } from '../regression/guard.mjs';
 import { parseBuildSha, isTeamClone } from '../regression/run.mjs';
 
@@ -1112,4 +1113,235 @@ test('status ignores walk and verify run directories', async () => {
   const s = await cli(['status', '--env', 'test', '--root', root]);
   assert.equal(s.status, 0);
   assert.equal(s.stdout.trim(), 'test no run recorded on this machine');
+});
+
+// ---------------------------------------------------------------------------------------------
+// The heal lane's probe and verify --heal (#334)
+
+const HEAL_DIR = '.agents/regression/runs/heal-t';
+const TITLES = { 'CART-008': 'See the cart summary', 'CART-009': 'Cart as a shopper' };
+const TARGETS = {
+  test: { kind: 'test', base_url: 'https://test.shop.example.com' },
+  prod: { kind: 'production', base_url: 'https://shop.example.com' },
+};
+
+/** The probe critic verdict on the current probe bytes (`extra` overrides). */
+function writeProbeCritic(root, heal, extra = {}) {
+  const cfg = loadConfig(root).config;
+  const files = catalogFiles(root, catalogSettings(cfg));
+  const key = evidenceKey(root, heal.probe, lintSpec(root, cfg, heal.probe, heal.scenario).files, blockTexts(root, files).get(heal.scenario).text);
+  const critic = {
+    id: heal.scenario, mode: 'probe', verdict: 'pass', steps: [{ step: 1, file: heal.probe, line: 7 }],
+    clauses: [{ clause: 'The heading is visible.', assertion: `${heal.probe}:8`, would_fail: true }], findings: [], ...key, ...extra,
+  };
+  fs.writeFileSync(path.join(root, heal.probe_critic), `${JSON.stringify(critic, null, 2)}\n`);
+}
+
+/**
+ * A claimed scenario with an open heal attempt, written the way `heal.mjs start` writes it: the
+ * catalog's Spec set, heal.json with the pin and the snapshot, the probe, the candidate and a
+ * complete probe critic verdict. `{root, dir, heal}`.
+ */
+function withHealAttempt(root, { id = 'CART-008', env = 'test', extra = {} } = {}) {
+  const lower = id.toLowerCase();
+  const spec = `e2e/regression/cart/${lower}.spec.ts`;
+  const catFile = path.join(root, CAT, 'cart.md');
+  const cat = fs.readFileSync(catFile, 'utf8');
+  fs.writeFileSync(catFile, cat.replace(new RegExp(`(### ${id} [\\s\\S]*?\\*\\*Spec:\\*\\* )—`), `$1${spec} › ${id} — ${TITLES[id]}`));
+  const cfg = loadConfig(root).config;
+  const files = catalogFiles(root, catalogSettings(cfg));
+  const specText = fs.readFileSync(path.join(root, spec), 'utf8');
+  const probe = `e2e/regression/_heal/${lower}.probe.spec.ts`;
+  const candidate = `e2e/regression/cart/${lower}.heal.spec.ts`;
+  fs.mkdirSync(path.join(root, HEAL_DIR, 'before'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'e2e/regression/_heal'), { recursive: true });
+  fs.writeFileSync(path.join(root, HEAL_DIR, 'before', path.basename(spec)), specText);
+  fs.writeFileSync(path.join(root, candidate), specText);
+  fs.writeFileSync(path.join(root, probe), specText.replace(`${id} — ${TITLES[id]}`, `${id} — probe`));
+  const lint = lintSpec(root, cfg, spec, id);
+  const heal = {
+    schema: 1, id: 'h1', scenario: id, effect: 'read', env, ...TARGETS[env], spec, title: `${id} — ${TITLES[id]}`,
+    created_at: '2026-11-28T00:00:00.000Z', refresh: false, state: 'open',
+    snapshot: {
+      path: `before/${path.basename(spec)}`, spec_sha256: sha256(specText),
+      inputs: lint.files.filter((f) => f !== spec).map((file) => ({ file, sha256: sha256(fs.readFileSync(path.join(root, file))) })),
+      block_sha256: sha256(blockTexts(root, files).get(id).text),
+    },
+    automation: { state: 'verified', reason: '' }, candidate, probe, probe_critic: `${HEAL_DIR}/probe-critic-${id}.json`, ...extra,
+  };
+  fs.writeFileSync(path.join(root, HEAL_DIR, 'heal.json'), `${JSON.stringify(heal, null, 2)}\n`);
+  writeProbeCritic(root, heal);
+  return { root, dir: HEAL_DIR, heal };
+}
+
+/** The build-SHA stub reachable through the guard: its host on the environment's allowlist. */
+function guardedBuild(root, env = 'test') {
+  shaQueue = ['abc1234'];
+  editConfig(root, (cfg) => {
+    cfg.environments[env].build_sha_url = SHA_URL;
+    cfg.environments[env].guard = { ...(cfg.environments[env].guard ?? {}), hosts: [new URL(cfg.environments[env].host).hostname, '127.0.0.1'] };
+  });
+}
+const probeOf = (root, r) => {
+  const m = /^record: (.+probe\.json)$/m.exec(r.stdout);
+  assert.ok(m, `no probe record in:\n${r.out}`);
+  return JSON.parse(fs.readFileSync(path.join(root, m[1]), 'utf8'));
+};
+const probeCli = (root, id = 'CART-008', extra = [], opts = {}) => cli(['probe', id, '--heal', HEAL_DIR, ...extra, '--root', root], opts);
+const resultsOf = (pass) => Object.fromEntries(pass.cases.map((c) => [c.project, c.result]));
+
+test('probe: runs the spec then the probe in two passes, one runner call each, and records per-project results and the heal id', async () => {
+  const { root } = withHealAttempt(withAuthoringFiles(copyRoot()));
+  guardedBuild(root);
+  useRunner(root, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const r = await probeCli(root);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(runnerCalls(root), 2);
+  const rec = probeOf(root, r);
+  assert.equal(rec.heal_id, 'h1');
+  assert.deepEqual([rec.env, rec.kind, rec.base_url], ['test', 'test', 'https://test.shop.example.com']);
+  assert.match(rec.plan_digest, /^[0-9a-f]{64}$/);
+  assert.deepEqual(rec.passes.map((p) => p.n), [1, 2]);
+  assert.deepEqual(resultsOf(rec.passes[0]), { 'desktop-chrome': 'failed', 'mobile-safari': 'passed' });
+  assert.deepEqual(resultsOf(rec.passes[1]), { 'desktop-chrome': 'passed', 'mobile-safari': 'passed' });
+  assert.deepEqual(rec.passes[0].cases.map((c) => c.spec), ['e2e/regression/cart/cart-008.spec.ts', 'e2e/regression/cart/cart-008.spec.ts']);
+  assert.deepEqual(rec.passes[1].cases.map((c) => c.spec), ['e2e/regression/_heal/cart-008.probe.spec.ts', 'e2e/regression/_heal/cart-008.probe.spec.ts']);
+  assert.ok(rec.passes.every((p) => p.cases.every((c) => c.attempts === 1 && c.attested && c.session_ok)));
+  assert.deepEqual(rec.build, { before: 'abc1234', after: 'abc1234', reason: null });
+  assert.notEqual(rec.passes[0].nonce, rec.passes[1].nonce);
+  const runDir = path.join(root, '.agents/regression/runs', rec.run_id);
+  const m2 = JSON.parse(fs.readFileSync(path.join(runDir, 'manifest-2.json'), 'utf8'));
+  assert.deepEqual([...new Set(m2.selection.map((c) => c.spec))], ['e2e/regression/_heal/cart-008.probe.spec.ts']);
+  for (const n of [1, 2]) assert.ok(fs.existsSync(path.join(runDir, `report-${n}.json`)));
+});
+
+test('probe: records a guard stop, a server-error, a 500 navigation and a network failure as environment facts of the pass', async () => {
+  const cases = [
+    ['stop-429', 5, (f) => assert.equal(f.stop, 'status 429')],
+    ['server-error-case', 0, (f) => assert.deepEqual(f.server_error, [{ url: 'https://test.shop.example.com/api/price', status: 503, case: 'CART-008/desktop-chrome' }])],
+    ['nav-500-case', 0, (f) => assert.deepEqual(f.navigation_5xx, [{ url: 'https://test.shop.example.com/cart', status: 500, case: 'CART-008/desktop-chrome' }])],
+    ['network-failed-case', 0, (f) => assert.deepEqual(f.network_failed, [{ method: 'GET', url: 'https://test.shop.example.com/api/price', case: 'CART-008/desktop-chrome' }])],
+  ];
+  for (const [events, status, check] of cases) {
+    const { root } = withHealAttempt(withAuthoringFiles(copyRoot()));
+    guardedBuild(root);
+    useRunner(root, `probe-spec-failed,probe-probe-green ${events},attest-pass 1,0`, 'full');
+    const r = await probeCli(root);
+    assert.equal(r.status, status, `${events}: ${r.out}`);
+    const rec = probeOf(root, r);
+    check(rec.passes[0].facts);
+    if (events === 'stop-429') {
+      assert.deepEqual(rec.skipped, [{ n: 2, reason: 'guard stop: status 429' }]);
+      assert.deepEqual(rec.build, { before: 'abc1234', after: null, reason: null, after_skipped: 'guard stop' });
+    } else assert.equal(rec.passes[1].facts.server_error.length + rec.passes[1].facts.navigation_5xx.length + rec.passes[1].facts.network_failed.length, 0, events);
+  }
+});
+
+test('probe: refuses without a probe critic pass on the current probe bytes, with a changed spec, or on another environment than the pinned one', async () => {
+  const refusal = async (prep, re, args = []) => {
+    const ctx = withHealAttempt(withAuthoringFiles(copyRoot()));
+    useRunner(ctx.root, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+    prep(ctx);
+    const r = await probeCli(ctx.root, 'CART-008', args);
+    assert.equal(r.status, 3, r.out);
+    assert.match(r.stdout, re);
+    assert.equal(runnerCalls(ctx.root), 0);
+  };
+  await refusal(({ root, heal }) => fs.rmSync(path.join(root, heal.probe_critic)), /^refused: CART-008 — no probe critic pass on the current probe$/m);
+  await refusal(({ root, heal }) => fs.appendFileSync(path.join(root, heal.probe), '\n'), /^refused: CART-008 — no probe critic pass on the current probe$/m);
+  await refusal(({ root, heal }) => writeProbeCritic(root, heal, { verdict: 'revise' }), /^refused: CART-008 — no probe critic pass on the current probe$/m);
+  await refusal(({ root, heal }) => fs.appendFileSync(path.join(root, heal.spec), '\n'), /^refused: CART-008 — the spec \(or block\) changed since start$/m);
+  await refusal(() => {}, /^refused: CART-008 — target differs from the pinned test \(test https:\/\/test\.shop\.example\.com\)$/m, ['--env', 'prod']);
+  await refusal(({ root }) => editConfig(root, (cfg) => { cfg.environments.test.host = 'https://test2.shop.example.com'; }), /^refused: CART-008 — target differs from the pinned test/m);
+});
+
+test('probe: a retry, a missing attestation or missing account session on a test environment is recorded per case as unqualified evidence', async () => {
+  const retry = withHealAttempt(withAuthoringFiles(copyRoot())).root;
+  useRunner(retry, 'verify-retry,probe-probe-green attest-pass 0', 'full');
+  const a = probeOf(retry, await probeCli(retry));
+  assert.ok(a.passes[0].cases.some((c) => c.attempts !== 1 || c.retries.some((x) => x !== 0)), JSON.stringify(a.passes[0].cases));
+  const unattested = withHealAttempt(withAuthoringFiles(copyRoot())).root;
+  useRunner(unattested, 'probe-spec-failed,probe-probe-green attest-none,attest-pass 1,0', 'full');
+  const b = probeOf(unattested, await probeCli(unattested));
+  assert.deepEqual(b.passes[0].cases.map((c) => c.attested), [false, false]);
+  assert.deepEqual(b.passes[0].facts.attestation, [], 'a test environment records the gap per case, not as an environment fact');
+  assert.deepEqual(b.passes[1].cases.map((c) => c.attested), [true, true]);
+  const session = withHealAttempt(withAuthoringFiles(copyRoot()), { id: 'CART-009' }).root;
+  useRunner(session, 'verify-green-009,- session-missing,- 0', 'full');
+  const c = await probeCli(session, 'CART-009');
+  assert.equal(c.status, 0, c.out);
+  assert.deepEqual(probeOf(session, c).passes[0].cases.map((x) => [x.result, x.session_ok]), [['passed', false], ['passed', false]]);
+});
+
+test('probe: on production prints one confirmation for both passes and refuses a token after the probe changed', async () => {
+  const ctx = withHealAttempt(withAuthoringFiles(copyRoot()), { env: 'prod' });
+  const { root, heal } = ctx;
+  useRunner(root, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const locks = fs.mkdtempSync(path.join(os.tmpdir(), 'regression-locks-'));
+  const first = await probeCli(root, 'CART-008', ['--env', 'prod'], { locks });
+  assert.equal(first.status, 3, first.out);
+  assert.match(first.stdout, /^mode: probe$/m);
+  assert.match(first.stdout, /^probe: 2 passes \(spec, probe\) over 2 cases \(CART-008\)$/m);
+  assert.ok(fs.existsSync(path.join(root, '.agents/regression/runs/.confirm/prod.probe.json')), 'the probe has its own token lane');
+  fs.appendFileSync(path.join(root, heal.probe), '\n');
+  writeProbeCritic(root, heal);
+  const stale = await probeCli(root, 'CART-008', ['--env', 'prod', '--confirm', tokenOf(first)], { locks });
+  assert.equal(stale.status, 3, stale.out);
+  assert.match(stale.stderr, /^confirmation invalid: the plan changed since the confirmation/m);
+  assert.equal(runnerCalls(root), 0);
+  const ok = await probeCli(root, 'CART-008', ['--env', 'prod', '--confirm', tokenOf(stale)], { locks });
+  assert.equal(ok.status, 0, ok.out);
+  assert.equal(runnerCalls(root), 2, 'one token, two passes');
+  assert.equal(probeOf(root, ok).confirmed, true);
+});
+
+test('probe: a guard stop or an interrupted pass 1 skips pass 2', async () => {
+  for (const [report, events, reason] of [['probe-spec-failed', 'stop-429', 'guard stop: status 429'], ['interrupted', 'attest-pass', 'pass 1 interrupted']]) {
+    const { root } = withHealAttempt(withAuthoringFiles(copyRoot()));
+    useRunner(root, `${report},probe-probe-green ${events},attest-pass 1,0`, 'full');
+    const r = await probeCli(root);
+    assert.equal(runnerCalls(root), 1, `${report}: ${r.out}`);
+    assert.match(r.stdout, new RegExp(`^not run: pass 2 — ${reason}$`, 'm'));
+    assert.deepEqual(probeOf(root, r).skipped, [{ n: 2, reason }]);
+  }
+});
+
+test('probe: refuses a lint violation in the claimed spec\'s helper and a probe critic verdict without clauses, before any token or runner call', async () => {
+  const root = withAuthoringFiles(copyRoot());
+  const spec = path.join(root, 'e2e/regression/cart/cart-008.spec.ts');
+  fs.writeFileSync(path.join(root, 'e2e/regression/cart/helper.ts'), "export const price = () => fetch('/api/price');\n");
+  fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8').replace("import { test, expect } from '../../fixtures';", "import { test, expect } from '../../fixtures';\nimport { price } from './helper';"));
+  withHealAttempt(root, { env: 'prod' });
+  useRunner(root, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const a = await probeCli(root, 'CART-008', ['--env', 'prod']);
+  assert.equal(a.status, 3, a.out);
+  assert.match(a.stdout, /^refused: CART-008 — lint: e2e\/regression\/cart\/helper\.ts:1: forbidden fetch\($/m);
+  const b = withHealAttempt(withAuthoringFiles(copyRoot()), { env: 'prod' });
+  writeProbeCritic(b.root, b.heal, { clauses: [] });
+  useRunner(b.root, 'probe-spec-failed,probe-probe-green attest-pass 1,0', 'full');
+  const r = await probeCli(b.root, 'CART-008', ['--env', 'prod']);
+  assert.equal(r.status, 3, r.out);
+  assert.match(r.stdout, /^refused: CART-008 — the probe critic verdict has no clauses$/m);
+  for (const x of [root, b.root]) {
+    assert.equal(runnerCalls(x), 0);
+    assert.ok(!fs.existsSync(path.join(x, '.agents/regression/runs/.confirm/prod.probe.json')), 'no token issued');
+  }
+});
+
+test('verify --heal: verifies the candidate of a claimed scenario and writes heal_id; without --heal the scenario is refused as already having a spec', async () => {
+  const { root, heal } = withHealAttempt(withAuthoringFiles(copyRoot()), { extra: { class: 'TEST' } });
+  useRunner(root, 'verify-candidate-green attest-pass 0', 'full');
+  const pair = `CART-008=${heal.candidate}`;
+  const plain = await cli(['verify', pair, '--root', root]);
+  assert.equal(plain.status, 3, plain.out);
+  assert.match(plain.stdout, /^refused: CART-008 — already has a spec$/m);
+  const other = await cli(['verify', 'CART-008=e2e/regression/cart/cart-008.spec.ts', '--heal', HEAL_DIR, '--root', root]);
+  assert.equal(other.status, 3, other.out);
+  assert.match(other.stdout, /^refused: CART-008 — not the candidate of heal attempt h1/m);
+  assert.equal(runnerCalls(root), 0);
+  const r = await cli(['verify', pair, '--heal', HEAL_DIR, '--root', root]);
+  assert.equal(r.status, 0, r.out);
+  const rec = verifyOf(root, r);
+  assert.equal(rec.heal_id, 'h1');
+  assert.deepEqual(rec.scenarios.map((s) => [s.id, s.spec, s.qualified]), [['CART-008', heal.candidate, true]]);
 });

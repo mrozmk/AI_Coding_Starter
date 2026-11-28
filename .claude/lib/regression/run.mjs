@@ -6,15 +6,17 @@
 // `visual compare | update` runs the visual lane on its own (regression.md §13), `run full` adds
 // its compare pass after the functional one, `visual accept` is the only writer of baselines.
 // `status` prints the newest per-machine record per environment and mode. `walk` (the inventory,
-// §14) and `verify` (the author lane's three passes, §15) go through the same refusals, pre-flight
-// — strict on both kinds there —, confirmation and locks (`prepare`).
+// §14), `verify` (the author lane's three passes, §15; `--heal` a heal candidate's) and `probe` (the
+// heal lane's two-pass live check, §17) go through the same refusals, pre-flight — strict on both
+// kinds there —, confirmation and locks (`prepare`).
 // Node builtins only — ships to every downstream. Contract: .agents/reference/regression.md §12–§13.
 //
 //   node .claude/lib/regression/run.mjs run [smoke|full] [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]
 //   node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]
-//   node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]
+//   node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--heal <heal dir>] [--root <dir>]
+//   node .claude/lib/regression/run.mjs probe <ID> --heal <heal dir> [--env <name>] [--confirm <token>] [--root <dir>]
 //   node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]
 //   run / visual exit: 0 GREEN · 1 RED · 2 usage / config / invalid catalog / baseline not established /
 //             visual not configured / widened tolerance · 3 refused (team clone, lock held, not
@@ -23,6 +25,7 @@
 //   accept exit: 0 written · 2 usage / config · 3 refused          status exit: 0 (2 on usage)
 //   walk exit: 0 COMPLETE · 2 usage / route list / no stub · 3 refused · 4 INCOMPLETE · 5 BLOCKED/ENV
 //   verify exit: 0 every scenario verified · 1 some not · 2 usage · 3 refused (incl. a candidate) · 5 guard stop
+//   probe exit: 0 recorded · 2 usage · 3 refused · 5 guard stop
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -32,7 +35,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, QA_ENV_PATH, RUNS_DIR, loadConfig, resolveTarget, catalogSettings, isObject, docKey, specDir, visualSettings } from './config.mjs';
 import { accountOf, posix } from './catalog.mjs';
-import { buildPlan, buildWalkPlan, buildVerifyPlan, confirmationText, expandTargets, MODES, VISUAL_ACTIONS } from './policy.mjs';
+import { buildPlan, buildWalkPlan, buildVerifyPlan, buildProbePlan, confirmationText, expandTargets, MODES, VISUAL_ACTIONS } from './policy.mjs';
 import { validateRouteList } from './walk.mjs';
 import { ownerLock, LockError, createLedger, groupAlive, scenarioId, guardedFetch } from './guard.mjs';
 import { GUARD_MODULE, OWN_ROUTE_CALLS, dropCommentLines, importsOf, resolveModule } from './speclint.mjs';
@@ -75,12 +78,18 @@ export function parseBuildSha(text) {
   return found.length === 1 ? found[0] : null;
 }
 
-/** `{sha, source, reason}` — the deployed build, read from the environment's build_sha_url. */
-export async function fetchBuildSha(root, cfg, envName, policy) {
+/** The environment's build endpoint: its `build_sha_url`, else (host `qa-env`) qa-env.json's; null when none. */
+function buildShaUrl(root, cfg, envName, policy) {
   let url = policy.build_sha_url;
   if (!url && cfg.environments?.[envName]?.host === 'qa-env') {
     try { url = JSON.parse(fs.readFileSync(path.resolve(root, QA_ENV_PATH), 'utf8'))?.build_sha_url ?? null; } catch { url = null; }
   }
+  return url || null;
+}
+
+/** `{sha, source, reason}` — the deployed build, read from the environment's build_sha_url. */
+export async function fetchBuildSha(root, cfg, envName, policy) {
+  const url = buildShaUrl(root, cfg, envName, policy);
   if (!url) return { sha: null, source: null, reason: 'no build_sha_url' };
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'follow' });
@@ -146,13 +155,16 @@ export function scanIntegration(root, { configFile: configRel, configNeeds, spec
   return findings;
 }
 
+/** What the functional runner config must import and do: testMatch from runnerOptions. */
+// Playwright loads every discovered file before grep: without testMatch an unclaimed draft — or a
+// heal candidate or probe — loads too.
+export const RUNNER_NEEDS = [{ module: GUARD_MODULE, binding: 'runnerOptions', uses: 'opts.testMatch', missing: 'does not set testMatch from runnerOptions' }];
+
 /** The production pre-flight of a plan: the functional runner (not in a visual-only plan) and the visual one. */
 export function checkIntegration(root, cfg, plan) {
   const findings = [];
   if (plan.mode !== 'visual') {
-    // Playwright loads every discovered file before grep: without testMatch an unclaimed draft loads too.
-    const needs = [{ module: GUARD_MODULE, binding: 'runnerOptions', uses: 'opts.testMatch', missing: 'does not set testMatch from runnerOptions' }];
-    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: needs, specs: plan.cases.map((c) => c.spec) }));
+    findings.push(...scanIntegration(root, { configFile: cfg.runner.config, configNeeds: RUNNER_NEEDS, specs: plan.cases.map((c) => c.spec) }));
   }
   if (plan.visual) findings.push(...visualIntegration(root, cfg));
   return findings;
@@ -946,19 +958,44 @@ function keepAttachment(root, dir, n, rel) {
   return posix(path.relative(root, dest));
 }
 
-/** Why one case does not qualify in pass `n` — the complete reason — or null. */
-function caseProblem(c, scenario, guard, events, n) {
-  if (c.result !== 'passed') return `${c.result} in pass ${n}`;
-  if (c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0) return `a retry in pass ${n}`;
-  if (guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`)) return `no guard attestation in pass ${n}`;
-  const account = accountOf(scenario.needs);
+const retried = (c) => c.attempts !== 1 || c.retries.length !== 1 || c.retries[0] !== 0;
+const attestedCase = (c, guard) => !guard.attestation.includes(`guard not attested for ${c.id}/${c.project}`);
+
+/** Why the account session of one case is not evidenced (`legacy` or `missing`), or null (none needed, or signed). */
+function sessionProblem(c, needs, guard, events) {
+  const account = accountOf(needs);
   if (!account) return null;
   const tests = events.filter((e) => e.kind === 'installed' && e.id === c.id && e.project === c.project).map((e) => e.test);
   const starts = events.filter((e) => e.kind === 'session-start' && e.account === account);
-  if (starts.length && starts.every((e) => e.test === undefined)) return 'fixture predates per-case sessions — re-copy fixtures.ts (regression.md §11)';
+  if (starts.length && starts.every((e) => e.test === undefined)) return 'legacy';
   const signed = tests.some((t) => starts.some((e) => e.test === t) && events.some((e) => e.kind === 'session' && e.account === account && e.test === t));
-  if (!signed || guard.session.includes(`session not guard-attested for ${account}`)) return `no session evidence for account:${account} in pass ${n}`;
+  return !signed || guard.session.includes(`session not guard-attested for ${account}`) ? 'missing' : null;
+}
+
+/** Why one case does not qualify in pass `n` — the complete reason — or null. */
+function caseProblem(c, scenario, guard, events, n) {
+  if (c.result !== 'passed') return `${c.result} in pass ${n}`;
+  if (retried(c)) return `a retry in pass ${n}`;
+  if (!attestedCase(c, guard)) return `no guard attestation in pass ${n}`;
+  const s = sessionProblem(c, scenario.needs, guard, events);
+  if (s === 'legacy') return 'fixture predates per-case sessions — re-copy fixtures.ts (regression.md §11)';
+  if (s === 'missing') return `no session evidence for account:${accountOf(scenario.needs)} in pass ${n}`;
   return null;
+}
+
+/** The reasons a whole runner pass is not evidence (verify and probe share them). */
+function wholePassProblems(cls, guard, runner) {
+  const failed = cls.cases.filter((c) => c.result === 'failed');
+  const whole = [];
+  if (!cls.valid) whole.push('runner report missing, unparseable or invalid');
+  if (cls.report_errors) whole.push(`report errors: ${cls.report_errors}`);
+  if (runner.signal || cls.interrupted) whole.push(`runner ended by ${runner.signal ?? 'an interruption'}`);
+  if (cls.orphans.length) whole.push(`no scenario id: ${cls.orphans.map((o) => o.title).join(', ')}`);
+  if (cls.outside_selection.length) whole.push(`outside the selection: ${cls.outside_selection.map((o) => `${o.id}/${o.project}`).join(', ')}`);
+  if (guard.outsideTest) whole.push('blocked request outside a test');
+  // Exit 1 with an identified failed case is explained (decideVerdict's rule); anything else is not.
+  if (runner.code !== 0 && runner.code !== null && !(runner.code === 1 && failed.length)) whole.push(`runner exit ${runner.code}`);
+  return whole;
 }
 
 async function cmdVerify(args) {
@@ -969,7 +1006,12 @@ async function cmdVerify(args) {
     pairs.push({ id: m[1], spec: m[2] });
   }
   if (!pairs.length) { console.error(`run: verify needs at least one <ID>=<spec path>\n${USAGE}`); return 2; }
-  const p = await prepare(args, (r, cfg, env) => ({ ...buildVerifyPlan(r, cfg, env, pairs), summaryFn: printPlanSummary }), { strictIntegration: true });
+  let heal = null;
+  if (args.heal) {
+    heal = readHeal(path.resolve(args.root), args.heal);
+    if (!heal) return 2;
+  }
+  const p = await prepare(args, (r, cfg, env) => ({ ...buildVerifyPlan(r, cfg, env, pairs, { heal }), summaryFn: printPlanSummary }), { strictIntegration: true });
   if (p.exit !== undefined) return p.exit;
   const { root, cfg, plan, locks, confirmed } = p;
   try {
@@ -1003,16 +1045,7 @@ async function cmdVerify(args) {
       blocked.push(...guard.blocked.map((e) => ({ ...e, pass: n })));
       reserved = Math.max(reserved, guard.budget.reserved);
       for (const [op, cost] of Object.entries(guard.budget.by_op)) byOp[op] = (byOp[op] ?? 0) + cost;
-      const failed = cls.cases.filter((c) => c.result === 'failed');
-      const whole = [];
-      if (!cls.valid) whole.push('runner report missing, unparseable or invalid');
-      if (cls.report_errors) whole.push(`report errors: ${cls.report_errors}`);
-      if (runner.signal || cls.interrupted) whole.push(`runner ended by ${runner.signal ?? 'an interruption'}`);
-      if (cls.orphans.length) whole.push(`no scenario id: ${cls.orphans.map((o) => o.title).join(', ')}`);
-      if (cls.outside_selection.length) whole.push(`outside the selection: ${cls.outside_selection.map((o) => `${o.id}/${o.project}`).join(', ')}`);
-      if (guard.outsideTest) whole.push('blocked request outside a test');
-      // Exit 1 with an identified failed case is explained (decideVerdict's rule); anything else is not.
-      if (runner.code !== 0 && runner.code !== null && !(runner.code === 1 && failed.length)) whole.push(`runner exit ${runner.code}`);
+      const whole = wholePassProblems(cls, guard, runner);
       passes.push({ n, nonce, cases: cls.cases.map(({ id, project, result, attempts }) => ({ id, project, result, attempts })), disqualified: whole });
       if (guard.stop) { stopped = guard.stop; break; }
       for (const s of live) {
@@ -1033,7 +1066,7 @@ async function cmdVerify(args) {
     }));
     const budgetFile = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'budget.json'), 'utf8')); } catch { return null; } })();
     const record = {
-      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, confirmed, repeats: plan.repeats, passes, scenarios,
+      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, ...(plan.heal_id ? { heal_id: plan.heal_id } : {}), confirmed, repeats: plan.repeats, passes, scenarios,
       guard: {
         blocked: blocked.map(({ reason, method, url, op, test, pass }) => ({ reason, method, url, op, test: test ?? null, pass })),
         budget: { ceiling: plan.budget.ceiling, reserved: budgetFile?.reserved ?? reserved, by_op: budgetFile?.by_op ?? byOp },
@@ -1052,6 +1085,91 @@ async function cmdVerify(args) {
     console.log(`record: ${posix(path.relative(root, recordFile))}`);
     if (stopped) return 5;
     return scenarios.every((s) => s.qualified) ? 0 : 1;
+  } finally {
+    releaseAll(locks);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// probe (the heal lane's live check, regression.md §17)
+
+/** heal.json of a heal directory, or null (the reason printed). */
+function readHeal(root, dir) {
+  const file = path.join(path.resolve(root, dir), 'heal.json');
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.error(`run: heal.json unreadable — ${posix(path.relative(root, file))}`); return null; }
+}
+
+/** One pass's environment facts: the guard's stop, 5xx answers, failed requests and aborted ones of its own tests. */
+function probeFacts(plan, cls, guard, runner, events) {
+  const caseOf = (e) => { const tc = guard.testCase.get(e.test); return tc ? `${tc.id}/${tc.project}` : null; };
+  const mine = (kind, pred = () => true) => events.filter((e) => e.kind === kind && pred(e) && caseOf(e));
+  return {
+    stop: guard.stop ? guard.stop.reason : null,
+    server_error: mine('server-error').map((e) => ({ url: e.url, status: e.status, case: caseOf(e) })),
+    navigation_5xx: mine('navigation', (e) => e.status >= 500).map((e) => ({ url: e.url, status: e.status, case: caseOf(e) })),
+    network_failed: mine('failed').map((e) => ({ method: e.method, url: e.url, case: caseOf(e) })),
+    blocked: guard.blocked.map((e) => ({ reason: e.reason, method: e.method, url: e.url, op: e.op ?? null, case: caseOf(e) })),
+    whole: wholePassProblems(cls, guard, runner),
+    attestation: plan.kind === 'production' ? [...guard.attestation, ...guard.session] : [],
+  };
+}
+
+async function cmdProbe(args) {
+  const root = path.resolve(args.root);
+  const heal = readHeal(root, args.heal);
+  if (!heal) return 2;
+  if (heal.scenario !== args.id) { console.error(`run: ${args.heal} is the heal attempt of ${heal.scenario}, not ${args.id}`); return 2; }
+  const p = await prepare(args, (r, cfg, env) => ({ ...buildProbePlan(r, cfg, env, heal), summaryFn: printPlanSummary }), { strictIntegration: true });
+  if (p.exit !== undefined) return p.exit;
+  const { cfg, plan, locks, confirmed } = p;
+  try {
+    const { runId, dir } = newRunDir(root, plan.env);
+    for (const l of locks) l.update({ run_id: runId });
+    printPlanSummary(plan);
+    const configDir = path.dirname(path.resolve(root, cfg.runner.config));
+    const catalogIds = new Set(plan.catalog_ids);
+    const reportFile = path.resolve(root, cfg.runner.report);
+    const shaUrl = buildShaUrl(root, cfg, plan.env, plan.policy);
+    // The build reads go through the guard on this run's ledger, each under a nonce of its own.
+    const buildRead = (tag) => readStoryBuild(manifestOf(root, plan, dir, runId, `${runId}-build-${tag}`, []), shaUrl);
+    const before = await buildRead('before');
+    const needs = plan.passes[0].cases[0]?.needs ?? [];
+    const passes = [];
+    const skipped = [];
+    let stopped = null;
+    let halt = null;
+    for (const pass of plan.passes) {
+      if (halt) { skipped.push({ n: pass.n, reason: halt }); console.log(`not run: pass ${pass.n} — ${halt}`); continue; }
+      const nonce = randomBytes(8).toString('hex');
+      const { runner, report } = await runPass({
+        root, plan, manifest: manifestOf(root, plan, dir, runId, nonce, pass.cases, { pass: pass.n }), manifestFile: path.join(dir, `manifest-${pass.n}.json`),
+        command: cfg.runner.commands.full, reportFile, locks, env: { REGRESSION_PASS: String(pass.n) },
+      });
+      if (fs.existsSync(reportFile)) fs.copyFileSync(reportFile, path.join(dir, `report-${pass.n}.json`));
+      const cls = classifyReport(report, { cases: pass.cases }, { idPattern: catalogSettings(cfg).id_pattern, catalogIds, root, configDir });
+      const guard = readGuard(dir, nonce, casesRan(cls));
+      failBlockedCases(cls, guard);
+      const events = createLedger(dir, { nonce }).events();
+      const cases = cls.cases.map((c) => ({
+        id: c.id, project: c.project, spec: c.spec, result: c.result, attempts: c.attempts, retries: c.retries,
+        attested: attestedCase(c, guard), session_ok: sessionProblem(c, needs, guard, events) === null,
+        attachments: c.result === 'failed' ? [...new Set(c.attachments)].map((a) => keepAttachment(root, dir, pass.n, a)) : [],
+      }));
+      passes.push({ n: pass.n, nonce, cases, facts: probeFacts(plan, cls, guard, runner, events) });
+      for (const c of cases) console.log(`probe: pass ${pass.n} ${c.id}/${c.project} ${c.result}${c.attempts !== 1 || retried(c) || !c.attested || !c.session_ok ? ' (unqualified)' : ''}`);
+      // A stopped or interrupted pass 1 ends the sequence: pass 2 would read a different state.
+      if (guard.stop) { stopped = guard.stop; halt = `guard stop: ${guard.stop.reason}`; } else if (runner.signal || cls.interrupted) halt = `pass ${pass.n} interrupted`;
+    }
+    const after = stopped ? null : await buildRead('after');
+    const record = {
+      schema: 1, run_id: runId, env: plan.env, kind: plan.kind, base_url: plan.base_url, heal_id: plan.heal_id, plan_digest: plan.digests.plan, confirmed,
+      build: { before: before.sha, after: after?.sha ?? null, reason: before.reason ?? after?.reason ?? null, ...(stopped ? { after_skipped: 'guard stop' } : {}) },
+      passes, skipped,
+    };
+    const recordFile = path.join(dir, 'probe.json');
+    fs.writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
+    console.log(`record: ${posix(path.relative(root, recordFile))}`);
+    return stopped ? 5 : 0;
   } finally {
     releaseAll(locks);
   }
@@ -1198,7 +1316,8 @@ const USAGE = [
   '       node .claude/lib/regression/run.mjs visual compare|update [--env <name>] [--confirm <token>] [--root <dir>]',
   '       node .claude/lib/regression/run.mjs visual accept --run <run id> --token <token> [--root <dir>]',
   '       node .claude/lib/regression/run.mjs walk --routes <file> [--env <name>] [--confirm <token>] [--root <dir>]',
-  '       node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs verify <ID>=<spec>… [--env <name>] [--confirm <token>] [--heal <heal dir>] [--root <dir>]',
+  '       node .claude/lib/regression/run.mjs probe <ID> --heal <heal dir> [--env <name>] [--confirm <token>] [--root <dir>]',
   '       node .claude/lib/regression/run.mjs status [--env <name>] [--json] [--root <dir>]',
 ].join('\n');
 const RUN_MODES = ['smoke', 'full'];
@@ -1207,14 +1326,16 @@ const COMMANDS = {
   visual: (args) => (args.action === 'accept' ? cmdVisualAccept(args) : cmdVisual(args)),
   walk: cmdWalk,
   verify: cmdVerify,
+  probe: cmdProbe,
   status: cmdStatus,
 };
 
 function parseArgs(argv) {
   let [cmd, ...rest] = argv;
   if (!Object.hasOwn(COMMANDS, cmd ?? '')) throw new UsageError(cmd ? `unknown command ${cmd}` : 'a command is required');
-  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false, action: undefined, run: undefined, token: undefined, routes: undefined, pairs: [] };
-  let flags = cmd === 'status' ? ['--env', '--root'] : cmd === 'walk' ? ['--env', '--confirm', '--root', '--routes'] : ['--env', '--confirm', '--root'];
+  const args = { cmd, root: process.cwd(), env: undefined, mode: 'smoke', confirm: undefined, json: false, action: undefined, run: undefined, token: undefined, routes: undefined, heal: undefined, id: undefined, pairs: [] };
+  let flags = cmd === 'status' ? ['--env', '--root'] : cmd === 'walk' ? ['--env', '--confirm', '--root', '--routes']
+    : cmd === 'verify' || cmd === 'probe' ? ['--env', '--confirm', '--root', '--heal'] : ['--env', '--confirm', '--root'];
   if (cmd === 'visual') {
     const [action, ...more] = rest;
     if (action === 'accept') flags = ['--run', '--token', '--root'];
@@ -1232,8 +1353,11 @@ function parseArgs(argv) {
       if (i + 1 >= rest.length) throw new UsageError(`${a} needs a value`);
       args[a.slice(2)] = rest[++i];
     } else if (cmd === 'verify' && !a.startsWith('--')) args.pairs.push(a);
+    else if (cmd === 'probe' && !a.startsWith('--') && args.id === undefined) args.id = a;
     else throw new UsageError(`unknown argument ${a}`);
   }
+  if (cmd === 'probe' && (!args.id || !args.heal)) throw new UsageError('probe needs <ID> and --heal <heal dir>');
+  if (cmd === 'probe') args.mode = 'probe';
   if (args.action === 'accept' && (!args.run || !args.token)) throw new UsageError('visual accept needs --run <run id> and --token <token>');
   if (cmd === 'walk' && !args.routes) throw new UsageError('walk needs --routes <file>');
   if (cmd === 'walk') args.mode = 'walk';

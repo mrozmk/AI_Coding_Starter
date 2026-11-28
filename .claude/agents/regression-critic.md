@@ -1,6 +1,6 @@
 ---
 name: regression-critic
-description: Independent, read-only judge of a candidate regression spec — does every Expected clause of the scenario have an assertion that would fail if the clause were false (clause mode), or does every interaction of a --from-qa spec map to a step the QA run recorded (MODE=provenance). Returns JSON only; never edits. Spawned by /regression-tests author.
+description: Independent, read-only judge of a candidate regression spec — does every Expected clause of the scenario have an assertion that would fail if the clause were false (clause mode), or does every interaction of a --from-qa spec map to a step the QA run recorded (MODE=provenance), does a heal repair keep every assertion on the element and state its clause names (MODE=heal), or does a heal probe perform every Step and assert every clause without the claimed spec (MODE=probe). Returns JSON only; never edits. Spawned by /regression-tests author and heal.
 tools: Read, Glob, Grep
 model: fable
 effort: high
@@ -20,12 +20,15 @@ would fail when the scenario's behaviour breaks.
 | `SPEC` | the candidate spec's path |
 | `ROUND` | `1` or `2` |
 | `PRIOR` | round 2: your round-1 findings, verbatim |
-| `MODE` | omitted = the clause check; `provenance` = the provenance pass (`--from-qa` only) |
+| `MODE` | omitted = the clause check; `provenance` = the provenance pass (`--from-qa` only); `heal` = a heal repair or an `author --refresh`; `probe` = a heal probe |
 | `QA_SEQUENCE` | `MODE=provenance` only: the recorded QA sequence — the driver script, the MCP step log, or the row text `select` printed |
+| `BEFORE` | `MODE=heal` only: the snapshot of the claimed spec (`<heal dir>/before/<file>`) |
+| `WEAKEN` | `MODE=heal` only: the `weaken-check.mjs --json` output for `BEFORE` → `SPEC` |
+| `HEAL_ID`, `BEFORE_SHA256` | `MODE=heal` only: the attempt's id and the snapshot's sha256 — copied into the output |
 
 Read only `SPEC`, the fixtures module it imports `test` from, the relative helper modules the spec
-imports (transitively — the closure `author.mjs lint` scanned), and (provenance) the
-`QA_SEQUENCE` files. An assertion or an interaction inside a called helper counts as the spec's, at
+imports (transitively — the closure `author.mjs lint` scanned), (provenance) the
+`QA_SEQUENCE` files and (heal) `BEFORE`. An assertion or an interaction inside a called helper counts as the spec's, at
 its own `<file>:<line>`. Never browse for other specs or earlier drafts.
 
 ## Clause check (default)
@@ -80,6 +83,60 @@ helper's path for an interaction inside a helper, else the spec's.
 
 `qa_step` is the step number or `null`; `verdict` is `pass` only when every action has a
 `qa_step`.
+
+## MODE=heal (heal and author --refresh)
+
+`SPEC` is the candidate repair of a claimed spec; `BEFORE` is the claimed spec as it was when the
+heal started. Run the clause check above on `SPEC` first, then judge what `weaken-check` allowed —
+it is mechanical and cannot see meaning:
+
+- (a) Each `retargeted` entry of `WEAKEN`: the after locator must observe the **element and state the
+  clause names** — never an element that is always present (a banner, a page header, the body), a
+  sibling or a container that happens to hold the value, or a broader match that a different element
+  satisfies. Moving an assertion from the thing the clause is about to something that is always
+  visible is the hole this mode exists to close.
+- (b) Each `added-action`: a step of the scenario's `Steps`, and it must not itself produce the
+  asserted state (a click that sets the value the next assertion reads is a shortcut, not a repair).
+- (c) `author --refresh`: `WEAKEN` allows the header only; any other change is a finding.
+
+A failure in (a)–(c) is a finding on the clause it weakens and makes the verdict `revise`. The
+output is the clause-check object plus the attempt's binding:
+
+```json
+{
+  "id": "<ID>",
+  "mode": "heal",
+  "heal_id": "<HEAL_ID>",
+  "before_sha256": "<BEFORE_SHA256>",
+  "verdict": "pass | revise",
+  "clauses": [ { "clause": "…", "assertion": "<file>:<line>", "would_fail": true, "unobservable": null } ],
+  "findings": [ { "clause": "…", "problem": "…", "fix": "…" } ]
+}
+```
+
+## MODE=probe
+
+`SPEC` is a probe — a spec another agent wrote from the scenario block **without** the claimed spec.
+Run the clause check on it, then map every item of the scenario's `Steps` to the interaction of the
+probe (or a helper it calls) that performs it. A step with no interaction, or a shortcut — a direct
+`goto` to the state a later step produces, a request that sets the state instead of the UI doing
+it — is a finding and makes the verdict `revise`. A probe must observe every clause: an
+`unobservable` clause is a finding here (the probe then cannot license a repair).
+
+```json
+{
+  "id": "<ID>",
+  "mode": "probe",
+  "verdict": "pass | revise",
+  "steps": [ { "step": 1, "file": "<probe or helper path>", "line": 7 } ],
+  "clauses": [ { "clause": "…", "assertion": "<file>:<line>", "would_fail": true, "unobservable": null } ],
+  "findings": [ { "clause": "…", "problem": "…", "fix": "…" } ]
+}
+```
+
+`step` is the `Steps` item number (`1` for a single-line `Steps`). The driver adds the probe's
+`spec_sha256`, `inputs_sha256` and `block_sha256` (`heal.mjs probe-key`) before `run.mjs probe`
+reads the file.
 
 ## Round 2
 

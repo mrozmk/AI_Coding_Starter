@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CONFIG_PATH, loadConfig, envPolicy, resolveEnvBaseUrl, resolveTarget, isObject, docKey, specDir, envKind, visualSettings, runnerDevices, VISUAL_DEVICES,
 } from './config.mjs';
-import { loadCatalog, validateCatalog, needsKeys, specOf, statusOf, blockTexts } from './catalog.mjs';
+import { loadCatalog, validateCatalog, needsKeys, specOf, statusOf, blockTexts, automationState, currentFingerprint, staleRule } from './catalog.mjs';
 import { lintSpec, stripComments, RETRY_NEEDLES } from './speclint.mjs';
 import { redactedSamples } from './walk.mjs';
 
@@ -224,7 +224,7 @@ export function confirmationText(plan) {
 }
 
 /** Target, policy and budget shared by every plan builder, or `{error}`. */
-function targetOf(root, cfg, envName) {
+export function targetOf(root, cfg, envName) {
   const entry = isObject(cfg?.environments) ? cfg.environments[envName] : undefined;
   if (!isObject(entry) || docKey(envName)) return { error: `unknown environment ${envName}` };
   const base = resolveEnvBaseUrl(root, cfg, envName);
@@ -301,10 +301,11 @@ export function retriesProblem(root, cfg) {
  * environment policy (`policy` null skips it), a viewport with no device project. Shared by
  * `author.mjs select` and the verify plan.
  */
-export function candidateProblem(cfg, b, policy, envName) {
+export function candidateProblem(cfg, b, policy, envName, { allowSpec = null } = {}) {
   const [, status] = statusOf(b);
   if (status !== 'READY') return `not READY (${b.fields.Status?.value})`;
-  if (specOf(b) !== null) return 'already has a spec';
+  // A heal attempt verifies a repair of the scenario's own claimed spec (`allowSpec`), nothing else.
+  if (specOf(b) !== null && specOf(b).path !== allowSpec) return 'already has a spec';
   if (policy) {
     const reason = exclusionReason({ id: b.id, needs: needsKeys(b.fields.Needs?.value), effect: b.fields.Effect?.value ?? 'read' }, policy, envName);
     if (reason) return reason;
@@ -319,7 +320,7 @@ export function candidateProblem(cfg, b, policy, envName) {
  * Refusals in `refused` (the run stops before any confirmation, lock or runner); `scenarios`
  * carries the evidence key `{spec_sha256, inputs_sha256, block_sha256}` bound into the digest.
  */
-export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG_PATH } = {}) {
+export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG_PATH, heal = null } = {}) {
   const t = targetOf(root, cfg, envName);
   if (t.error) return { error: t.error };
   const { settings, files, blocks } = loadCatalog(root, cfg);
@@ -337,7 +338,11 @@ export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG
     let lint = null;
     const why = (() => {
       if (!b) return 'not in the catalog';
-      const candidate = candidateProblem(cfg, b, t.policy, envName);
+      if (heal) {
+        const h = healVerifyProblem(root, t, envName, heal, b, id, spec);
+        if (h) return h;
+      }
+      const candidate = candidateProblem(cfg, b, t.policy, envName, { allowSpec: heal?.spec ?? null });
       if (candidate) return candidate;
       const dataAccounts = [...String(b.fields.Data?.value ?? '').matchAll(/\baccount:([a-z0-9][a-z0-9_-]*)/g)].map((m) => m[1]);
       const missing = dataAccounts.find((k) => !needs.includes(`account:${k}`));
@@ -355,13 +360,126 @@ export function buildVerifyPlan(root, cfg, envName, pairs, { configPath = CONFIG
     scenarios.push({ id, spec, projects, needs, ...evidenceKey(root, spec, lint.files, texts.get(id).text) });
   }
   const digests = { config: sha256(fs.readFileSync(path.resolve(root, configPath))), catalog: digestFiles(root, files) };
-  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'verify', config: digests.config, catalog: digests.catalog, cases, scenarios, budget: t.budget, repeats: VERIFY_PASSES });
+  const healId = heal ? { heal_id: heal.id } : {};
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'verify', config: digests.config, catalog: digests.catalog, cases, scenarios, budget: t.budget, repeats: VERIFY_PASSES, ...healId });
   return {
-    env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'verify',
+    env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'verify', ...healId,
     cases, scenarios_list: scenarios, scenarios: scenarios.length, refused, excluded: [], no_device: [], repeats: VERIFY_PASSES,
     budget: t.budget, digests, policy: t.policy, catalog_ids: blocks.map((x) => x.id),
     textFn: verifyConfirmationText,
   };
+}
+
+const SCREENSHOT = /\.(toHaveScreenshot|toMatchSnapshot)\s*\(/;
+/** Whether spec code asserts a screenshot — such a spec belongs to the visual lane, never to heal. */
+export const hasScreenshotAssertion = (text) => SCREENSHOT.test(stripComments(String(text)));
+
+const readText = (root, rel) => { try { return fs.readFileSync(path.resolve(root, rel), 'utf8'); } catch { return null; } };
+
+/** `target differs from the pinned …` when the resolved target is not the heal attempt's pin, else null. */
+export function pinProblem(t, envName, heal) {
+  if (envName === heal.env && t.policy.kind === heal.kind && t.base_url === heal.base_url) return null;
+  return `target differs from the pinned ${heal.env} (${heal.kind} ${heal.base_url})`;
+}
+
+/** Why a verify pair is not this heal attempt's candidate on its pinned target, or null. */
+function healVerifyProblem(root, t, envName, heal, b, id, spec) {
+  if (id !== heal.scenario) return `not the scenario of heal attempt ${heal.id}`;
+  if (spec !== heal.candidate) return `not the candidate of heal attempt ${heal.id} (${heal.candidate})`;
+  const pin = pinProblem(t, envName, heal);
+  if (pin) return pin;
+  if (heal.state !== 'open') return `heal attempt ${heal.id} is ${heal.state}`;
+  if (heal.class !== 'TEST' && heal.refresh !== true) return `heal attempt ${heal.id} is not classified TEST`;
+  if (specOf(b)?.path !== heal.spec) return `the scenario's Spec no longer names ${heal.spec}`;
+  const text = readText(root, spec);
+  if (text !== null && hasScreenshotAssertion(text)) return 'the candidate asserts a screenshot — the visual lane owns those';
+  return null;
+}
+
+/** The step numbers of a block's `Steps` (`1.`, `2)` …), `[1]` for a single-line value. */
+function stepNumbers(b) {
+  const nums = String(b.fields.Steps?.value ?? '').split('\n').map((l) => /^(\d+)[.)]\s/.exec(l.trim())?.[1]).filter(Boolean).map(Number);
+  return nums.length ? nums : [1];
+}
+
+/** Why the probe critic file does not qualify the current probe, or null. */
+function probeCriticProblem(root, heal, b, probeKey) {
+  let critic;
+  try { critic = JSON.parse(fs.readFileSync(path.resolve(root, heal.probe_critic), 'utf8')); } catch { return 'no probe critic pass on the current probe'; }
+  if (critic.id !== heal.scenario || critic.mode !== 'probe' || critic.verdict !== 'pass' || changedPart(critic, probeKey)) return 'no probe critic pass on the current probe';
+  const steps = Array.isArray(critic.steps) ? critic.steps : [];
+  const unmapped = stepNumbers(b).find((n) => !steps.some((s) => Number(s.step) === n && s.file && Number.isInteger(s.line)));
+  if (unmapped !== undefined) return `the probe critic maps no interaction to Step ${unmapped}`;
+  if (!Array.isArray(critic.clauses) || !critic.clauses.length) return 'the probe critic verdict has no clauses';
+  for (const c of critic.clauses) {
+    if (!/^\S+:\d+$/.test(String(c.assertion ?? ''))) return `the probe critic names no assertion for ${c.clause ?? 'a clause'}`;
+    if (c.would_fail !== true || c.unobservable) return `the probe cannot establish ${c.clause ?? 'a clause'}`;
+  }
+  return null;
+}
+
+/**
+ * The probe plan of an open heal attempt (`heal` = its heal.json): two passes of `runner.commands.full`
+ * over the scenario's projects — pass 1 the claimed spec, pass 2 the critic-qualified probe — on the
+ * pinned target, bound by one digest. Refusals in `refused`, before any confirmation, lock or runner.
+ */
+export function buildProbePlan(root, cfg, envName, heal, { configPath = CONFIG_PATH } = {}) {
+  const t = targetOf(root, cfg, envName);
+  if (t.error) return { error: t.error };
+  const { settings, files, blocks } = loadCatalog(root, cfg);
+  const catalogErrors = validateCatalog(blocks, settings);
+  if (catalogErrors.length) return { catalog_errors: catalogErrors };
+  const id = heal.scenario;
+  const b = blocks.find((x) => x.id === id);
+  const texts = blockTexts(root, files);
+  let specKey = null;
+  let probeKey = null;
+  const why = (() => {
+    const pin = pinProblem(t, envName, heal);
+    if (pin) return pin;
+    if (heal.state !== 'open') return `heal attempt ${heal.id} is ${heal.state}`;
+    if (heal.refresh || !heal.probe) return 'a refresh attempt has no probe';
+    if (!b) return 'not in the catalog';
+    const candidate = candidateProblem(cfg, b, t.policy, envName, { allowSpec: heal.spec });
+    if (candidate) return candidate;
+    if (specOf(b)?.path !== heal.spec) return 'the spec changed since start';
+    const specText = readText(root, heal.spec);
+    if (specText === null) return `spec file absent — ${heal.spec}`;
+    if (sha256(specText) !== heal.snapshot.spec_sha256 || sha256(texts.get(id).text) !== heal.snapshot.block_sha256) return 'the spec (or block) changed since start';
+    const probeText = readText(root, heal.probe);
+    if (probeText === null) return `probe file absent — ${heal.probe}`;
+    const retries = retriesProblem(root, cfg);
+    if (retries) return retries;
+    const specLint = lintSpec(root, cfg, heal.spec, id);
+    const probeLint = lintSpec(root, cfg, heal.probe, id);
+    for (const l of [specLint, probeLint]) {
+      if (l.violations.some((v) => RETRY_NEEDLES.includes(v.needle))) return 'retries are not 0 — spec';
+      if (l.violations.length) return `lint: ${l.violations[0].file}:${l.violations[0].line}: ${l.violations[0].rule}`;
+    }
+    const inputs = specLint.files.filter((f) => f !== heal.spec);
+    if (JSON.stringify(inputs) !== JSON.stringify(heal.snapshot.inputs.map((i) => i.file)) || inputs.some((f, k) => sha256(readText(root, f) ?? '') !== heal.snapshot.inputs[k].sha256)) return 'a helper of the spec changed since start';
+    if (hasScreenshotAssertion(probeText)) return 'the probe asserts a screenshot — the visual lane owns those';
+    const ctx = {};
+    const stale = staleRule(b, automationState(root, b, ctx), { fingerprint: (cid) => currentFingerprint(root, cid, ctx) });
+    if (stale) return `the criterion changed during the heal — ${stale.rule}: ${stale.reason}`;
+    specKey = evidenceKey(root, heal.spec, specLint.files, texts.get(id).text);
+    probeKey = evidenceKey(root, heal.probe, probeLint.files, texts.get(id).text);
+    return probeCriticProblem(root, heal, b, probeKey);
+  })();
+  const base = { env: envName, kind: t.policy.kind, base_url: t.base_url, mode: 'probe', heal_id: heal.id, excluded: [], no_device: [], budget: t.budget, policy: t.policy, catalog_ids: blocks.map((x) => x.id), textFn: probeConfirmationText };
+  if (why) return { ...base, cases: [], passes: [], scenarios: 0, refused: [{ id, reason: why }], digests: {} };
+  const needs = needsKeys(b.fields.Needs?.value);
+  const effect = b.fields.Effect?.value ?? 'read';
+  const projects = viewportProjects(cfg, b.fields.Viewport?.value).map((d) => d.project);
+  const passes = [heal.spec, heal.probe].map((spec, i) => ({ n: i + 1, cases: projects.map((project) => ({ id, title: b.title, project, spec, effect, needs })) }));
+  const digests = { config: sha256(fs.readFileSync(path.resolve(root, configPath))), catalog: digestFiles(root, files) };
+  digests.plan = digestJson({ env: envName, base_url: t.base_url, mode: 'probe', config: digests.config, catalog: digests.catalog, heal_id: heal.id, passes, spec: specKey, probe: probeKey, budget: t.budget });
+  return { ...base, cases: passes.flatMap((p) => p.cases), passes, scenarios: 1, refused: [], digests };
+}
+
+/** The probe confirmation: the run lines plus the two passes it covers. */
+export function probeConfirmationText(plan) {
+  return `${confirmationText(plan)}\nprobe: 2 passes (spec, probe) over ${plan.passes[0]?.cases.length ?? 0} cases (${plan.passes[0]?.cases[0]?.id ?? '—'})`;
 }
 
 /** The walk's confirmation: the run lines plus routes, groups and every submit entry. */

@@ -1,0 +1,28 @@
+{
+  "config": { "version": "1.64.0", "rootDir": "e2e/regression" },
+  "suites": [
+    {
+      "title": "_heal/cart-008.probe.spec.ts",
+      "file": "_heal/cart-008.probe.spec.ts",
+      "specs": [
+        {
+          "title": "CART-008 — probe",
+          "file": "_heal/cart-008.probe.spec.ts",
+          "tests": [
+            { "projectName": "desktop-chrome", "expectedStatus": "passed", "status": "expected", "results": [{ "status": "passed", "duration": 100, "retry": 0 }] }
+          ]
+        },
+        {
+          "title": "CART-008 — probe",
+          "file": "_heal/cart-008.probe.spec.ts",
+          "tests": [
+            { "projectName": "mobile-safari", "expectedStatus": "passed", "status": "unexpected", "results": [{ "status": "failed", "duration": 100, "retry": 0 }] }
+          ]
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [],
+  "stats": {}
+}
