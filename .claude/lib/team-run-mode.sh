@@ -30,8 +30,9 @@ mode_close_file() {
 # mode_settle — mode `lead`, under the run's ask lock (the lock team-verdict.sh decision publishes
 # under): an Operator's close before the mode choice wins and closes the run (close_run, exit 8,
 # after the lock is released); else a mode verdict is applied (MODE changes). Always returns 0 and
-# is called as a plain command, never in `if`/`||`/`&&`: that context would switch off `set -e`
-# in mode_apply and close_run, and a failed state write would go on as a success.
+# is called as a plain command or the last element of a list, never in an `if` condition or a
+# non-final `&&`/`||` position: that context would switch off `set -e` in mode_apply and close_run,
+# and a failed state write would go on as a success.
 mode_settle() {
   local c v
   { ask_init "$TD" && ask_lock; } || die 1 "error: cannot take the ask lock of run $RUN"

@@ -180,8 +180,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    existing clone: `bash .claude/lib/team-run.sh <TEAM> status` prints `closed: abandon-before-mode`
    and `bash .claude/lib/team-inbox.sh list Supervisor` still lists that team's `closed` event (a
    file in `new/` whose frontmatter has `from: <TEAM>`, `event: closed` and the status's `run:`) →
-   stop before any claim: "<TEAM>'s previous run closed before its mode choice and its claim is
-   not released yet — handle the `closed` event first (team-pipeline.md §5a)". `TRACKER=none` → one line
+   stop before any claim: "<TEAM>'s previous run closed before its mode choice and
+   its claim is not released yet — handle the `closed` event first (team-pipeline.md §5a)". `TRACKER=none` → one line
    "tracker none: no shared signal, the start continues as before" and skip this step. The
    protocol, the grammar and the release order: `.agents/reference/team-pipeline.md` → Claim at the
    start.
