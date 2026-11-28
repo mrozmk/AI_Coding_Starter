@@ -114,6 +114,14 @@ Pick the lightest mode whose **When** holds; unsure between two → the heavier.
   `claude --resume <that session id>` on the same Claude config dir (a different one → exit 4),
   on the TeamLead's model and effort, without the lead's settings. `status` prints
   `mode: lead (TeamLead choosing)`, `mode: <m> (TeamLead: <reason>)` or `mode: <m> (Operator)`.
+- **Close before the choice.** When no mode can deliver the order, the lead opens a human decision
+  (`--source` the order brief); the Operator's `close` →
+  `team-verdict.sh decision close --for .agents/team/runs/<run>/order-brief.md --decision d-<n> --message "<line>"`.
+  The runner's `mode_settle`, called before `lead_start` and in every `mode_wait` poll under the
+  run's ask lock, finds it and calls `close_run abandon-before-mode`. A close wins over a mode
+  verdict also on disk; `verdict-acked` is not read; exit 8, event body `clone free — release the
+  claim`. Once a mode is chosen, a close against the order brief is refused (`the run is past its
+  mode choice`): close at the stage instead.
 - **Refusals** (exit 4): a verdict outside the three modes (`… is not a mode`); a run whose mode is
   not `lead` (`mode fixed by the Operator (<m>) — no choice to make`); a second verdict (`mode
   already chosen`). The caller guard (§4) covers the `mode` gate like every other.
@@ -151,7 +159,7 @@ Pick the lightest mode whose **When** holds; unsure between two → the heavier.
 | `closing`, `runs/<run>/close-refused` | runner (`lead_close`, §4) | the close fence (the sender and the hook refuse every answer while it exists); a refused close after the stage was ended (nothing is relaunched) |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
-| `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` (+ `branch, sha` for a lead close) — a closed run; the runner and `/start-team` refuse to resume it |
+| `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` (+ `branch, sha` for a lead close); reason `remode`, `abandon`, `abandon-before-mode` or `lead-close:<r>`; written tmp + `mv` — a closed run; the runner and `/start-team` refuse to resume it |
 | `runs/<run>/<record>.answered` | `team-answer.sh` (or the runner's re-derivation), after the answer to that record's ask | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, or an ask of the attempt is open, and counts again from the poll that sees neither |
 
 The team-dir root files of a lead (`teamlead.*`, `round`, `verdict-acked`, `lead-dead`,
@@ -945,6 +953,8 @@ decision in plain text and the Operator types the reply.
   that asked before its first record has no acked record: there `--for` is the refused
   `teamlead-run-<n>.json` (gate `run`) or a live ask of the current stage. A `continue`
   only means something at the acceptance gate (§9); elsewhere it changes nothing in the runner.
+  Before the mode choice, no stage exists: any `decision close` closes the run
+  (`abandon-before-mode`, §1a).
 - **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
   only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.
 - **Guard:** `guard-team-verdict.sh` refuses `team-lead.sh decision open|answer|withdraw` from any

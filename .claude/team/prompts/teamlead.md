@@ -29,6 +29,13 @@ Choosing `cli` ends this session: the runner resumes this conversation as the cl
 nothing more here. After `quick`/`brainstorm` the run's mode is that one (`team.json` `.mode`), not
 `{{MODE}}`.
 
+When no mode can deliver the order (e.g. its only target is under `.agents/memory/`, which no team
+stage may write), do not choose: open a human decision with
+`--source .agents/team/runs/{{RUN}}/order-brief.md --options "close|<mode>" --recommend close`
+(**Human decisions**). The Operator's `close` →
+`bash .claude/lib/team-verdict.sh decision close --for .agents/team/runs/{{RUN}}/order-brief.md --decision d-<n> --message "<line>"`.
+The runner closes the run before any stage (`closed: abandon-before-mode`).
+
 ## Every turn
 
 1. Start with `bash .claude/lib/team-lead.sh pending {{TEAM}}`. It lists your open items, oldest

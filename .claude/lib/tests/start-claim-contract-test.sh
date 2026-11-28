@@ -2,7 +2,8 @@
 # Offline contract test of the claim at the start: /start-team and /start-task run Check → Claim →
 # Confirm before the clone / the branch, the old late status move is gone, a resume never claims, a
 # failed start releases the claim, and an own Jira claim is reused (held). A renamed or missing step
-# heading fails closed. Text checks only — nothing is spawned, no tracker is called.
+# heading fails closed. /start-team refuses a memory-only ticket (step 3a, team-scope.sh) between the
+# ticket read and the claim, and a pending pre-mode close stops a new start. Text checks only — nothing is spawned, no tracker is called.
 #
 # Usage: bash .claude/lib/tests/start-claim-contract-test.sh [root]   (default: this checkout)
 set -u
@@ -40,13 +41,22 @@ section() {
   sed -n "${a},$((b - 1))p" "$ROOT/$1"
 }
 
-for f in "$TEAM" "$TASK" .claude/lib/team-claim.sh; do
+for f in "$TEAM" "$TASK" .claude/lib/team-claim.sh .claude/lib/team-scope.sh; do
   [ -f "$ROOT/$f" ]; check $? "missing file $f"
 done
 
 ordered "$TEAM" '^3b\. \*\*Claim the ticket\*\*' '\*\*Check\.\*\*' '\*\*Claim\.\*\*' '\*\*Confirm\.\*\*' \
   '^4\. \*\*Clone\.\*\*'
 check $? "start-team: Check, Claim, Confirm precede the clone step"
+ordered "$TEAM" '^3\. \*\*Ticket \+ branch name\.\*\*' '^3a\. \*\*Memory-only ticket\*\*' 'team-scope\.sh memory-only' '^3b\. \*\*Claim the ticket\*\*'
+check $? "start-team: the memory-only refusal (3a) runs after the ticket read and before the claim"
+has "$TEAM" 'Bash(bash .claude/lib/team-scope.sh:*)'
+check $? "start-team allows team-scope.sh"
+s="$(section "$TEAM" '^2\. \*\*RESUME\*\*' '^3\. ')" && ! printf '%s\n' "$s" | grep -qF 'team-scope.sh'
+check $? "start-team: a resume runs no memory-only check"
+s="$(section "$TEAM" '^3b\. ' '\*\*Check\.\*\*')" && printf '%s\n' "$s" | grep -qF 'closed: abandon-before-mode' \
+  && printf '%s\n' "$s" | grep -qF 'team-inbox.sh list Supervisor'
+check $? "start-team: a pending pre-mode close stops a new start before the claim"
 ordered "$TASK" '^### 6b\. Claim the ticket' '\*\*Check\.\*\*' '\*\*Claim\.\*\*' '\*\*Confirm\.\*\*' \
   '^### 7\. Create or resume the working branch'
 check $? "start-task: Check, Claim, Confirm precede the branch step"

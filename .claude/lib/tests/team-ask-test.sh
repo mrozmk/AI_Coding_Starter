@@ -1514,6 +1514,23 @@ pl edit-asks "$MAIN/.agents/team/relays/beta-x.json"; H "$T/g7.out"
 ok '[ "$R1" = 2 ] && [ "$(j "$T/g7.out" .hookSpecificOutput.permissionDecision)" = deny ]' "a relay ledger write by a stage is refused"
 vg "bash $MAIN/.claude/lib/team-lead.sh decision relay beta d-1 --text x"
 ok '[ "$VRC" = 2 ]' "the verdict guard refuses decision relay in a clone"
+# Before the mode choice (#361): no stage, no session.json; the anchor names the run only in
+# .lead_sessions.run (its .run is written at a stage launch).
+srun pm1; rm -f "$TD/session.json"; cp "$TD/team.json" "$T/tj.keep"
+jq '.mode = "lead"' "$T/tj.keep" > "$TD/team.json"
+jq 'del(.run)' "$MAIN/.agents/team/anchors/beta.json" > "$T/anc" && mv "$T/anc" "$MAIN/.agents/team/anchors/beta.json"
+printf '## Ticket\nx\n' > "$RD/order-brief.md"
+TL decision open beta --source order-brief.md --question "No mode can deliver it — close?" --options "close|cli"; DM="$(did)"
+say_sup uPM1 "beta $DM close"; SR beta "$DM" --text "beta $DM close"
+ok '[ "$SRRC" = 0 ] && [ "$(dst "$DM")" = answered ] && [ "$(dfm_t "$DM" answer_outcome)" = close ]' "a relay before the mode choice is accepted ($(cat "$T/sr.out"))"
+printf -- '---\nid: d-91\nstatus: answered\nsource: order-brief.md\nanswer_outcome: close\nanswered_via: supervisor-window uF91\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nclose?\n' > "$RD/decisions/d-91.md"
+TL pending beta
+ok 'm="$(grep -n "^mode " "$T/tl.out" | head -n 1 | cut -d: -f1)"; r="$(grep -n "^relayed .*/d-91.md" "$T/tl.out" | cut -d: -f1)"; [ -n "$m" ] && [ -n "$r" ] && [ "$r" -lt "$m" ]' "a relayed answer is listed before the mode choice ($(cat "$T/tl.out"))"
+TL decision open beta --source order-brief.md --question "Close it?" --options "close|cli"; DO="$(did)"
+jq '.lead_sessions.run = "beta-other"' "$MAIN/.agents/team/anchors/beta.json" > "$T/anc" && mv "$T/anc" "$MAIN/.agents/team/anchors/beta.json"
+say_sup uPM2 "beta $DO close"; SR beta "$DO" --text "beta $DO close"
+ok '[ "$SRRC" = 4 ] && [ "$(dst "$DO")" = pending ]' "a relay to another run is refused ($(cat "$T/sr.out"))"
+cp "$T/tj.keep" "$TD/team.json"
 pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
 
 # ================================================================================================

@@ -158,6 +158,13 @@ if [ "$GATE" = decision ]; then
           || bad "$DECISION was answered with outcome $(fm "$df" answer_outcome), not $VERDICT" ;;
       *) bad "$DECISION is $(fm "$df" status), not answered (a control verdict uses it once)" ;;
     esac
+    # A close against a run-level file (the order brief) is the close before the mode choice: once
+    # a mode is chosen no gate reads it. .mode is re-read under the lock (MODE predates it).
+    stage_for='^(r[0-9]+/)?((planner|coder|qa|wrapup|cli)-[0-9]+-[0-9]+|asks/a-[0-9]+|teamlead-run-[0-9]+)\.json$'
+    if [ "$VERDICT" = close ] && [ "${FOR#attention:}" = "$FOR" ] && ! [[ "$FOR" =~ $stage_for ]]; then
+      m="$(jq -r '.mode // "brainstorm"' "$TD/team.json")"
+      [ "$m" = lead ] || bad "the run is past its mode choice ($m) — close it at its stage: decision close --for <the stage's acked record or live asks/a-<n>.json>"
+    fi
   fi
   t="$(write_verdict)"
   if [ -n "$DECISION" ]; then

@@ -5,7 +5,7 @@
 # conversation after the judge's handover; a fixed cli on an old cli prompt; the cli permission from
 # the profile; quick without a wrapup (merge check, summary, status, integration readiness), a
 # pre-upgrade quick clone that keeps its wrapup; the quick acceptance refusing a follow-up warning;
-# the dashboard of a chosen-cli run.
+# the dashboard of a chosen-cli run; a close before the mode choice (#361).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -327,4 +327,87 @@ snap "(34) chosen cli run" "$TEAM | .lead == false and (.roles[] | select(.role 
   and .actions == [\"bash .claude/lib/session-host.sh hint alfa-cli\", \"/start-team alfa\"])"
 unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 echo "team-smoke-27: (34) dashboard in a chosen-cli run OK"
+
+# ---- (35) close before the mode choice (#361) ----------------------------------------------------
+# #342's real sequence: the lead's `decision open` against the order brief is verdict 1 (escalate),
+# the Operator's close is verdict 2. Last case: its team-next rewrites the clone.
+unset TEAM_SMOKE_NO_LEAD
+dec_open() {  # dec_open — the lead's real decision open against the order brief → teamlead-decision-1.json (escalate)
+  [ -f "$RD/order-brief.md" ] || cp "$TD/order-brief.md" "$RD/order-brief.md"
+  run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision open alfa \
+    --source ".agents/team/runs/$RUN_ID/order-brief.md" --question "No mode can deliver it — close?" \
+    --options "close|cli" --recommend close
+  expect 0 "[d-1]" "(35) decision open"
+}
+dec_answered() {  # the Operator's answer, as the fixture writes it: status answered, outcome close
+  awk '/^---$/ { n++; if (n == 2) print "answer_outcome: close"; print; next }
+    n == 1 && /^status: / { print "status: answered"; next } { print }' \
+    "$RD/decisions/d-1.md" > "$WORK/d1" && mv "$WORK/d1" "$RD/decisions/d-1.md"
+  [ "$(grep -c '^answer_outcome: close$' "$RD/decisions/d-1.md")" = 1 ] || fail "(35) fixture answer"
+}
+
+case_mark "(35a) closes while the TeamLead is choosing"
+reset; setmode lead; lead_json; echo alfa-lead > "$WORK/alive"; export CANCEL_AT=30
+dec_open; dec_answered
+# The stub sees only WORK, TD and REG: every path derives from $TD. close.n is the call that wrote
+# the close, closed.n the first call that saw closed.json.
+cat > "$WORK/hs.case" <<'HS'
+r="$(cat "$TD/run")"; rd="$TD/runs/$r"; cl="$(cd "$TD/../.." && pwd)"
+if [ "$n" -ge 6 ] && [ ! -f "$rd/teamlead-decision-2.json" ]; then
+  (cd "$cl" && TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh decision close --for order-brief.md \
+    --decision d-1 --message "Operator: close") >/dev/null 2>&1 || true
+  echo "$n" > "$WORK/close.n"
+fi
+[ ! -f "$rd/closed.json" ] || [ -f "$WORK/closed.n" ] || echo "$n" > "$WORK/closed.n"
+HS
+run "$MAIN" $TR alfa; expect 8 "closed: abandon-before-mode — clone free — release the claim" "(35a) runner closes"
+has "waiting for TeamLead: mode choice" "$WORK/out" || fail "(35a) no mode-choice wait"
+jq -e '.reason == "abandon-before-mode" and (.ref | endswith("teamlead-decision-2.json")) and .pr_id == null' \
+  "$RD/closed.json" >/dev/null || fail "(35a) closed.json: $(cat "$RD/closed.json" 2>/dev/null)"
+# One mode_wait poll makes PER_POLL has-session calls (lead_poll on the live lead; dialog_watch_lead
+# probes nothing without a registry entry — measured from hs.n and the stub log); closed.json must
+# appear within the poll after the close, before the close's own teardown probes.
+PER_POLL=1
+[ -f "$WORK/close.n" ] && [ -f "$WORK/closed.n" ] \
+  && [ $(( $(cat "$WORK/closed.n") - $(cat "$WORK/close.n") )) -le "$PER_POLL" ] \
+  || fail "(35a) not closed within one poll: close.n=$(cat "$WORK/close.n" 2>/dev/null) closed.n=$(cat "$WORK/closed.n" 2>/dev/null)"
+[ "$(jq -r .mode "$TD/team.json")" = lead ] || fail "(35a) the mode changed"
+[ ! -e "$TD/session.json" ] && [ ! -d "$TD/lock" ] || fail "(35a) session.json or the runner lock left"
+[ "$(grep -l '^event: closed' "$SUP"/* 2>/dev/null | wc -l | tr -d ' ')" = 1 ] \
+  && grep -qF "reason: abandon-before-mode — clone free — release the claim" "$(grep -l '^event: closed' "$SUP"/*)" \
+  || fail "(35a) not exactly one closed event with the release body"
+has "kill-session -t =smk-alfa-lead" "$STUB_LOG" || fail "(35a) the lead did not end"
+rm -f "$WORK/hs.case"
+run "$MAIN" $TR alfa status; expect 0 "closed: abandon-before-mode" "(35a) status"
+again; run "$MAIN" $TR alfa; expect 1 "run closed (abandon-before-mode)" "(35a) resume refused"
+echo "team-smoke-27: (35a) closes while the TeamLead is choosing OK"
+
+case_mark "(35d) a close for the order brief after the mode was chosen is refused"
+reset; setmode quick "$(choice)"; lead_json "$S"; dec_open; dec_answered
+V decision close --for order-brief.md --decision d-1 --message x; expect 4 "the run is past its mode choice" "(35d) refused"
+[ "$(grep -c '^status: answered$' "$RD/decisions/d-1.md")" = 1 ] || fail "(35d) the decision was consumed"
+[ ! -e "$RD/teamlead-decision-2.json" ] || fail "(35d) a refused close wrote a verdict"
+echo "team-smoke-27: (35d) a close for the order brief after the mode was chosen is refused OK"
+
+case_mark "(35b) a close on disk wins over a persisted mode verdict on a resume"
+reset; setmode lead; lead_json; dec_open; dec_answered
+V decision close --for order-brief.md --decision d-1 --message "Operator: close"; expect 0 "teamlead-decision-2.json" "(35b) close"
+V mode quick --message "small"; expect 0 "teamlead-mode-1.json" "(35b) mode verdict"
+[ -f "$RD/teamlead-decision-2.json" ] && [ -f "$RD/teamlead-mode-1.json" ] || fail "(35b) both verdicts on disk"
+echo teamlead-decision-2.json >> "$TD/verdict-acked"   # acked, no closed.json: the crash window
+run "$MAIN" $TR alfa; expect 8 "closed: abandon-before-mode" "(35b) resume closes"
+[ "$(jq -r .mode "$TD/team.json")" = lead ] || fail "(35b) a mode was applied"
+! has "mode: quick" "$WORK/out" || fail "(35b) mode applied"
+! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(35b) a lead was launched"
+[ ! -d "$TD/lock" ] || fail "(35b) the runner lock leaked"
+echo "team-smoke-27: (35b) a close on disk wins over a persisted mode verdict on a resume OK"
+
+case_mark "(35c) team-next accepts the clone after the close"
+# The state of (35b), no `again`: it would delete a leaked lock that team-next must see.
+: > "$STUB_LOG"; rm -f "$WORK/hs.n"
+# A real pre-mode run has no commit; the fixture commits put the branch past base_sha.
+jq --arg h "$(git -C "$CLONE" rev-parse HEAD)" '.base_sha = $h' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop brainstorm
+expect 0 "was AB-1500" "(35c) team-next"
+echo "team-smoke-27: (35c) team-next accepts the clone after the close OK"
 echo "team-smoke-27: OK"

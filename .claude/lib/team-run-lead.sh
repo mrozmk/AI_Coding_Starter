@@ -389,19 +389,22 @@ lead_accepted() {
   team_utc > "$TD/runs/$RUN/accepted.sent"
 }
 
-# close_run <reason> <ref> [branch sha] — end the run without a merge. closed.json goes first, so a
-# resume refuses the run even when a later step fails; then the Supervisor event, the lead, the
-# run's notifications, the stage. A lead close records the pushed branch and its verified sha.
+# close_run <reason> <ref> [branch sha] — end the run without a merge. closed.json goes first (tmp +
+# mv, checked: no event for an unwritten record), so a resume refuses the run even when a later step
+# fails; then the Supervisor event, the lead, the notifications, the stage. A lead close records the
+# pushed branch and its sha; mode_settle closes before the mode choice (no stage session), and only
+# that close asks the Supervisor to release the claim (team-pipeline.md → closed).
 close_run() {
   local r pr="" next
   r="$(team_accepted_record "$RUN" coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
-  jq -n --arg reason "$1" --arg ref "$2" --arg at "$(team_utc)" --arg pr "$pr" \
-    --arg branch "${3:-}" --arg sha "${4:-}" \
-    '{reason: $reason, ref: $ref, closed_at: $at,
-      pr_id: (if $pr == "" then null else ($pr | tonumber) end)}
-     + (if $branch == "" then {} else {branch: $branch, sha: $sha} end)' > "$TD/runs/$RUN/closed.json"
+  { jq -n --arg reason "$1" --arg ref "$2" --arg at "$(team_utc)" --arg pr "$pr" --arg branch "${3:-}" --arg sha "${4:-}" \
+      '{reason: $reason, ref: $ref, closed_at: $at, pr_id: (if $pr == "" then null else ($pr | tonumber) end)}
+       + (if $branch == "" then {} else {branch: $branch, sha: $sha} end)' > "$TD/runs/$RUN/.closed.json.tmp" \
+    && mv "$TD/runs/$RUN/.closed.json.tmp" "$TD/runs/$RUN/closed.json"; } \
+    || die 1 "error: closed.json of run $RUN not written — the run is not closed"
   rm -f "$TD/closing"
   if [ -n "$pr" ]; then next="PR $pr to abandon before team-next"; else next="clone free"; fi
+  [ "$1" != abandon-before-mode ] || next="clone free — release the claim"
   lead_event closed "$2" "reason: $1 — $next"
   # The run's notes go to the shared log before the lead ends; a log failure never blocks the close.
   (cd "$root" && bash .claude/lib/team-lead.sh log-append "$TEAM" closed) >/dev/null \
@@ -410,7 +413,7 @@ close_run() {
     || echo "warn: TeamLead of $TEAM did not end" >&2
   bash "$root/.claude/lib/team-inbox.sh" --main "$root" close-run "$TEAM" "$RUN" >/dev/null 2>&1 || true  # its inbox → done/
   bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --all >/dev/null 2>&1 || true  # every Operator item of the run is moot
-  end_session "$ROLE"
+  [ -z "$ROLE" ] || end_session "$ROLE"
   rm -f "$TD/session.json"
   echo "closed: $1 — $next"
   exit 8

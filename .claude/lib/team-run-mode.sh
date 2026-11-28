@@ -3,7 +3,8 @@
 # chosen cli resumes the choosing lead's own conversation as the worker), the status line, and the
 # post-run summary sources (a quick run has no wrapup).
 # Sourced by team-run.sh from the MAIN checkout, never executed; uses the runner's globals (TEAM, RUN,
-# MODE, TD, CLONE, root, BRANCH, POLL) and helpers (die, rec, sess_name, cancel_exit, team_json,
+# MODE, TD, CLONE, root, BRANCH, POLL) and helpers (die, rec, sess_name, cancel_exit, close_run,
+# ask_init, ask_lock, ask_unlock, team_json,
 # accepted_record, run_ref, team_lead_on, team_lead_json, team_tmux_alive, team_cancelled,
 # dialog_watch_lead, lead_poll and team-modes.sh's team_mode_valid, team_mode_last_role,
 # team_mode_verdict, team_cli_prompt_ok, team_quick_qa_ok). Bash 3.2.
@@ -14,6 +15,32 @@ UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 mode_choice() { jq -r --arg k "$1" '.mode_choice[$k] // empty' "$TD/team.json"; }
 
 mode_verdict() { team_mode_verdict "$TD" "$RUN"; }  # → this run's mode verdict file, if any
+
+# mode_close_file → the run's first `decision close` verdict (seq order), if any. Before the mode is
+# chosen no stage exists, so its `for` is not checked (a lead writes it against the order brief);
+# verdict-acked is not read either: closed.json is the only completion record of this close.
+mode_close_file() {
+  local f
+  for f in $(ls "$TD/runs/$RUN" 2>/dev/null | grep -E '^teamlead-decision-[0-9]+\.json$' | sort -t- -k3,3n || true); do
+    [ "$(rec "$TD/runs/$RUN/$f" verdict)" = close ] && { echo "$f"; return 0; }
+  done
+  return 0
+}
+
+# mode_settle — mode `lead`, under the run's ask lock (the lock team-verdict.sh decision publishes
+# under): an Operator's close before the mode choice wins and closes the run (close_run, exit 8,
+# after the lock is released); else a mode verdict is applied (MODE changes). Always returns 0 and
+# is called as a plain command, never in `if`/`||`/`&&`: that context would switch off `set -e`
+# in mode_apply and close_run, and a failed state write would go on as a success.
+mode_settle() {
+  local c v
+  { ask_init "$TD" && ask_lock; } || die 1 "error: cannot take the ask lock of run $RUN"
+  c="$(mode_close_file)"
+  if [ -n "$c" ]; then ask_unlock; close_run abandon-before-mode ".agents/team/runs/$RUN/$c"; fi
+  v="$(mode_verdict)"
+  [ -z "$v" ] || mode_apply "$v"
+  ask_unlock
+}
 
 cli_resumes() { [ "$1" = cli ] && [ "$(mode_choice by)" = teamlead ]; }  # <role> — a lead-chosen cli
 
@@ -46,16 +73,15 @@ mode_apply() {
   echo "mode: $m — TeamLead: $reason"
 }
 
-# mode_wait — mode `lead`: no stage runs until the lead's mode verdict; the lead is watched as in a
-# stage's wait (a dead lead is reported once and relaunched on relaunch-lead, the wait goes on).
+# mode_wait — mode `lead`: no stage runs until the lead's mode verdict; a close before the choice
+# ends the run (mode_settle). The lead is watched as in a stage's wait (a dead lead is reported once
+# and relaunched on relaunch-lead, the wait goes on).
 mode_wait() {
-  local v
   team_lead_on || die 4 "mode lead needs the per-run TeamLead"
   echo "waiting for TeamLead: mode choice"
   while :; do
     team_cancelled && cancel_exit
-    v="$(mode_verdict)"
-    if [ -n "$v" ]; then mode_apply "$v"; return 0; fi
+    mode_settle; [ "$MODE" = lead ] || return 0
     dialog_watch_lead
     lead_poll
     sleep "$POLL"

@@ -177,6 +177,9 @@ Two machines (or a team and a solo session) may start the same ticket. A NEW `/s
 (step 3b) and `/start-task` (step 6b) therefore claim the ticket in the tracker **before** any clone
 or branch names it, in this order:
 
+**Step 3a first** — `/start-team` refuses a memory-only ticket before Check (`team-scope.sh
+memory-only`).
+
 1. **Check** — refuse when the ticket is closed, in the `started` or `delivered` status (Jira: status
    category `In Progress` or `Done`), held by another machine or team (an unreleased claim comment),
    or has an open PR (`closes`/`branch`) or a remote branch `<type>/<KEY>-…` carrying its key. The
@@ -206,6 +209,8 @@ apply. Tracker `none` has no shared signal: one line, and the start continues as
   start-failed` restores the status to the claim marker's `previous` **first** (only while that
   claim still holds and the status still reads `started`; `previous` comes from the marker, never
   from a fresh read), then posts the release comment. A rerun writes nothing new.
+- **Release after a close before the mode choice** — the Supervisor's, on the `closed` event with
+  reason `abandon-before-mode` (§5a), `--reason closed`; no other close releases the claim.
 - **Resume never claims.** `/start-team <team>` and `/start-task` on an existing local branch skip
   the claim. An own unreleased claim from a crashed start passes as `held` — no second comment, the
   `previous` of its first marker — unless the status has moved past `started` (refused).
@@ -280,7 +285,7 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
    | Event | Means | Run |
    |---|---|---|
    | `accepted` | the lead accepted the delivery and the wrapup is done (quick: right after the accept); the runner printed `ready:` | (github) `bash .claude/lib/team-starter-land.sh <team>` when the run has a starter half (§6), then `bash .claude/lib/team-merge-check.sh <team>`, then `bash .claude/lib/team-integrate.sh <team>`; (ADO) `bash .claude/lib/team-merge-check.sh <team>`, then `/pr-merge`; the brief is the event's `ref` |
-   | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next` or `clone free` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; else abandon the named PR (if any) and free the clone with `team-next` |
+   | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next`, `clone free`, or (reason `abandon-before-mode`) `clone free — release the claim` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; reason `abandon-before-mode` (a close before the mode choice) → in this order: (1) the anchor `<main>/.agents/team/anchors/<team>.json` still names the event's ticket (`.ticket`) and run (`.lead_sessions.run`) — another ticket or run means the clone has moved on: mark **only this inbox file** done and stop (no cleanup, no release, no `team-next`: every later command addresses the team's current run); an unreadable or missing anchor is an error and the event stays pending; (2) `bash .claude/lib/team-run.sh <team> status` names the event's run, prints `closed: abandon-before-mode` and shows no live runner lock (`unlock` a stale one); then `bash .claude/lib/session-host.sh alive <team>-runner` → `kill` the idle `; read` session; (3) github `bash .claude/lib/team-claim.sh check <KEY> --who <team>` → `held id=<id> …` → `bash .claude/lib/team-claim.sh release <KEY> --id <id> --reason closed` (`free` → already released; `refused:` — a foreign holder, a closed or moved ticket — say so, post nothing, go on to (4)); jira the MCP release of `/start-team` step 4, with `CLAIM_ID` and the decoded `previous` taken only from a complete re-read (snapshot `.status` `complete`) whose `holder --who <team>` prints `self=yes` (`self=no`, verified by a complete read: this team no longer holds the ticket — no transition, no comment, go on to (4); `holder none` → already released → (4); an incomplete read keeps the event pending); none: nothing; (4) `bash .claude/lib/team-inbox.sh done Supervisor <file>`. The clone is then free: the next `/start-team <team> <KEY>` reuses it through `team-next` after its own steps 3a and 3b; nothing runs `team-next` by hand here (it needs the next ticket). A failed call (exit 4) keeps the event pending; rerun the steps from the tracker's state. **Release before reuse:** while such an event is pending, the clone gets no `team-next` and no `/start-team <team> <KEY>` — `team-next` rewrites the anchor step (1) binds to. Only `abandon-before-mode` releases a claim. Else abandon the named PR (if any) and free the clone with `team-next` |
    | `collision` | the lead found another team's in-flight work touching this run | answer the lead: `bash .claude/lib/team-inbox.sh write <team> collision-answer --from Supervisor --ticket <k> --run <run> --message "<line>"` |
    | `session_dead` | the lead died, or a stage died with partial work (`ref` = its `.session`) | `/start-team <team>` (it relaunches the lead, or resumes the stage) |
    | `delegated` (only under the Operator's mandate) | a team's pending decision the mandate covers (`ref` = the decision file) | answer it as a delegate or hand it back (`roles/supervisor.md` → Mandate) |

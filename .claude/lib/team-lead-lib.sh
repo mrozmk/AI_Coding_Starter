@@ -72,7 +72,8 @@ team_anchor_team() {
     [ -z "$anc" ] || return 1; anc="$x"
   done
   [ -n "$anc" ] || return 1
-  jq -er 'select((.team // "") != "") | "\(.team)\t\(.run // "")"' "$anc" 2>/dev/null
+  # .run is set at a stage launch; before the mode choice only the lead's launch named the run.
+  jq -er 'select((.team // "") != "") | "\(.team)\t\(if (.run // "") != "" then .run else (.lead_sessions.run // "") end)"' "$anc" 2>/dev/null
 }
 
 # team_supervisor_home <main> → the Claude config dir of the Supervisor's transcript: the declared

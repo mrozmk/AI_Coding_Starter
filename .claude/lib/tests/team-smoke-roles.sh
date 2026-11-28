@@ -357,6 +357,8 @@ mkteam lam lam-20261115-035000; rec "$CL/runs/lam-20261115-035000" wrapup 1 bloc
 # yet changes nothing.
 mkteam lamb lamb-20261115-110000 lead
 mkteam mu mu-20261115-120000 lead; echo '{"gate": "mode", "verdict": "quick"}' > "$CL/runs/mu-20261115-120000/teamlead-mode-1.json"
+# A close before the mode choice (#361): not interrupted.
+mkteam nu nu-20261115-130000 lead; echo '{"reason": "abandon-before-mode"}' > "$CL/runs/nu-20261115-130000/closed.json"
 clr; run "$MAIN" $RS runs; expect 0 "" "(10) runs"
 for l in "interrupted run alfa (alfa-20261115-100000, stage planner) — resume: /start-team alfa" \
   "interrupted run epsi (epsi-20261115-060000, stage coder, blocked) — resume: /start-team epsi" \
@@ -366,7 +368,7 @@ for l in "interrupted run alfa (alfa-20261115-100000, stage planner) — resume:
   "interrupted run lamb (lamb-20261115-110000, stage mode choice) — resume: /start-team lamb" \
   "interrupted run mu (mu-20261115-120000, stage mode choice) — resume: /start-team mu" \
   "zeta: clone missing ($WORK/cl-zeta-gone)"; do line "$l" "$WORK/out" "(10) runs"; done
-for t in beta gamma delta eta theta; do noline "run $t " "$WORK/out" "(10) $t listed"; done
+for t in beta gamma delta eta theta nu; do noline "run $t " "$WORK/out" "(10) $t listed"; done
 [ "$(grep '^interrupted run' "$WORK/out" | head -n 1 | cut -d' ' -f3)" = kappa ] || fail "(10) not oldest first"
 [ ! -s "$STUB_LOG" ] || fail "(10) runs called the host: $(cat "$STUB_LOG")"
 [ -d "$WORK/cl-epsi/.agents/team/lock" ] || fail "(10) runs removed a stale lock"
