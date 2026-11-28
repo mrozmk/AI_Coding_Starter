@@ -305,16 +305,19 @@ jobs_flush() {
 }
 
 # jobs_interrupt — called from run_jobs after a signal, never from the trap: end every running job's
-# process group, report every started job in the serial order, then FAIL.
+# process group, report every started job in the serial order, then FAIL. A further signal is
+# ignored from here to the exit, by the suite and by its tee/cat/sed children (an ignored signal is
+# inherited), so it can neither drop a report line nor leave the log unredacted.
 jobs_interrupt() {
   local i
+  trap '' INT TERM HUP
   for ((i = 0; i < ${#QN[@]}; i++)); do [ "${JST[i]:-}" != run ] || kill -TERM -- "-${JPID[i]}" 2>/dev/null; done
   for ((i = 0; i < ${#QN[@]}; i++)); do [ "${JST[i]:-}" != run ] || wait "${JPID[i]}" 2>/dev/null; done
   for ((i = 0; i < ${#QN[@]}; i++)); do
     [ "${JST[i]:-}" != run ] || jobs_drain "$i" || say "FAIL ${QN[i]} — process group ${JPID[i]} still alive after KILL"
   done
   jobs_reap; jobs_flush all
-  say "interrupted"; RC=1; trap - INT TERM HUP; finish
+  say "interrupted"; RC=1; finish
 }
 
 run_jobs() {
@@ -326,7 +329,8 @@ run_jobs() {
     if [ -n "${QR[i]}" ]; then JST[i]=skip; elif [ "${QS[i]}" = 1 ]; then JST[i]=tail; else JST[i]=queued; fi
   done
   # A signal only sets the flag: the loops leave and jobs_interrupt cleans up from here, so it never
-  # lands between a fork and its bookkeeping or inside jobs_flush; a second Ctrl-C changes nothing.
+  # lands between a fork and its bookkeeping or inside jobs_flush; a second one before the cleanup
+  # only sets the flag again, and jobs_interrupt ignores every one after it.
   trap 'JINTR=1' INT TERM HUP
   for ((i = 0; i < ${#QN[@]}; i++)); do
     [ -z "$JINTR" ] || break
@@ -428,7 +432,7 @@ self_test() {
   echo "self-test: case times OK"; echo "self-test: relative TMPDIR OK"; echo "self-test: list-steps OK"
   echo "self-test: jobs overlap OK"; echo "self-test: jobs fail-fast OK"; echo "self-test: jobs tail order OK"
   echo "self-test: jobs status with timing OK"; echo "self-test: jobs interrupt OK"; echo "self-test: jobs hangup OK"
-  echo "self-test: jobs ctrl-c OK"; echo "self-test: jobs noresult drain OK"
+  echo "self-test: jobs second signal OK"; echo "self-test: jobs ctrl-c OK"; echo "self-test: jobs noresult drain OK"
   echo "self-test: jobs skip order OK"; echo "self-test: jobs zero checks OK"
   echo "self-test: jobs isolation OK"; echo "self-test: jobs refusals OK"
 }
@@ -521,7 +525,7 @@ self_test_jobs() {
   intr() { grep -E '^(ok |FAIL |skip |interrupted$|team-suite: |  slowest: incomplete$)' "$1" \
     | awk '{ printf "%s%s%s", (NR > 1 ? "," : ""), $1, ($2 == "" ? "" : " " $2) } END { print "" }'; }
   local exp4="FAIL team-setup-smoke,slowest: incomplete,ok team-profile-smoke,interrupted,team-suite: FAIL" sig
-  jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'wait'; jf 2 'echo "PASS 2"' 'touch "$H/2.done"'
+  jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'wait'; jf 2 'echo "PASS 2"'
   jf 3 'echo "PASS 3"'; jser 3; jf 4 'echo "PASS 4"'; jser 4
   for sig in TERM HUP; do
     rm -rf "$H" "$t/j-$sig"; mkdir -p "$H" "$t/j-$sig"
@@ -546,6 +550,23 @@ self_test_jobs() {
   f="$(ls "$t"/o-b6/suite-*.log 2>/dev/null | head -n 1)"
   [ -s "$H/child.pid" ] && [ "$v" = gone ] && [ -n "$f" ] && grep -qx interrupted "$f" && grep -qx 'team-suite: FAIL' "$f" \
     || { echo "FAIL: jobs ctrl-c (child ${v:-alive}, $(tail -n 3 "${f:-/dev/null}" | tr '\n' ' '))"; reap_child; return 1; }
+  # (b4b) a second signal once the cleanup has begun is ignored: the redaction of a large .out still
+  # completes and the log ends with its result line. The filler carries the job's scratch path, so
+  # the case also proves the redaction ran to its end.
+  jf 1 'yes "filler line $TMPDIR" | head -n 1000000' 'sleep 30 & echo $! > "$H/child.pid"' 'wait'
+  rm -rf "$H" "$t/j-2x"; mkdir -p "$H" "$t/j-2x"
+  env TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY="$J4" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES= \
+    TEAM_SUITE_JOBS=2 TMPDIR="$t/j-2x/" bash "$HERE/team-suite.sh" --out "$t/o-b4x" > "$t/r-b4x" 2>&1 & bp=$!
+  upto '[ -s "$H/child.pid" ] && rc2 "$t/j-2x"'
+  kill -TERM "$bp" 2>/dev/null
+  for n in $(seq 1 500); do grep -qx interrupted "$t"/o-b4x/suite-*.log 2>/dev/null && break; sleep 0.02; done
+  v2=late; ! kill -TERM "$bp" 2>/dev/null || v2=sent; wait "$bp"; rc=$?
+  v=""; ! upto gone || v=gone
+  f="$(ls "$t"/o-b4x/suite-*.log 2>/dev/null | head -n 1)"
+  [ "$rc" = 1 ] && [ "$v2" = sent ] && [ "$v" = gone ] && [ -n "$f" ] && [ "$(tail -n 1 "$f")" = 'team-suite: FAIL' ] \
+    && [ -z "$(ls "$t/o-b4x" | grep '\.bak$')" ] && grep -q '<scratch-tmp>' "$t/o-b4x/team-setup-smoke.out" \
+    && ! grep -qF "$t/j-2x" "$t/o-b4x/team-setup-smoke.out" \
+    || { echo "FAIL: jobs second signal (rc $rc, second TERM $v2, child ${v:-alive}, $(tail -n 2 "${f:-/dev/null}" | tr '\n' ' '))"; reap_child; return 1; }
   # (b7) a job whose wrapper wrote no status (its .rc path is a directory) leaves a child behind; its
   # group is drained before the slot is reused, so the step that takes the slot sees no survivor.
   jf 1 'sleep 30 & echo $! > "$H/child.pid"' 'mkdir "${TMPDIR%/}/../../team-setup-smoke.rc"' 'exit 0'
