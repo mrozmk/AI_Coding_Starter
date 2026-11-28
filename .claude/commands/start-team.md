@@ -1,7 +1,7 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a tab per team, its TeamLead and the working stage; tmux: an attach hint line)
 argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>] [--takeover]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-2/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(bash .claude/lib/team-claim.sh:*), mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_add_comment, mcp__atlassian__jira_transition_issue, AskUserQuestion, Bash(jq:*), Bash(mv:*), Bash(node .claude/lib/tracker-snapshot.mjs:*)
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(bash .claude/lib/team-claim.sh:*), Bash(bash .claude/lib/team-scope.sh:*), Bash(bash .claude/lib/team-inbox.sh:*), mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_add_comment, mcp__atlassian__jira_transition_issue, AskUserQuestion, Bash(jq:*), Bash(mv:*), Bash(node .claude/lib/tracker-snapshot.mjs:*)
 ---
 
 # /start-team — run a team on a ticket
@@ -103,7 +103,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `<CLONE>/.agents/team/ticket.json` (`github`/`none`) or in Jira. With `ROLES` → step 4a first, then run
    `bash .claude/lib/team-run.sh <TEAM> status`:
    - a line `closed: <reason>` → refuse "run closed (<reason>) — team-next for the next ticket,
-     team-remode for remode" and stop (the runner refuses it too, `runs/<run>/closed.json`);
+     team-remode for remode" and stop (the runner refuses it too, `runs/<run>/closed.json`); for
+     `closed: abandon-before-mode`, the Supervisor first handles that team's pending `closed`
+     event (team-pipeline.md §5a: release the claim), then starts the next ticket;
    - a line `lock: runner <pid> alive` → if the status also shows `teamlead: dead`, run
      `bash .claude/lib/team-lead.sh relaunch <TEAM>` (it writes `<CLONE>/.agents/team/relaunch-lead`;
      the live runner relaunches the lead at its next poll), report "TeamLead relaunch requested"
@@ -155,12 +157,31 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    first entry was used — show it) and `title`; then, only when `BRANCH` is not given, slug = the title in **English**, kebab-case,
    3–6 words, `[a-z0-9-]` only, and `BRANCH` = `<type>/<KEY>-<slug>`.
 
-3b. **Claim the ticket** (NEW runs only; after step 3, before step 4 — no clone and no branch
+3a. **Memory-only ticket** (NEW runs only; after step 3, before step 3b — nothing is claimed,
+   cloned or run yet). No team stage may write `.agents/memory/` (`guard-team-memory.sh`; the
+   wrapup writes memory in its own clone only), so a ticket whose wanted change lands only there
+   cannot be delivered by any mode. From the ticket just read (`ticket.md` for `github`/`none`,
+   the description for `jira`), list the files its wanted change would write — its Wanted and
+   Acceptance sections, or the description when it has neither; not the files it only mentions
+   (a guard it explains, a path inside the text of a row it orders). No file named → skip this
+   step. Otherwise `bash .claude/lib/team-scope.sh memory-only <KEY> <path>…`: exit 0 → go on;
+   exit 3 → print its `refused:` line verbatim (`refused: #<KEY> — memory-only change (<paths>):
+   no team stage may write .agents/memory/ (guard-team-memory.sh) — do it in a solo session or
+   ask the Supervisor`) and stop; exit 2 → print it and stop. A ticket this step misses still
+   ends cleanly: the TeamLead opens a decision while choosing the mode, and the Operator's
+   `close` closes the run before any stage (`.agents/reference/team-lead.md` → Mode choice).
+
+3b. **Claim the ticket** (NEW runs only; after step 3a, before step 4 — no clone and no branch
    names the ticket until this passes). Another machine or team may be starting the same ticket:
    the first unreleased claim comment wins, and only the winner moves the status. Keep `CLAIM_ID`
    and the printed `previous` for step 4. First: `<CLONE>/.agents/team/team.json` already names
    `KEY` → stop before any claim: "this clone already runs `KEY` — resume with `/start-team
-   <TEAM>`" (`team-next.sh` would refuse the same ticket anyway). `TRACKER=none` → one line
+   <TEAM>`" (`team-next.sh` would refuse the same ticket anyway). Then, for a NEW start on an
+   existing clone: `bash .claude/lib/team-run.sh <TEAM> status` prints `closed: abandon-before-mode`
+   and `bash .claude/lib/team-inbox.sh list Supervisor` still lists that team's `closed` event (a
+   file in `new/` whose frontmatter has `from: <TEAM>`, `event: closed` and the status's `run:`) →
+   stop before any claim: "<TEAM>'s previous run closed before its mode choice and
+   its claim is not released yet — handle the `closed` event first (team-pipeline.md §5a)". `TRACKER=none` → one line
    "tracker none: no shared signal, the start continues as before" and skip this step. The
    protocol, the grammar and the release order: `.agents/reference/team-pipeline.md` → Claim at the
    start.

@@ -132,14 +132,15 @@ pending() {
       if [ "$(team_mode "$TD/team.json" 2>/dev/null)" = lead ] && [ -z "$(team_mode_verdict "$TD" "$RUN")" ]; then
         echo "00000000000001 mode .agents/team/team.json — choose the run's mode (team-lead.md → Mode choice): team-verdict.sh mode brainstorm|quick|cli --message \"<reason>\""
       fi
-      # An answer the Supervisor relayed waits for the lead to apply it (team-lead.md §7).
+      # An answer the Supervisor relayed waits for the lead to apply it (team-lead.md §7). Key 0: the
+      # Operator's applied answer comes before the mode choice (a pre-mode close) and every stage item.
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && relayed_unapplied "$f" || continue
         a="$(dfm "$f" bind_ask)"
         case "$(dfm "$f" answered_via)" in
           supervisor-delegated*) l="apply the Supervisor's delegated answer (--authority delegated)" ;;
           *) l="apply the stored answer" ;; esac
-        echo "00000000000001 relayed .agents/team/runs/$RUN/decisions/$(basename "$f")${a:+ (ask $a)} — $l"
+        echo "00000000000000 relayed .agents/team/runs/$RUN/decisions/$(basename "$f")${a:+ (ask $a)} — $l"
       done
       # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a
       # class ask is answered by the hook itself within the same call.

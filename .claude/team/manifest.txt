@@ -225,6 +225,7 @@ own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
 own .claude/lib/team-lead.sh
 own .claude/lib/team-brief.sh
+own .claude/lib/team-scope.sh
 own .claude/lib/team-lead-lib.sh
 own .claude/lib/team-run-lead.sh
 own .claude/lib/team-run-dialog.sh

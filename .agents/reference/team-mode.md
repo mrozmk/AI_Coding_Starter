@@ -122,10 +122,13 @@ second runner for the same team refuses to start; inside it `cmd_advance` launch
 per iteration (`team-run.sh:312`) and `check_orphans` (defined `team-run.sh:286-291`, called at
 `team-run.sh:304` and `:306`) aborts with `die 7 "orphan session …"` when any other role's session
 is still alive. One runner × one live role = one wrapup = one writer, and that is what
-makes the adapter's read-then-create idempotent. The single exception is the start's claim
+makes the adapter's read-then-create idempotent. The first exception is the start's claim
 (`/start-team` step 3b, `/start-task` step 6b, `team-claim.sh`): a claim comment and the `started`
 move, writing no intent; a failure stops the start before any clone or branch, and a start failing
-after it releases the claim (team-pipeline.md → Claim at the start). Costs bind to
+after it releases the claim (team-pipeline.md → Claim at the start). The second is the
+Supervisor's release of a run closed before its mode choice (`closed` reason
+`abandon-before-mode`, team-pipeline.md §5a): a release comment and the status restore, no intent,
+after the runner has exited. Costs bind to
 `cost_key` — `<owner>/<repo>#<n>` · `<repo-dir>:L<n>` · the key itself — so the same short key in
 two projects stays two bindings. At wrapup the adapter runs **inside the clone** and reads its
 **committed** profile: the github block (`teams.github`, else the top-level `github`) must be on the

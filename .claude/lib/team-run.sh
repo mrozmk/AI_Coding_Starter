@@ -13,7 +13,7 @@
 # and wrapup print an `attach:` line).
 # Exit: 0 ready/advanced · 1 failed record · 2 blocked · 3 stalled · 4 validation failed
 #       5 partial work after a dead session · 6 cancelled · 7 orphan role session
-#       8 closed without merge (a TeamLead remode; runs/<run>/closed.json)
+#       8 closed without merge (a TeamLead close or remode, also before the mode choice; runs/<run>/closed.json)
 set -euo pipefail
 
 if [ $# -lt 1 ] || { [ $# -gt 3 ] && [ "${2:-}" != roles ]; }; then
@@ -336,16 +336,21 @@ check_orphans() {
 }
 
 cmd_advance() {
-  local stage
+  local stage r why=""
   mkdir "$TD/lock" 2>/dev/null || die 1 "runner lock held by pid $(cat "$TD/lock/pid" 2>/dev/null) — check: bash .claude/lib/team-run.sh $TEAM status"
   OWN_LOCK=1; echo $$ > "$TD/lock/pid"
   rm -f "$TD/cancel"
   ! command -v caffeinate >/dev/null 2>&1 || caffeinate -i -w $$ >/dev/null 2>&1 &
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
-  [ ! -f "$TD/runs/$RUN/closed.json" ] || die 1 "run closed ($(jq -r .reason "$TD/runs/$RUN/closed.json")) — team-next for the next ticket, team-remode for remode"
-  # A persisted mode verdict first: a replacement judge must not launch for a choice already made.
-  [ "$MODE" != lead ] || [ -z "$(mode_verdict)" ] || mode_apply "$(mode_verdict)"
+  if [ -f "$TD/runs/$RUN/closed.json" ]; then
+    r="$(jq -r .reason "$TD/runs/$RUN/closed.json")"
+    case "$r" in abandon-before-mode) why=" — the Supervisor first releases its claim on the closed event (team-pipeline.md §5a), then /start-team $TEAM <KEY>" ;; esac
+    die 1 "run closed ($r) — team-next for the next ticket, team-remode for remode$why"
+  fi
+  # A persisted close or mode verdict first: a close wins (nothing ran yet); a replacement judge
+  # must not launch for a choice already made.
+  [ "$MODE" != lead ] || mode_settle
   lead_start; round_reconcile
   # Mode lead has no stage yet (next_stage is empty): wait for the choice, never print ready.
   [ "$MODE" != lead ] || mode_wait
