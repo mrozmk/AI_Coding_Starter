@@ -682,7 +682,7 @@ smoke_repos() {
   cp "$SRC/.claude/lib/notify.sh" "$SEED/.claude/lib/"  # lead_notify's sender (fixture HOME outbox)
   cp "$SRC/.claude/lib/worker-next.sh" "$SEED/.claude/lib/"
   cp "$SRC/.claude/lib/worker-lib.sh" "$SEED/.claude/lib/"
-  cp "$SRC/.claude/lib/gate-lock.sh" "$SRC/.claude/lib/gate_lock.py" "$SEED/.claude/lib/"
+  cp "$SRC/.claude/lib/gate-lock.sh" "$SRC/.claude/lib/gate_lock.py" "$SRC/.claude/lib/batch-gate.sh" "$SEED/.claude/lib/"
   mkdir -p "$SEED/.agents/reference"
   cp "$SRC/.agents/reference/worker-clone.md" "$SEED/.agents/reference/"
   cp "$SRC/AGENTS.md" "$SEED/"

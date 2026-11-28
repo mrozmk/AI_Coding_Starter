@@ -502,6 +502,31 @@ ib "$MAIN" s $NOV HC_TERMINAL_ID=t1k3
 cp "$REG/adhoc-t1k3.json" "$WORK/rec.bak"; ib "$MAIN" s $NOV HC_TERMINAL_ID=t1k3
 cmp -s "$REG/adhoc-t1k3.json" "$WORK/rec.bak" || fail "(28) last_seen rewritten within a minute"
 noline "hc " "(28) inbox-count called hc"
+# The Supervisor's first prompt of a day without an accepted day plan, once a day; only with a
+# teams.batch_gate block. The day-plan line comes before the inbox line.
+PF="$MP/.claude/project-profile.json"; cp "$PF" "$WORK/prof28.bak"
+jq '.teams.batch_gate = {gates: {here: {repo: "."}}}' "$WORK/prof28.bak" > "$PF"
+DAY="$(date +%F)"; DP="$MP/.agents/team/day-plan.md"; NU="$MP/.agents/team/day-plan.nudged"
+rm -f "$DP" "$NU"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"
+[ "$(sed -n 1p "$WORK/out")" = "day plan: none for $DAY" ] && [ "$(sed -n 2p "$WORK/out")" = "inbox: 1 waiting — .agents/team/inbox/Supervisor/new" ] \
+  || fail "(28) day plan: none for today, before the inbox line"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"
+! grep -q 'day plan:' "$WORK/out" || fail "(28) day plan: a second prompt the same day nudged again"
+rm -f "$NU"; printf 'date: %s\naccepted: %sT08:00:00Z by Operator\n' "$DAY" "$DAY" > "$DP"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"
+! grep -q 'day plan:' "$WORK/out" || fail "(28) day plan: an accepted plan for today still nudged"
+printf 'date: %s\n' "$DAY" > "$DP"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"
+grep -qx "day plan: none for $DAY" "$WORK/out" || fail "(28) day plan: a plan without accepted: did not nudge"
+rm -f "$NU" "$DP"; ib "$MAIN" s $NOV HARNESS_ADDRESS=alfa-lead HARNESS_REGISTRY="$REG"
+! grep -q 'day plan:' "$WORK/out" || fail "(28) day plan: a TeamLead got the nudge"
+ib "$MAIN" s $NOV HC_TERMINAL_ID=t1k3
+! grep -q 'day plan:' "$WORK/out" || fail "(28) day plan: an ad-hoc session got the nudge"
+cp "$WORK/prof28.bak" "$PF"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"
+! grep -q 'day plan:' "$WORK/out" || fail "(28) day plan: nudged without a batch_gate block"
+rm -f "$NU"
 echo "team-smoke-host: (28) inbox-count OK"
 
 # ---- (29) roles-lib: the teams.sessions reader and validator ------------------------------------------

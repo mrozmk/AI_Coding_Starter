@@ -178,6 +178,7 @@ own .claude/hooks/lib/guard_team_egress_clear.py
 own .claude/hooks/lib/clearance-classes.json
 own .claude/lib/gate-lock.sh
 own .claude/lib/gate_lock.py
+own .claude/lib/batch-gate.sh
 own .claude/lib/team-anchor.sh
 own .claude/lib/team-audit.sh
 own .claude/lib/team-automerge-check.sh

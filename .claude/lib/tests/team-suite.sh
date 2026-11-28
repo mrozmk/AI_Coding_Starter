@@ -4,11 +4,13 @@
 # Starter repo only: the tests are not distributed (manifest), so downstreams never run this.
 #
 # Usage: HOME=<scratch>/home TMPDIR=<scratch>/tmp/ bash .claude/lib/tests/team-suite.sh \
-#          [--parallel] [--keep-going] [--out <dir>]
+#          [--parallel] [--keep-going] [--out <dir>] [--list-steps]
 #   --parallel    smoke parts concurrently (TEAM_SMOKE_PARALLEL=1); serial parts still run alone
 #   --keep-going  run every step even after a failure (the exit code still reports it)
 #   --out <dir>   where suite-<utc>.log and the per-step outputs go (default $TMPDIR/team-suite);
 #                 a relative dir is resolved against the caller's cwd
+#   --list-steps  print the step names this invocation would report, one per line, in report order
+#                 (TEAM_SUITE_ONLY applied, TEAM_SUITE_SKIP not subtracted); runs nothing, exit 0
 #
 # TEAM_SUITE_JOBS=<n> (opt-in; unset or 1 = the serial run, unchanged): self-test first and alone,
 # then up to n steps at once, each with its own HOME/TMPDIR under ${TMPDIR}team-suite-jobs.*, then
@@ -40,13 +42,14 @@ set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 TESTS="${TEAM_SUITE_TESTS:-$HERE}"
-PARALLEL="" KEEP="" OUT=""
+PARALLEL="" KEEP="" OUT="" LIST=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --parallel) PARALLEL=1 ;;
     --keep-going) KEEP=1 ;;
     --out) OUT="${2:-}"; [ -n "$OUT" ] || { echo "team-suite: --out needs a dir" >&2; exit 2; }; shift ;;
-    *) echo "usage: team-suite.sh [--parallel] [--keep-going] [--out <dir>]" >&2; exit 2 ;;
+    --list-steps) LIST=1 ;;
+    *) echo "usage: team-suite.sh [--parallel] [--keep-going] [--out <dir>] [--list-steps]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -58,7 +61,7 @@ STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-
   cost-tests guard-team-egress-test guard-team-trunk-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
   finder-model-test codex-bg-model-test check-impl-contract-test coding-standards-contract-test coding-standards-gen-test qa-verify-contract-test refresh-brief-contract-test check-backlog-upkeep-contract-test start-claim-contract-test create-task-contract-test brainstorm-ba-contract-test team-inbox-test team-ask-test team-batch-test team-clearance-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test touches-test prompt-replay-test
-  prime-probes-test prime-ba-test arch-assess-test upkeep-test
+  prime-probes-test prime-ba-test arch-assess-test upkeep-test batch-gate-test
   starter-fork-commit-test team-starter-land-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test
@@ -72,6 +75,29 @@ else for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" = purity ] || KNOWN="$KNOWN smoke
 for n in ${TEAM_SUITE_SKIP:-}; do
   [[ "$KNOWN" == *" $n "* ]] || { echo "team-suite: TEAM_SUITE_SKIP names an unknown step: $n" >&2; exit 2; }
 done
+want() { [ -z "${TEAM_SUITE_ONLY:-}" ] || [[ " $TEAM_SUITE_ONLY " == *" $1 "* ]]; }
+skipped() { [[ " ${TEAM_SUITE_SKIP:-} " == *" $1 "* ]]; }
+
+# --list-steps mirrors each section's own condition below, so the list equals the report's step lines.
+if [ -n "$LIST" ]; then
+  lst() { if want "$1"; then echo "$1"; fi; }
+  smoke_serial() { grep -qx '# team-smoke: serial' "$TESTS/team-smoke-$1.sh" 2>/dev/null; }
+  [ "${TEAM_SUITE_SELFTEST:-1}" = 0 ] || lst self-test
+  lst purity
+  if [ -f "$TESTS/team-smoke.sh" ]; then
+    if [ -n "$PARALLEL" ]; then
+      lst smoke-parallel
+    else
+      for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" != purity ] && ! smoke_serial "$p" && lst "smoke-$p"; done
+      for p in ${ALL[@]+"${ALL[@]}"}; do smoke_serial "$p" && lst "smoke-$p"; done
+    fi
+  fi
+  for s in "${STANDALONE[@]}"; do lst "$s"; done
+  lst wcag-audit-browser-test
+  lst agent-mail-unittest
+  if [ -f "$ROOT/.claude/lib/session_profile_check.py" ] || ! skipped session-profiles; then lst session-profiles; fi
+  exit 0
+fi
 JOBS="${TEAM_SUITE_JOBS:-1}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo "team-suite: TEAM_SUITE_JOBS must be a positive integer" >&2; exit 2; }
 [ -z "$PARALLEL" ] || [ "$JOBS" = 1 ] || { echo "team-suite: --parallel and TEAM_SUITE_JOBS are exclusive" >&2; exit 2; }
@@ -117,9 +143,6 @@ CASES_ON=""
 if [ "${TEAM_SUITE_CASE_TIMES:-}" = 1 ]; then
   if [ -n "$PARALLEL" ]; then say "case times: off with --parallel (one aggregate step)"; else CASES_ON=1; fi
 fi
-
-want() { [ -z "${TEAM_SUITE_ONLY:-}" ] || [[ " $TEAM_SUITE_ONLY " == *" $1 "* ]]; }
-skipped() { [[ " ${TEAM_SUITE_SKIP:-} " == *" $1 "* ]]; }
 
 # count <file> — the checks a step reported: the largest explicit "(N checks|tests)", "Ran N tests"
 # or "passed: N" wins (a summary may repeat the runner's count, so never a sum); otherwise the
@@ -363,15 +386,44 @@ self_test() {
   [ "$rc" = 0 ] && grep -q '^  slowest: .*(b) two' "$t/r7" && grep -q '^  slowest: .*(b) two' "$t"/o7/suite-*.log \
     && ! grep -q slowest "$t/o7/purity.out" \
     || { echo "FAIL: case times did not report the last case"; rm -rf "$t"; return 1; }
+  self_test_list "$t" || { rm -rf "$t"; return 1; }
   self_test_jobs "$t" || { rm -rf "$t"; return 1; }
   rm -rf "$t"
   echo "self-test: failing step OK"; echo "self-test: 0-check step OK"; echo "self-test: real HOME OK"
   echo "self-test: skip OK"; echo "self-test: unknown skip OK"; echo "self-test: session env OK"
-  echo "self-test: case times OK"
+  echo "self-test: case times OK"; echo "self-test: list-steps OK"
   echo "self-test: jobs overlap OK"; echo "self-test: jobs fail-fast OK"; echo "self-test: jobs tail order OK"
   echo "self-test: jobs status with timing OK"; echo "self-test: jobs interrupt OK"
   echo "self-test: jobs skip order OK"; echo "self-test: jobs zero checks OK"
   echo "self-test: jobs isolation OK"; echo "self-test: jobs refusals OK"
+}
+
+# self_test_list <dir> — --list-steps applies ONLY, drops an unknown ONLY name, runs nothing, and in a
+# fixture root (no session_profile_check.py, session-profiles skipped) equals the real report's lines.
+self_test_list() {
+  local t="$1" rc r f="$1/lroot/.claude/lib/tests"
+  ls_run() {  # ls_run <tag> <tests dir> [VAR=value…] [-- suite args…] → $t/l-<tag>, rc
+    local tag="$1" dir="$2"; shift 2
+    env TEAM_SUITE_TESTS="$dir" TEAM_SUITE_ONLY= TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 TEAM_SUITE_CASE_TIMES= \
+      TEAM_SUITE_JOBS= "$@" > "$t/l-$tag" 2>&1
+  }
+  printf 'echo "PASS p"\n' > "$t/team-purity.sh"
+  ls_run a "$t" TEAM_SUITE_ONLY=purity bash "$HERE/team-suite.sh" --list-steps --out "$t/l-out"; rc=$?
+  [ "$rc" = 0 ] && [ "$(cat "$t/l-a")" = purity ] && [ ! -e "$t/l-out" ] \
+    || { echo "FAIL: --list-steps with ONLY=purity (rc $rc, $(tr '\n' ' ' < "$t/l-a"))"; return 1; }
+  ls_run b "$t" bash "$HERE/team-suite.sh" --list-steps; rc=$?
+  [ "$rc" = 0 ] && grep -qx purity "$t/l-b" && grep -qx team-pr-smoke "$t/l-b" && grep -qx upkeep-test "$t/l-b" \
+    && grep -qx agent-mail-unittest "$t/l-b" && ! grep -qx self-test "$t/l-b" \
+    || { echo "FAIL: --list-steps with no selection (rc $rc)"; return 1; }
+  ls_run c "$t" TEAM_SUITE_ONLY="purity bogus" bash "$HERE/team-suite.sh" --list-steps; rc=$?
+  [ "$rc" = 0 ] && [ "$(cat "$t/l-c")" = purity ] \
+    || { echo "FAIL: --list-steps with an unknown ONLY name (rc $rc, $(tr '\n' ' ' < "$t/l-c"))"; return 1; }
+  mkdir -p "$f"; cp "$HERE/team-suite.sh" "$HERE/suite-case-time.sh" "$f/"; printf 'echo "PASS p"\n' > "$f/team-purity.sh"
+  ls_run d "$f" TEAM_SUITE_SKIP=session-profiles bash "$f/team-suite.sh" --list-steps; rc=$?
+  ls_run e "$f" TEAM_SUITE_SKIP=session-profiles bash "$f/team-suite.sh" --keep-going --out "$t/l-out-e"
+  r="$(grep -E '^(ok|FAIL|skip) ' "$t/l-e" | awk '{ print $2 }')"
+  [ "$rc" = 0 ] && [ -n "$r" ] && [ "$(cat "$t/l-d")" = "$r" ] && ! grep -qx session-profiles "$t/l-d" \
+    || { echo "FAIL: --list-steps differs from the report (rc $rc)"; return 1; }
 }
 
 # self_test_jobs <dir> — TEAM_SUITE_JOBS against four handshaking fake standalone steps (the first

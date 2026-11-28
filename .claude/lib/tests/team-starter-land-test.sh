@@ -25,6 +25,9 @@ fx() {
   # With global/system config off an unborn HEAD would point at master: name main explicitly.
   git init -q --bare -b main "$O" || die "origin $1"
   cp "$SRC/.claude/lib/branch-model.sh" "$D/seed/.claude/lib/" || die "branch-model $1"
+  # The starter gate's suite only has to exist: the batch-gate due line validates, never runs it.
+  mkdir -p "$D/seed/.claude/lib/tests"
+  printf '#!/usr/bin/env bash\ntouch "%s/suite-ran"; exit 1\n' "$D" > "$D/seed/.claude/lib/tests/team-suite.sh"
   printf '.agents/jira/\n' > "$D/seed/.gitignore"
   printf 'base\n' > "$D/seed/f.txt"
   git -C "$D/seed" init -q -b main . && git -C "$D/seed" add -A && git -C "$D/seed" commit -qm base \
@@ -66,15 +69,21 @@ ok() {  # ok <label> <expected rc> [fragment…] → rc 0 when the run matched
   return 0
 }
 omain() { git --git-dir="$O" rev-parse refs/heads/main; }
+batch_block() {  # the main checkout's profile gets a batch gate over the fixture starter
+  jq '.teams.batch_gate = {line: "main", gates: {starter: {repo: "../AI_Coding_Starter"}}}' \
+    "$D/main/.claude/project-profile.json" > "$D/p.json" && mv "$D/p.json" "$D/main/.claude/project-profile.json" \
+    || die "batch block"
+}
 has_branch() { git -C "$ST" rev-parse -q --verify "refs/heads/$1" >/dev/null; }
 
 # ---- clean land ---------------------------------------------------------------------------------
 L="clean land: merged, pushed, worktree and branch removed"
-fx clean; land
-if ok "$L" 0 "removed: worktree" "deleted: branch feat/x"; then
+fx clean; batch_block; land
+if ok "$L" 0 "removed: worktree" "deleted: branch feat/x" "batch due (starter):"; then
   M="$(omain)"
   [ "$(git --git-dir="$O" rev-parse "$M^2")" = "$TIPX" ] || bad "$L" "origin main's second parent is not the tip"
   printf '%s\n' "$OUT" | grep -qF "landed: feat/x into main M=$M" || bad "$L" "no landed line naming M=$M"
+  [ ! -e "$D/suite-ran" ] || bad "$L" "the batch due line ran the suite"
   [ ! -d "$W" ] || bad "$L" "the worktree is still there"
   ! has_branch feat/x || bad "$L" "the branch is still there"
 fi
@@ -84,6 +93,7 @@ L="dirty worktree: merged, worktree kept and named"
 fx dirty; printf 'junk\n' > "$W/junk.txt"; land
 if ok "$L" 0 "kept: worktree"; then
   printf '%s\n' "$OUT" | grep -qF "AI_Coding_Starter-alfa-254" || bad "$L" "the kept worktree is not named"
+  ! printf '%s\n' "$OUT" | grep -q '^batch' || bad "$L" "a batch line without a batch_gate block"
   [ "$(git --git-dir="$O" rev-parse "$(omain)^2")" = "$TIPX" ] || bad "$L" "not merged on origin"
   [ -d "$W" ] && has_branch feat/x || bad "$L" "worktree or branch removed"
 fi
@@ -191,8 +201,8 @@ MM="$(git -C "$ST" rev-parse HEAD)"
 git -C "$ST" switch -q -c other && printf 'o\n' > "$ST/o.txt" && git -C "$ST" add o.txt \
   && git -C "$ST" commit -qm other && git -C "$ST" switch -q main \
   && git -C "$ST" merge -q --no-ff --no-edit other && git -C "$ST" push -q origin main || die "merged: other"
-land
-if ok "$L" 0 "already merged" "M=$MM" "removed: worktree" "deleted: branch feat/x"; then
+batch_block; land
+if ok "$L" 0 "already merged" "M=$MM" "removed: worktree" "deleted: branch feat/x" "batch due (starter):"; then
   [ "$(omain)" != "$MM" ] || bad "$L" "fixture: the later merge is missing"
 fi
 

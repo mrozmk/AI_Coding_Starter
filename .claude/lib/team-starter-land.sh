@@ -259,6 +259,14 @@ if [ "$FRESH" = 1 ]; then
   echo "landed: $WB into main M=$M"
 fi
 
+# ---- 8b. the batch gate's due line for the starter gate (never changes the exit) -----------------
+report_batch() {
+  [ -n "${M:-}" ] || return 0
+  [ -f "$HERE/batch-gate.sh" ] || return 0
+  bash "$HERE/batch-gate.sh" -C "$root" due --merged "starter=$M@main" || true
+}
+report_batch
+
 # ---- 9. cleanup: each step its own line, never a failure of the landing --------------------------
 
 now="$(reg_records 2>/dev/null | awk -F'\t' -v w="$WC" '$1 == w')" || now=""

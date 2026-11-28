@@ -548,11 +548,12 @@ set +e; (cd "$D" && bash .claude/lib/team-tracker.sh set-status 7 started) > "$W
 set +e; (cd "$D" && node -e "import('./.claude/lib/github-sync.mjs').then(() => {}, (e) => { console.error(e.message); process.exit(1) })") \
   > "$WORK/out" 2>&1; RC=$?; set -e
 [ "$RC" = 0 ] || fail "21: github-sync.mjs does not resolve its imports without teams"
-# Every .claude/lib file these commands name ships too — except the four /tasks-status reads only
-# with a `teams` block (team columns and the mandate and clearance lines are dropped without one).
+# Every .claude/lib file these commands name ships too — except the five /tasks-status reads only
+# with a `teams` block (team columns, the mandate and clearance lines and the batch-gate rows are
+# dropped without one).
 for c in start-task pr-create github-sync tasks-status; do
   for f in $(grep -oE '\.claude/lib/[A-Za-z0-9_.-]+\.(sh|mjs|py)' "$ST/.claude/commands/$c.md" | sort -u); do
-    case "$f" in .claude/lib/team-snapshot.sh|.claude/lib/team-pr.sh|.claude/lib/team-mandate.sh|.claude/lib/team-clearance.sh) continue ;; esac
+    case "$f" in .claude/lib/team-snapshot.sh|.claude/lib/team-pr.sh|.claude/lib/team-mandate.sh|.claude/lib/team-clearance.sh|.claude/lib/batch-gate.sh) continue ;; esac
     [ -f "$D/$f" ] || fail "21: /$c names $f, which a project without teams does not get"
   done
 done

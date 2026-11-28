@@ -305,21 +305,23 @@ CLAUDE.md → Validation names no batch gate has no cadence; skip this section.
   follow it at `/start-team`, nothing starts by itself. After each merge, mark the ticket
   `merged <gate> <sha7>` in it, next to the tracker bookkeeping — one mark per gate whose repo the
   ticket landed in (a ticket that lands in two repos gets two marks, each with that repo's merge
-  commit).
+  commit) — then run `batch-gate.sh due` once more: the landing's own line came before your mark,
+  so a point your mark completes shows only now.
 
   ```
   date: 2026-03-02
   accepted: 2026-03-02T08:10:00Z by Operator
   ## Tickets
-  - 41 · alfa · 1
+  - 41 · alfa · 1 · lands here
   - 42 · beta · 2 · merged here 1a2b3c4
   ## Regression points
   - after 41 42 · gate here
   - before release · gate here
   ```
 
-  A point names the gates it runs; a release point names every gate of the repos the release
-  ships.
+  `lands` names the gates whose repo the ticket lands in; without it, every gate of the point that
+  names the ticket. A point names the gates it runs; a release point names every gate of the repos
+  the release ships.
 
 - **When a batch is due.** Count the merges on the line (first-parent commits) since the last green
   batch run on this machine, on an up-to-date line: after a merge, the main checkout's line must
@@ -332,8 +334,8 @@ CLAUDE.md → Validation names no batch gate has no cadence; skip this section.
   everywhere it lands (each with its `merged` marks); it is then due for each gate it names until
   a green run of that gate contains every merge commit the point's tickets have in that gate's
   repo (a ticket that never lands there does not hold that gate back), whatever the counts say:
-  the Operator planned it. A point a green run satisfied stays satisfied for that plan. The profile's thresholds replace these numbers once the signal
-  ships. Before every release, each gate the release ships is green at that repo's release
+  the Operator planned it. A point a green run satisfied stays satisfied for that plan. The profile's
+  `teams.batch_gate.thresholds` sets these numbers (the defaults above). Before every release, each gate the release ships is green at that repo's release
   commit: the commit that gets tagged in the repo that is tagged, the line's head in the others.
 - **Size and moment.** One gate run at a time on a machine, across repos: a batch run never
   overlaps another batch run, a merge-check or a test gate holding the machine's gate lock. A team
@@ -366,28 +368,20 @@ CLAUDE.md → Validation names no batch gate has no cadence; skip this section.
   checkout); the day plan names the gates the project has. Each machine counts from its own green:
   another machine's run does not reset yours.
 
-**Until the signal ships.** The computed signal — `batch-gate.sh due|run|hold|lift`, its line at
-your bootstrap, on your first prompt of a day without a plan, after each merge, in `/tasks-status`,
-and the `/release` check — is not built yet. Until then, apply the rule above by hand at bootstrap
-and after each merge (`git log --first-parent --name-only <last green>..<line>`) and run the
-CLAUDE.md batch command yourself, this way:
+**The signal.** `bash .claude/lib/batch-gate.sh due` computes the rule above from git, the record
+`.agents/team/batch-gate.json` (per machine), the day plan and the hold; its line shows at your
+bootstrap, as `day plan: none for <date>` on your first prompt of a day without a plan, after each
+landing (`team-starter-land.sh`, `team-integrate.sh`, `/pr-merge`), in `/tasks-status`, and
+`/release` refuses its tag on it. `batch-gate.sh run <gate>` is the only way a run is recorded — it
+takes the machine gate lock, refuses a hold, a dirty or moved checkout (also after waiting for the
+lock), and records green only per **Green**; never record a run by hand.
+`hold|lift --text "<their words>"` writes the hold file. The day plan's interim `## Batch runs`
+section (`- <gate> · last green <sha7> <UTC> <minutes> min | none · last run <sha7> <UTC>
+green|red [<failed steps>]`) is read once per gate as that gate's first baseline.
 
-1. Pick the commit the run validates (the line's head after the merges it covers). The gate's
-   checkout must be clean, on the line, at exactly that commit.
-2. Start only while the machine's gate lock has no holder (`team-pipeline.md` §12), start no
-   merge-check of your own until the run ends, and say in the run's line that a team's test gate
-   may still queue beside it — the manual run does not take the lock.
-3. After the run, check that the checkout is still clean at that same commit. If it moved or got
-   dirty, the result proves nothing: keep the previous green.
-4. Record every run — planned or not — in the day plan's `## Batch runs` section, one line per
-   gate: `- <gate> · last green <sha7> <UTC> <minutes> min · last run <sha7> <UTC> green|red
-   [<failed steps>]`, with `last green none` while the gate has never been green (a first run
-   that is red: `- here · last green none · last run 1a2b3c4 2026-03-02T09:40Z red smoke-roles`).
-   Mark a point a run satisfied with `· done <gate> <sha7>`.
-5. When a new day's plan replaces yesterday's, copy into it the `## Batch runs` section (your
-   baseline — a gate with no line there is due) and every reached point that is not yet `done`
-   for each of its gates, with its tickets' merge marks (a point that waited overnight, on a hold
-   for instance, is still due).
+**New day.** When a new day's plan replaces yesterday's, carry into it every reached point not yet
+satisfied for each of its gates, with its tickets' merge marks, and each gate's `## Batch runs`
+line until that gate has a record (git cannot recover either).
 
 ## Inbox
 
@@ -426,7 +420,8 @@ path; say each finding in the Operator's terms.
 `operator-record.sh failure|release|close <id>`, `/create-task "<draft>" --type none [--label <l>]…`,
 `team-mandate.sh grant|show|pause|answers`,
 `team-lead.sh decision answer <team> d-<n> --delegated …` (the whole command is in the `delegated` inbox message),
-`team-lead.sh decision handback <team> d-<n> --why "<line>"`.
+`team-lead.sh decision handback <team> d-<n> --why "<line>"`,
+`batch-gate.sh due [--merged <gate>=<sha>] | run <gate> [--expect-head <sha>] | hold|lift --text "<words>"`.
 
 ## Not restored
 

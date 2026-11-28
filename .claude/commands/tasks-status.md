@@ -64,10 +64,13 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
      1. tasks whose extracted "waiting on" is the Operator, with the evidence that says so;
      2. *(when the per-run TeamLead lands)* its pending human-decision files;
      3. each `UPKEEP_DUE` row of `bash .claude/lib/upkeep.sh due --format prime`, run once (a missing script, a non-zero exit or no row → nothing): Team / task `upkeep`, Decision needed `run <command> — <reason>`, Since `—`, Next action `run <command> in your own session`.
+     4. each `BATCH_DUE` row of `bash .claude/lib/batch-gate.sh due --format prime` whose hold column (its 4th field) is `held`, whatever its state (a red gate under a hold keeps its failed steps in the line), run once (a missing script, a non-zero exit or no row → nothing): Team / task `batch gate (<gate>)`, Decision needed `lift the hold or keep it — <line>`, Since `—`, Next action `tell the Supervisor`.
    - **Waiting on the team** — everything the TeamLead, Advisor or Supervisor acts on:
      `attention[]` items (role questions, prompts, `blocked`/`failed` records with their
      `resume_hint`) and PRs `awaiting_merge` (the Supervisor's merge gate; it reaches the Operator
-     only when that gate refuses). Name who acts. A pending decision delegated to the Supervisor
+     only when that gate refuses). Every `BATCH_DUE` row of the same call (its output reused)
+     whose hold column is `-`: who acts `Supervisor`, next action
+     `bash .claude/lib/batch-gate.sh run <gate>` (state `behind`: `update <repo>'s line`). Name who acts. A pending decision delegated to the Supervisor
      under the Operator's mandate (`team-lead.sh decision list <team>` shows
      `pending [delegated to the Supervisor]`) belongs here, never under **Waiting for you**.
    - **Delegated answers** — only with a `teams` block: run `bash .claude/lib/team-mandate.sh show`

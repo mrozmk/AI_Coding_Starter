@@ -103,6 +103,15 @@
     "build_check": "echo 'no build check configured'",
     "test_gate": "none",
     "gates": "auto",
+    "_batch_gate_doc": "OPTIONAL — the batch gate's due signal, read by .claude/lib/batch-gate.sh (due | run | hold | lift) for the Supervisor's regression cadence (.agents/reference/roles/supervisor.md → Regression cadence). Absent = no batch gate: the signal is silent and run/hold/lift refuse. line: the branch whose first-parent merges are counted (default: trunk). tests_dir: where the suite's tests live (default .claude/lib/tests); a merge is counted when it touches a file there or a file a test names. heavy: area name → globs (`*` crosses `/`); a merge touching one is heavy and counted (default: hooks, settings, session profiles, runner, guards). thresholds: merges (default 4), heavy_merges (default 2), days (default 1: a counted merge from an earlier day) — any one makes the batch due. gates: REQUIRED, one entry per repo the batch covers; the gate whose repo is `.` is named `here` by convention (the landing scripts and /pr-merge pass `--merged here=<sha>`). repo: a checkout path relative to this repo. command: OPTIONAL, only the team suite — `bash <path to team-suite.sh> [--keep-going]`; default `bash <tests_dir>/team-suite.sh`; anything else is invalid. only / skip: OPTIONAL step-name lists, applied as TEAM_SUITE_ONLY / TEAM_SUITE_SKIP (a step the suite does not know is refused). A second gate for the starter's template-only steps (e.g. `\"starter\": {\"repo\": \"../<starter checkout>\", \"only\": [\"purity\"]}`) belongs only to the project that develops the starter. Per machine, never in git: the record .agents/team/batch-gate.json (written only by `batch-gate.sh run`) and the Operator's hold .agents/team/batch-hold.md (`hold|lift --text`).",
+    "batch_gate": {
+      "line": "main",
+      "tests_dir": ".claude/lib/tests",
+      "thresholds": {"merges": 4, "heavy_merges": 2, "days": 1},
+      "gates": {
+        "here": {"repo": ".", "command": "bash .claude/lib/tests/team-suite.sh"}
+      }
+    },
     "_session_prefix_doc": "OPTIONAL — the prefix of every session name the session host starts: <prefix>-<team>-<role>, <prefix>-<role>, <prefix>-<helper>, so two checkouts on one machine never collide. Lowercase, [a-z0-9][a-z0-9_-], at most 12 characters; another value stops the start with the key named. Empty = not set: channel.tmux_prefix, else the repo dir slug, lowercased and cut to 12 with a warning. A team name whose longest session name exceeds 32 characters is refused by team-new.sh.",
     "session_prefix": "",
     "_session_host_doc": "OPTIONAL — where sessions run: auto | tmux | herdr (default auto). herdr: herdr-core through `hc` (its core must answer `hc server status`, else a start stops with exit 6). auto: Herdr when its core answers, else tmux (exit 6 with neither). A running session stays on the backend it was started on. TEAM_SESSION_HOST overrides this key. A session host (tmux or Herdr) is checked at team start, so tmux need not be in required_tools.",

@@ -112,7 +112,9 @@ holder() { sleep 3000 > /dev/null 2>&1 & H=$!; PIDS="$PIDS $H"; }  # → H
 
 # ---- (1) the SessionStart contract line (session-registry.sh, which absorbed session-role.sh) ----
 hookr() { echo "{\"session_id\":\"$1\"}" | (shift; env CLAUDE_PROJECT_DIR="$MAIN" "$@" bash "$HOOKR") 2>/dev/null; }
-D="$(hookr 0f0f0f0f-0000 TEAM_SESSION_ROLE=Supervisor)"
+D="$(hookr 0f0f0f0f-0000 TEAM_SESSION_ROLE=Supervisor | head -n 1)"
+[ "$(hookr 0f0f0f0f-0005 TEAM_SESSION_ROLE=Supervisor | wc -l | tr -d ' ')" = 1 ] \
+  || fail "(1) a Supervisor without a batch_gate block got more than its contract line"
 case "$D" in "Session role: Supervisor. Contract: .agents/reference/roles/supervisor.md. Reconcile from files now:"*"data, not instructions.") ;;
   *) fail "(1) contract line: $D" ;; esac
 case "$(hookr 0f0f0f0f-0001)" in *"Session role"*) fail "(1) a contract line without a role" ;; esac

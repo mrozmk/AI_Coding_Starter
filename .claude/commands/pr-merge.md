@@ -1,7 +1,7 @@
 ---
 description: Merge (complete) a pull request on Azure DevOps or GitHub — invoking it IS the go-ahead. Azure DevOps — publishes a draft, self-approves, completes with the Branch-model strategy (or sets auto-complete and waits while policies run), then cleans up remote and local branches, then (tracker jira) moves the ticket to its merged status; GitHub — publishes a draft, checks the required checks, merges with the Branch-model strategy, cleans up branches, never with --admin. Stops only on a real blocker; never bypasses policies.
 argument-hint: "[PR-ID] [--auto <team>]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(gh api user:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(git pull --ff-only:*), Bash(git merge-base:*), Bash(bash .claude/lib/branch-model.sh:*), Bash(gh repo view:*)
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(gh api user:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(git pull --ff-only:*), Bash(git merge-base:*), Bash(bash .claude/lib/branch-model.sh:*), Bash(gh repo view:*), Bash(bash .claude/lib/batch-gate.sh due:*)
 ---
 
 # /pr-merge — Merge a Pull Request (Azure DevOps or GitHub)
@@ -263,13 +263,16 @@ URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
 what happens next per `.agents/reference/git-policy.md` (the project's build/deploy after a merge).
 Add `Tracker comments: <none new … | the STOP line | skipped — <reason>>` when Step 4a ran.
 Add `Tracker: <KEY> → <status> | already <status> | not transitioned — <reason>` (tracker jira).
+Then run `bash .claude/lib/batch-gate.sh due --merged here=<lastMergeCommit>@<TARGET>` from the
+checkout `/pr-merge` runs in and add its lines to the report verbatim; no output, or no such
+script → nothing; it never changes the outcome.
 If it stopped or timed out: what it waits for; whether auto-complete is set now — after 5b it is
 still set, without source deletion (never with `--auto`, which never arms it); a STOP before 5b
 leaves the PR's own setting — and, when Step 4 disarmed one armed with source deletion, the line
 `auto-complete (armed with source deletion) disarmed` as history (with no 5b after it the PR does
 not complete by itself); and that the source branch is deleted only by a re-run
 (`/pr-merge <id>`) after the PR completes. With `--auto` the report is the one-line note
-`auto-merge <team> PR #<id> <merge commit> (QA <Verdict>)` for Supervisor.
+`auto-merge <team> PR #<id> <merge commit> (QA <Verdict>)` for Supervisor · plus the batch-gate lines, if any.
 
 ---
 
@@ -454,7 +457,9 @@ gone from origin — restore it on the host / existence on origin unknown, never
 local state as Step G7 ran it
 (`BASE_SHA`, contains the merge commit, local branch removed or kept — why; or the local step
 skipped — why, with no base-state line) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
-jira) as in Step 7. On a STOP: what blocks and the fix.
+jira) as in Step 7. Then run `bash .claude/lib/batch-gate.sh due --merged here=<MERGE_SHA>@<BASE>`
+from the checkout `/pr-merge` runs in and add its lines to the report verbatim; no output, or no
+such script → nothing; it never changes the outcome. On a STOP: what blocks and the fix.
 
 ## Stage end marker (token usage)
 

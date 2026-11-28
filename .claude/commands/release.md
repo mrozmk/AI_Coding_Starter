@@ -8,6 +8,7 @@ Works across Node (`package.json`), Python (`pyproject.toml`), Rust (`Cargo.toml
 
 ### 1. Detect current version and analyze changes
 
+- Note `ROOT` = `git rev-parse --show-toplevel` of the checkout `/release` was invoked in, before working in any other checkout (a project whose CLAUDE.md sends releases to another checkout runs its git commands with `git -C <that checkout>`).
 - Run `git tag -l | tail -10` to see recent version tags
 - If no tags exist yet (first release):
   - Inform the user: "No previous tags found. This will be the first release."
@@ -113,9 +114,11 @@ First check whether Steps 2–4 actually changed anything: `git status --porcela
 
 - Do **NOT** create an empty release commit. There is nothing to record in a commit; the annotated tag *is* the release. Tag the current HEAD directly and tell the user "no files to commit — tagging HEAD directly".
 
-**Then, in both cases, create the annotated tag** (on HEAD — which is either the new release commit or the existing tip):
+**Batch gate check (both paths).** `SHA` = `git -C <tag checkout> rev-parse HEAD` (full) — the new release commit or the existing tip. When `$ROOT/.claude/lib/batch-gate.sh` exists, always run `bash "$ROOT/.claude/lib/batch-gate.sh" -C "$ROOT" due --release <tag checkout>=$SHA` — no condition on the profile first: the script itself is silent (exit 0) only for a confirmed absent block, and blocks on an unreadable profile. Any non-zero exit → STOP, no tag, show its lines (the Operator lifts a hold, the Supervisor runs the gate). When the script does not exist: skip only when `$ROOT/.claude/project-profile.json` is absent, or `jq -s -e 'length == 1 and (.[0] | type == "object") and ((.[0].teams // {}) | type == "object") and ((.[0].teams // {}) | has("batch_gate") | not)'` exits 0 on it (exactly one object, no `batch_gate` key at all — `false` or `null` values are not "absent"); anything else — a `jq` error, no jq, two objects, the key present → STOP.
+
+**Then, in both cases, create the annotated tag** on exactly the checked `SHA` (never a re-read HEAD — another session may move the checkout between the check and the tag):
 ```
-git tag -a vX.Y.Z -m "Version X.Y.Z - [one-line description]"
+git tag -a vX.Y.Z <SHA> -m "Version X.Y.Z - [one-line description]"
 ```
 - Verify: `git tag -l | tail -3`
 
@@ -132,6 +135,7 @@ git tag -a vX.Y.Z -m "Version X.Y.Z - [one-line description]"
 - NEVER create a `CHANGELOG.md` that does not already exist — update it only if the project keeps one; create one solely on the user's explicit request (its absence is a deliberate choice)
 - When a CHANGELOG exists, always derive its content from actual commits — never invent entries
 - NEVER create an empty release commit — if Steps 2–4 changed no files, tag HEAD directly
+- NEVER tag while `batch-gate.sh due --release` is non-zero, and always tag the exact `SHA` it checked
 - NEVER `git add .` / `git add -A` / `git add -u` in Step 5 — stage explicit paths only, and run `git add` and `git commit` as separate commands (per `guard-commit.sh`)
 - ALWAYS use `rg` for file/content searches — never `grep` or `find` (per [CLAUDE.md](../../CLAUDE.md#search-commands))
 - In monorepos with multiple manifests, ALWAYS ask the user which to bump — never guess
